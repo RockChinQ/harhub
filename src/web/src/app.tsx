@@ -1,12 +1,11 @@
 import {
   AlertCircle,
   Box,
-  Building2,
   CheckCircle2,
   FileSearch,
   FolderInput,
+  GalleryVerticalEnd,
   KeyRound,
-  Library,
   Loader2,
   LogOut,
   Plus,
@@ -14,10 +13,9 @@ import {
   Settings,
   ShieldCheck,
   Tag,
-  UserCircle,
   type LucideIcon
 } from "lucide-react";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type MouseEvent, useEffect, useMemo, useState } from "react";
 import type {
   AccountProfile,
   SkillRecord,
@@ -41,14 +39,25 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarProvider
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  SidebarProvider,
+  SidebarTrigger
 } from "./components/ui/sidebar";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator
+} from "./components/ui/breadcrumb";
+import { Separator } from "./components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -215,126 +224,132 @@ export function App() {
 
   return (
     <SidebarProvider>
-      <Sidebar>
+      <Sidebar variant="floating">
         <SidebarHeader>
-          <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <Library className="h-5 w-5" aria-hidden="true" />
-            </div>
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold">Harhub</div>
-              <div className="truncate text-xs text-muted-foreground">
-                {session.account.email}
-              </div>
-            </div>
-          </div>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton size="lg" asChild>
+                <a href="#" onClick={(event) => event.preventDefault()}>
+                  <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                    <GalleryVerticalEnd className="size-4" aria-hidden="true" />
+                  </div>
+                  <div className="flex min-w-0 flex-col gap-0.5 leading-none">
+                    <span className="truncate font-semibold">Harhub</span>
+                    <span className="truncate text-xs">{activeWorkspace?.name ?? "Workspace"}</span>
+                  </div>
+                </a>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+            <SidebarMenu className="gap-2">
+              <SidebarSection
+                title="Skills"
+                detail="Management"
+                isActive={view === "skills"}
+                onSelect={() => setView("skills")}
+              />
+              <SidebarSection
+                title="Workspace"
+                detail="Settings"
+                isActive={view === "workspace"}
+                onSelect={() => setView("workspace")}
+              />
+              <SidebarSection
+                title="Account"
+                detail="Profile"
+                isActive={view === "account"}
+                onSelect={() => setView("account")}
+              />
+            </SidebarMenu>
+          </SidebarGroup>
+        </SidebarContent>
+        <SidebarFooter>
+          <SidebarGroup className="p-0">
             <SidebarGroupContent>
               <WorkspaceSelect
                 workspaces={session.workspaces}
                 value={activeWorkspace?.id ?? ""}
                 onValueChange={setActiveWorkspaceId}
+                className="h-8 border-sidebar-border bg-background shadow-none focus:ring-sidebar-ring"
               />
             </SidebarGroupContent>
           </SidebarGroup>
-          <SidebarGroup className="mt-5">
-            <SidebarGroupLabel>Navigate</SidebarGroupLabel>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton isActive={view === "skills"} onClick={() => setView("skills")}>
-                  <Box className="h-4 w-4" aria-hidden="true" />
-                  <span>Skills</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={view === "workspace"}
-                  onClick={() => setView("workspace")}
-                >
-                  <Building2 className="h-4 w-4" aria-hidden="true" />
-                  <span>Workspace</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton isActive={view === "account"} onClick={() => setView("account")}>
-                  <UserCircle className="h-4 w-4" aria-hidden="true" />
-                  <span>Account</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroup>
-        </SidebarContent>
-        <SidebarFooter>
-          <div className="mb-3 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+          <div className="px-2 text-xs text-muted-foreground">
             {roleForWorkspace(session.memberships, activeWorkspace?.id)}
           </div>
-          <Button variant="outline" className="w-full justify-start" onClick={handleLogout}>
-            <LogOut className="h-4 w-4" aria-hidden="true" />
-            Sign out
-          </Button>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={handleLogout}>
+                <LogOut className="size-4" aria-hidden="true" />
+                <span>Sign out</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
-        <div className="border-b bg-card">
-          <div className="flex flex-col gap-3 px-4 py-4 sm:px-6 lg:px-8">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h1 className="text-xl font-semibold">
+        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 h-4" />
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <span className="font-medium text-foreground">
                   {activeWorkspace?.name ?? "Workspace"}
-                </h1>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {viewTitle(view)}
-                </p>
-              </div>
-              {view === "skills" ? (
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <Input
-                    value={scanPath}
-                    onChange={(event) => setScanPath(event.target.value)}
-                    aria-label="Scan paths"
-                    className="w-full sm:w-72"
-                  />
-                  <Button onClick={runScan} disabled={isScanning}>
-                    {isScanning ? (
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                    ) : (
-                      <RefreshCcw className="h-4 w-4" aria-hidden="true" />
-                    )}
-                    Scan
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-            <div className="flex flex-col gap-2 lg:hidden">
-              <WorkspaceSelect
-                workspaces={session.workspaces}
-                value={activeWorkspace?.id ?? ""}
-                onValueChange={setActiveWorkspaceId}
+                </span>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{viewTitle(view)}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+          {view === "skills" ? (
+            <div className="ml-auto hidden items-center gap-2 md:flex">
+              <Input
+                value={scanPath}
+                onChange={(event) => setScanPath(event.target.value)}
+                aria-label="Scan paths"
+                className="w-72"
               />
-              <div className="grid grid-cols-3 gap-2">
-                <Button variant={view === "skills" ? "default" : "outline"} onClick={() => setView("skills")}>
-                  Skills
-                </Button>
-                <Button variant={view === "workspace" ? "default" : "outline"} onClick={() => setView("workspace")}>
-                  Workspace
-                </Button>
-                <Button variant={view === "account" ? "default" : "outline"} onClick={() => setView("account")}>
-                  Account
-                </Button>
-              </div>
+              <Button onClick={runScan} disabled={isScanning}>
+                {isScanning ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <RefreshCcw className="h-4 w-4" aria-hidden="true" />
+                )}
+                Scan
+              </Button>
             </div>
-            {catalogPath && view === "skills" ? (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <FolderInput className="h-3.5 w-3.5" aria-hidden="true" />
-                <span className="truncate">{catalogPath}</span>
-              </div>
-            ) : null}
-          </div>
-        </div>
-        <div className="px-4 py-6 sm:px-6 lg:px-8">
+          ) : null}
+        </header>
+        <div className="flex flex-1 flex-col gap-4 p-4 sm:p-6 lg:p-8">
+          {view === "skills" ? (
+            <div className="flex flex-col gap-2 md:hidden">
+              <Input
+                value={scanPath}
+                onChange={(event) => setScanPath(event.target.value)}
+                aria-label="Scan paths"
+              />
+              <Button onClick={runScan} disabled={isScanning}>
+                {isScanning ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <RefreshCcw className="h-4 w-4" aria-hidden="true" />
+                )}
+                Scan
+              </Button>
+            </div>
+          ) : null}
+          {catalogPath && view === "skills" ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <FolderInput className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="truncate">{catalogPath}</span>
+            </div>
+          ) : null}
           {error ? (
             <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {error}
@@ -370,6 +385,44 @@ export function App() {
         </div>
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+function SidebarSection({
+  title,
+  detail,
+  isActive,
+  onSelect
+}: {
+  title: string;
+  detail: string;
+  isActive: boolean;
+  onSelect: () => void;
+}) {
+  const href = `#${title.toLowerCase()}`;
+
+  function handleSelect(event: MouseEvent<HTMLAnchorElement>) {
+    event.preventDefault();
+    onSelect();
+  }
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild>
+        <a href={href} className="font-medium" onClick={handleSelect}>
+          {title}
+        </a>
+      </SidebarMenuButton>
+      <SidebarMenuSub className="ml-0 border-l-0 px-1.5">
+        <SidebarMenuSubItem>
+          <SidebarMenuSubButton asChild isActive={isActive}>
+            <a href={href} onClick={handleSelect}>
+              {detail}
+            </a>
+          </SidebarMenuSubButton>
+        </SidebarMenuSubItem>
+      </SidebarMenuSub>
+    </SidebarMenuItem>
   );
 }
 
@@ -480,15 +533,17 @@ function AuthScreen({
 function WorkspaceSelect({
   workspaces,
   value,
-  onValueChange
+  onValueChange,
+  className
 }: {
   workspaces: WorkspaceRecord[];
   value: string;
   onValueChange: (value: string) => void;
+  className?: string;
 }) {
   return (
     <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger aria-label="Workspace">
+      <SelectTrigger aria-label="Workspace" className={className}>
         <SelectValue placeholder="Select workspace" />
       </SelectTrigger>
       <SelectContent>
@@ -694,7 +749,7 @@ function SkillTable({
                   variant="secondary"
                   className={cn(
                     skill.lifecycleState === "stable" &&
-                      "border-emerald-200 bg-emerald-50 text-emerald-800"
+                      "border-lime-200 bg-lime-50 text-zinc-950"
                   )}
                 >
                   {skill.lifecycleState}
@@ -741,7 +796,7 @@ function SkillDetail({
             className={cn(
               skillIssues.some((issue) => issue.severity === "error")
                 ? "border-amber-200 bg-amber-50 text-amber-800"
-                : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-lime-200 bg-lime-50 text-zinc-950"
             )}
           >
             {skillIssues.length === 0 ? "valid" : `${skillIssues.length} issue(s)`}
@@ -1066,9 +1121,9 @@ function KeyValue({ label, value }: { label: string; value: string }) {
 }
 
 function viewTitle(view: View): string {
-  if (view === "workspace") return "Tenant settings and workspace inventory.";
-  if (view === "account") return "Account profile and memberships.";
-  return "Standards-compatible Agent Skills catalog and validation.";
+  if (view === "workspace") return "Workspace";
+  if (view === "account") return "Account";
+  return "Skills";
 }
 
 function roleForWorkspace(memberships: WorkspaceMembership[], workspaceId?: string): string {
