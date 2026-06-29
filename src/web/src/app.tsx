@@ -1,27 +1,31 @@
 import {
   AlertCircle,
-  Activity,
+  Building2,
   CheckCircle2,
-  Database,
-  FileSearch,
-  FolderInput,
+  Clock3,
+  FileArchive,
   GalleryVerticalEnd,
+  HardDriveUpload,
   KeyRound,
   Layers3,
   Loader2,
   LogOut,
+  PackageOpen,
   Plus,
-  RefreshCcw,
   Save,
+  Search,
   Tag,
   Trash2,
+  Upload,
+  UserCircle,
   UserPlus,
   type LucideIcon
 } from "lucide-react";
-import { type FormEvent, type MouseEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import type {
   AccountProfile,
   AssetRecord,
+  StorageStatus,
   ValidationIssue,
   WorkspaceMember,
   WorkspaceMembership,
@@ -44,14 +48,12 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   SidebarProvider,
   SidebarTrigger
 } from "./components/ui/sidebar";
@@ -71,11 +73,11 @@ import {
   SelectValue
 } from "./components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover";
 import {
   addWorkspaceMember,
   changePassword,
   createWorkspace,
-  createWorkspaceAsset,
   deleteWorkspaceAsset,
   getSession,
   getWorkspaceAssets,
@@ -83,12 +85,12 @@ import {
   login,
   logout,
   removeWorkspaceMember,
-  scanWorkspaceAssets,
   signUp,
   updateAccount,
   updateWorkspaceAsset,
   updateWorkspaceMember,
   updateWorkspace,
+  uploadWorkspaceSkillZip,
   type AuthResponse,
   type SessionResponse
 } from "./lib/api";
@@ -109,13 +111,11 @@ export function App() {
   const [view, setView] = useState<View>("assets");
   const [assets, setAssets] = useState<AssetRecord[]>([]);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
-  const [catalogPath, setCatalogPath] = useState("");
+  const [storageStatus, setStorageStatus] = useState<StorageStatus | undefined>();
   const [selectedId, setSelectedId] = useState<string | undefined>();
-  const [scanPath, setScanPath] = useState("examples");
   const [query, setQuery] = useState("");
   const [tagFilter, setTagFilter] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
   useEffect(() => {
@@ -138,7 +138,6 @@ export function App() {
   useEffect(() => {
     if (!activeWorkspace || !token) return;
     localStorage.setItem(WORKSPACE_KEY, activeWorkspace.id);
-    setScanPath(activeWorkspace.defaultScanPaths.join(", "));
     void refreshAssets(activeWorkspace.id);
   }, [activeWorkspace?.id, token]);
 
@@ -169,34 +168,15 @@ export function App() {
     try {
       const result = await getWorkspaceAssets(token, workspaceId);
       setAssets(result.assets);
-      setCatalogPath(result.catalogPath);
+      setStorageStatus(result.storage);
+      const storedAssets = result.assets.filter((asset) => asset.storage);
       setSelectedId((current) =>
-        result.assets.some((asset) => asset.id === current) ? current : result.assets[0]?.id
+        storedAssets.some((asset) => asset.id === current) ? current : storedAssets[0]?.id
       );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setIsLoading(false);
-    }
-  }
-
-  async function runScan() {
-    if (!activeWorkspace || !token) return;
-    setIsScanning(true);
-    setError(undefined);
-    try {
-      const paths = splitList(scanPath);
-      const result = await scanWorkspaceAssets(token, activeWorkspace.id, paths);
-      setAssets(result.assets);
-      setIssues(result.issues);
-      setCatalogPath(result.assetCatalogPath ?? result.catalogPath);
-      setSelectedId((current) =>
-        result.assets.some((asset) => asset.id === current) ? current : result.assets[0]?.id
-      );
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setIsScanning(false);
     }
   }
 
@@ -262,50 +242,71 @@ export function App() {
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
-            <SidebarMenu className="gap-2">
-              <SidebarSection
-                title="Assets"
-                detail="Skill library"
-                isActive={view === "assets"}
-                onSelect={() => setView("assets")}
-              />
-              <SidebarSection
-                title="Workspace"
-                detail="Settings"
-                isActive={view === "workspace"}
-                onSelect={() => setView("workspace")}
-              />
-              <SidebarSection
-                title="Account"
-                detail="Profile"
-                isActive={view === "account"}
-                onSelect={() => setView("account")}
-              />
-            </SidebarMenu>
+            <SidebarGroupLabel>Library</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarSection
+                  icon={Layers3}
+                  title="Skills"
+                  detail="S3 asset library"
+                  isActive={view === "assets"}
+                  onSelect={() => setView("assets")}
+                />
+              </SidebarMenu>
+            </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
-        <SidebarFooter>
-          <SidebarGroup className="p-0">
-            <SidebarGroupContent>
+        <SidebarFooter className="border-t border-sidebar-border/70">
+          <div className="space-y-2 rounded-lg border border-sidebar-border bg-background/80 p-2">
+            <div className="flex items-center gap-2">
               <WorkspaceSelect
                 workspaces={session.workspaces}
                 value={activeWorkspace?.id ?? ""}
                 onValueChange={setActiveWorkspaceId}
-                className="h-8 border-sidebar-border bg-background shadow-none focus:ring-sidebar-ring"
+                className="h-8 min-w-0 border-sidebar-border bg-background shadow-none focus:ring-sidebar-ring"
               />
-            </SidebarGroupContent>
-          </SidebarGroup>
-          <div className="px-2 text-xs text-muted-foreground">
-            {roleForWorkspace(session.memberships, activeWorkspace?.id)}
+              <Button
+                type="button"
+                variant={view === "workspace" ? "secondary" : "ghost"}
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => setView("workspace")}
+                aria-label="Workspace settings"
+              >
+                <Building2 className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
+            <div className="px-1 text-xs text-sidebar-foreground/65">
+              {roleForWorkspace(session.memberships, activeWorkspace?.id)}
+            </div>
           </div>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton onClick={handleLogout}>
-                <LogOut className="size-4" aria-hidden="true" />
-                <span>Sign out</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
+          <div className="space-y-2 rounded-lg border border-sidebar-border bg-background/80 p-2">
+            <button
+              type="button"
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                view === "account" && "bg-sidebar-accent text-sidebar-accent-foreground"
+              )}
+              onClick={() => setView("account")}
+            >
+              <UserCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">{session.account.name}</span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {session.account.email}
+                </span>
+              </span>
+            </button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 w-full justify-start bg-background"
+              onClick={handleLogout}
+            >
+              <LogOut className="size-4" aria-hidden="true" />
+              <span>Sign out</span>
+            </Button>
+          </div>
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
@@ -325,49 +326,8 @@ export function App() {
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
-          {view === "assets" ? (
-            <div className="ml-auto hidden items-center gap-2 md:flex">
-              <Input
-                value={scanPath}
-                onChange={(event) => setScanPath(event.target.value)}
-                aria-label="Scan paths"
-                className="w-72"
-              />
-              <Button onClick={runScan} disabled={isScanning}>
-                {isScanning ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                ) : (
-                  <RefreshCcw className="h-4 w-4" aria-hidden="true" />
-                )}
-                Scan
-              </Button>
-            </div>
-          ) : null}
         </header>
         <div className="flex flex-1 flex-col gap-4 p-4 sm:p-6 lg:p-8">
-          {view === "assets" ? (
-            <div className="flex flex-col gap-2 md:hidden">
-              <Input
-                value={scanPath}
-                onChange={(event) => setScanPath(event.target.value)}
-                aria-label="Scan paths"
-              />
-              <Button onClick={runScan} disabled={isScanning}>
-                {isScanning ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                ) : (
-                  <RefreshCcw className="h-4 w-4" aria-hidden="true" />
-                )}
-                Scan
-              </Button>
-            </div>
-          ) : null}
-          {catalogPath && view === "assets" ? (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <FolderInput className="h-3.5 w-3.5" aria-hidden="true" />
-              <span className="truncate">{catalogPath}</span>
-            </div>
-          ) : null}
           {error ? (
             <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {error}
@@ -378,6 +338,7 @@ export function App() {
               workspace={activeWorkspace}
               token={token}
               assets={assets}
+              storage={storageStatus}
               issues={issues}
               query={query}
               tagFilter={tagFilter}
@@ -413,39 +374,32 @@ export function App() {
 }
 
 function SidebarSection({
+  icon: Icon,
   title,
   detail,
   isActive,
   onSelect
 }: {
+  icon: LucideIcon;
   title: string;
   detail: string;
   isActive: boolean;
   onSelect: () => void;
 }) {
-  const href = `#${title.toLowerCase()}`;
-
-  function handleSelect(event: MouseEvent<HTMLAnchorElement>) {
-    event.preventDefault();
-    onSelect();
-  }
-
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton asChild>
-        <a href={href} className="font-medium" onClick={handleSelect}>
-          {title}
-        </a>
+      <SidebarMenuButton
+        isActive={isActive}
+        onClick={onSelect}
+        tooltip={title}
+        className="h-11 items-start"
+      >
+        <Icon className="mt-0.5 size-4" aria-hidden="true" />
+        <span className="flex min-w-0 flex-col gap-0.5 leading-tight">
+          <span className="truncate font-medium">{title}</span>
+          <span className="truncate text-xs text-sidebar-foreground/60">{detail}</span>
+        </span>
       </SidebarMenuButton>
-      <SidebarMenuSub className="ml-0 border-l-0 px-1.5">
-        <SidebarMenuSubItem>
-          <SidebarMenuSubButton asChild isActive={isActive}>
-            <a href={href} onClick={handleSelect}>
-              {detail}
-            </a>
-          </SidebarMenuSubButton>
-        </SidebarMenuSubItem>
-      </SidebarMenuSub>
     </SidebarMenuItem>
   );
 }
@@ -585,6 +539,7 @@ function AssetsView({
   workspace,
   token,
   assets,
+  storage,
   issues,
   query,
   tagFilter,
@@ -598,6 +553,7 @@ function AssetsView({
   workspace: WorkspaceRecord;
   token: string;
   assets: AssetRecord[];
+  storage?: StorageStatus;
   issues: ValidationIssue[];
   query: string;
   tagFilter: string;
@@ -608,13 +564,25 @@ function AssetsView({
   onSelect: (id: string) => void;
   onRefresh: () => Promise<void>;
 }) {
-  const tags = useMemo(
-    () => Array.from(new Set(assets.flatMap((asset) => asset.tags))).sort(),
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const managedAssets = useMemo(
+    () => assets.filter((asset) => asset.storage),
     [assets]
   );
-  const skillAssets = assets.filter((asset) => asset.kind === "skill");
-  const filteredAssets = assets.filter((asset) => {
+  const tags = useMemo(
+    () => Array.from(new Set(managedAssets.flatMap((asset) => asset.tags))).sort(),
+    [managedAssets]
+  );
+  const skillAssets = managedAssets.filter((asset) => asset.kind === "skill");
+  const filteredAssets = managedAssets.filter((asset) => {
     const normalizedQuery = query.trim().toLowerCase();
+    const searchableMetadata = [
+      asset.storage?.originalName,
+      asset.storage?.key,
+      ...metadataList(asset, "agents"),
+      ...metadataList(asset, "headings"),
+      ...asset.tags
+    ].join(" ");
     const matchesQuery =
       !normalizedQuery ||
       asset.name.toLowerCase().includes(normalizedQuery) ||
@@ -622,78 +590,140 @@ function AssetsView({
       asset.description.toLowerCase().includes(normalizedQuery) ||
       asset.kind.toLowerCase().includes(normalizedQuery) ||
       asset.packageName?.toLowerCase().includes(normalizedQuery) ||
-      asset.owner?.toLowerCase().includes(normalizedQuery);
+      asset.owner?.toLowerCase().includes(normalizedQuery) ||
+      searchableMetadata.toLowerCase().includes(normalizedQuery);
     const matchesTag = !tagFilter || asset.tags.includes(tagFilter);
     return matchesQuery && matchesTag;
   });
   const selectedAsset =
-    assets.find((asset) => asset.id === selectedId) ?? filteredAssets[0] ?? assets[0];
+    filteredAssets.find((asset) => asset.id === selectedId) ?? filteredAssets[0];
   const errorCount =
-    assets.reduce((count, asset) => count + asset.validation.errors, 0) ||
+    managedAssets.reduce((count, asset) => count + asset.validation.errors, 0) ||
     issues.filter((issue) => issue.severity === "error").length;
   const warningCount =
-    assets.reduce((count, asset) => count + asset.validation.warnings, 0) ||
+    managedAssets.reduce((count, asset) => count + asset.validation.warnings, 0) ||
     issues.filter((issue) => issue.severity === "warning").length;
+  const uploadDates = managedAssets
+    .map((asset) => asset.storage?.uploadedAt ?? asset.updatedAt)
+    .sort();
+  const latestUpload = uploadDates[uploadDates.length - 1];
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-4">
-        <MetricCard icon={Database} label="Assets" value={assets.length.toString()} />
-        <MetricCard icon={Layers3} label="Skill Assets" value={skillAssets.length.toString()} />
-        <MetricCard icon={Tag} label="Tags" value={tags.length.toString()} />
-        <MetricCard
-          icon={Activity}
-          label="Issues"
-          value={(errorCount + warningCount).toString()}
-        />
-      </div>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
-        <div className="space-y-4">
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Input
-              value={query}
-              onChange={(event) => onQueryChange(event.target.value)}
-              placeholder="Search assets, packages, owners"
-              aria-label="Search assets"
-            />
-            <Select
-              value={tagFilter || "all"}
-              onValueChange={(value) => onTagFilterChange(value === "all" ? "" : value)}
-            >
-              <SelectTrigger className="sm:w-44" aria-label="Filter by tag">
-                <SelectValue placeholder="All tags" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All tags</SelectItem>
-                {tags.map((tag) => (
-                  <SelectItem key={tag} value={tag}>
-                    {tag}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-semibold tracking-normal">Skills</h1>
+            <Badge variant="secondary" className="bg-lime-300 text-zinc-950 hover:bg-lime-300">
+              {skillAssets.length} managed
+            </Badge>
+            {errorCount + warningCount > 0 ? (
+              <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">
+                {errorCount + warningCount} issue(s)
+              </Badge>
+            ) : null}
           </div>
-          <AssetTable
-            assets={filteredAssets}
-            selectedId={selectedAsset?.id}
-            isLoading={isLoading}
-            onSelect={onSelect}
+          <div className="flex flex-wrap gap-2">
+            <SkillSummaryPill
+              icon={HardDriveUpload}
+              label={storageLabel(storage)}
+              value={`${managedAssets.length} S3 object(s)`}
+            />
+            <SkillSummaryPill icon={Tag} label="Tags" value={tags.length.toString()} />
+            <SkillSummaryPill
+              icon={Clock3}
+              label="Latest upload"
+              value={latestUpload ? formatDate(latestUpload) : "-"}
+            />
+          </div>
+        </div>
+        <Popover open={isUploadOpen} onOpenChange={setIsUploadOpen}>
+          <PopoverTrigger asChild>
+            <Button>
+              <Upload className="h-4 w-4" aria-hidden="true" />
+              Upload
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="end"
+            className="w-[min(440px,calc(100vw-2rem))] p-0"
+          >
+            <div className="border-b px-4 py-3">
+              <div className="font-medium">Upload skill zip</div>
+              <div className="mt-1 text-xs text-muted-foreground">{storageLabel(storage)}</div>
+            </div>
+            <div className="p-4">
+              <UploadSkillZipForm
+                workspace={workspace}
+                token={token}
+                storage={storage}
+                onUploaded={async () => {
+                  await onRefresh();
+                  setIsUploadOpen(false);
+                }}
+              />
+            </div>
+          </PopoverContent>
+        </Popover>
+      </div>
+      <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Input
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="Search skills, packages, owners, tags"
+            aria-label="Search skills"
+            className="pl-9"
           />
         </div>
-        <AssetDetail
-          workspace={workspace}
-          token={token}
-          asset={selectedAsset}
-          issues={issues}
-          onChanged={onRefresh}
-        />
+        <Select
+          value={tagFilter || "all"}
+          onValueChange={(value) => onTagFilterChange(value === "all" ? "" : value)}
+        >
+          <SelectTrigger className="sm:w-48" aria-label="Filter by tag">
+            <SelectValue placeholder="All tags" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All tags</SelectItem>
+            {tags.map((tag) => (
+              <SelectItem key={tag} value={tag}>
+                {tag}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {(query || tagFilter) ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              onQueryChange("");
+              onTagFilterChange("");
+            }}
+          >
+            Clear
+          </Button>
+        ) : null}
       </div>
-      <CreateSkillPanel workspace={workspace} token={token} onCreated={onRefresh} />
+      <SkillListTable
+        assets={filteredAssets}
+        selectedId={selectedAsset?.id}
+        isLoading={isLoading}
+        onSelect={onSelect}
+      />
+      <SkillMetadataPanel
+        workspace={workspace}
+        token={token}
+        asset={selectedAsset}
+        issues={issues}
+        onChanged={onRefresh}
+      />
     </div>
   );
 }
 
-function MetricCard({
+function SkillSummaryPill({
   icon: Icon,
   label,
   value
@@ -703,19 +733,15 @@ function MetricCard({
   value: string;
 }) {
   return (
-    <Card>
-      <CardContent className="flex items-center justify-between pt-4">
-        <div>
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="mt-1 text-2xl font-semibold">{value}</p>
-        </div>
-        <Icon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-      </CardContent>
-    </Card>
+    <div className="flex min-w-0 items-center gap-2 rounded-md border bg-background px-2.5 py-1.5 text-xs">
+      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="truncate text-muted-foreground">{label}</span>
+      <span className="shrink-0 font-medium">{value}</span>
+    </div>
   );
 }
 
-function AssetTable({
+function SkillListTable({
   assets,
   selectedId,
   isLoading,
@@ -728,80 +754,120 @@ function AssetTable({
 }) {
   if (isLoading) {
     return (
-      <Card>
-        <CardContent className="flex h-52 items-center justify-center text-sm text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-          Loading assets
-        </CardContent>
-      </Card>
+      <div className="flex h-60 items-center justify-center rounded-lg border bg-card text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+        Loading skills
+      </div>
     );
   }
 
   if (assets.length === 0) {
     return (
-      <Card>
-        <CardContent className="flex h-52 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-          <FileSearch className="h-6 w-6" aria-hidden="true" />
-          No assets matched the current filters.
-        </CardContent>
-      </Card>
+      <div className="flex h-60 flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-card text-sm text-muted-foreground">
+        <PackageOpen className="h-7 w-7" aria-hidden="true" />
+        No uploaded skill zips matched the current filters.
+      </div>
     );
   }
 
   return (
     <div className="overflow-hidden rounded-lg border bg-card">
-      <table className="w-full text-left text-sm">
-        <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
-          <tr>
-            <th className="px-3 py-2 font-medium">Asset</th>
-            <th className="hidden px-3 py-2 font-medium sm:table-cell">Kind</th>
-            <th className="hidden px-3 py-2 font-medium md:table-cell">Package</th>
-            <th className="hidden px-3 py-2 font-medium lg:table-cell">Owner</th>
-            <th className="px-3 py-2 font-medium">Health</th>
-          </tr>
-        </thead>
-        <tbody>
-          {assets.map((asset) => (
-            <tr
-              key={asset.id}
-              className={cn(
-                "cursor-pointer border-b transition-colors last:border-0 hover:bg-accent/50",
-                selectedId === asset.id && "bg-accent"
-              )}
-              onClick={() => onSelect(asset.id)}
-            >
-              <td className="px-3 py-3">
-                <div className="font-medium">{asset.displayName}</div>
-                <div className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-                  {asset.description || asset.source?.path}
-                </div>
-              </td>
-              <td className="hidden px-3 py-3 sm:table-cell">
-                <Badge variant="outline">{asset.kind}</Badge>
-              </td>
-              <td className="hidden px-3 py-3 text-muted-foreground md:table-cell">
-                {asset.packageName ?? "-"}
-              </td>
-              <td className="hidden px-3 py-3 text-muted-foreground lg:table-cell">
-                {asset.owner ?? "-"}
-              </td>
-              <td className="px-3 py-3">
-                <Badge
-                  variant="secondary"
-                  className={healthBadgeClass(asset.health)}
-                >
-                  {asset.health}
-                </Badge>
-              </td>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[980px] text-left text-sm">
+          <thead className="border-b bg-muted/50 text-xs uppercase text-muted-foreground">
+            <tr>
+              <th className="px-4 py-3 font-medium">Skill</th>
+              <th className="px-4 py-3 font-medium">Package / Owner</th>
+              <th className="px-4 py-3 font-medium">Contents</th>
+              <th className="px-4 py-3 font-medium">Storage</th>
+              <th className="px-4 py-3 font-medium">Updated</th>
+              <th className="w-28 px-4 py-3 font-medium">Health</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {assets.map((asset) => {
+              const zipEntries = metadataNumber(asset, "zipEntries");
+              const scriptCount = metadataNumber(asset, "scripts");
+              const referenceCount = metadataNumber(asset, "references");
+              const assetCount = metadataNumber(asset, "assets");
+              const uploadedAt = asset.storage?.uploadedAt ?? asset.updatedAt;
+
+              return (
+                <tr
+                  key={asset.id}
+                  className={cn(
+                    "cursor-pointer border-b transition-colors last:border-0 hover:bg-accent/45",
+                    selectedId === asset.id && "bg-lime-50/80"
+                  )}
+                  onClick={() => onSelect(asset.id)}
+                >
+                  <td className="px-4 py-4 align-top">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-lime-300 text-zinc-950">
+                        <FileArchive className="h-4 w-4" aria-hidden="true" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{asset.displayName}</div>
+                        <div className="mt-1 line-clamp-2 max-w-xl text-xs leading-5 text-muted-foreground">
+                          {asset.description || asset.name}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {asset.tags.slice(0, 4).map((tag) => (
+                            <Badge key={tag} variant="outline" className="h-5 rounded-md px-1.5 text-[11px]">
+                              {tag}
+                            </Badge>
+                          ))}
+                          {asset.tags.length > 4 ? (
+                            <Badge variant="outline" className="h-5 rounded-md px-1.5 text-[11px]">
+                              +{asset.tags.length - 4}
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-4 align-top">
+                    <div className="font-medium">{asset.packageName ?? "-"}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{asset.owner ?? "Unassigned"}</div>
+                  </td>
+                  <td className="px-4 py-4 align-top">
+                    <div className="grid gap-1 text-xs text-muted-foreground">
+                      <span>{zipEntries || "-"} file(s)</span>
+                      <span>{scriptCount} scripts · {referenceCount} refs · {assetCount} assets</span>
+                      <span className="truncate">{metadataText(asset, "skillEntry") || "SKILL.md"}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-4 align-top">
+                    <div className="truncate font-medium">{asset.storage?.originalName ?? "-"}</div>
+                    <div className="mt-1 max-w-[260px] truncate text-xs text-muted-foreground">
+                      {asset.storage?.key ?? "-"}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {asset.storage ? formatBytes(asset.storage.size) : "-"}
+                    </div>
+                  </td>
+                  <td className="px-4 py-4 align-top">
+                    <div className="text-xs text-muted-foreground">{formatDate(uploadedAt)}</div>
+                    <Badge variant="outline" className="mt-2 rounded-md">
+                      {asset.lifecycleState}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-4 align-top">
+                    <Badge variant="secondary" className={healthBadgeClass(asset.health)}>
+                      {asset.health}
+                    </Badge>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
 
-function AssetDetail({
+function SkillMetadataPanel({
   workspace,
   token,
   asset,
@@ -828,26 +894,25 @@ function AssetDetail({
     setOwner(asset?.owner ?? "");
     setTags(asset?.tags.join(", ") ?? "");
     setLifecycleState(asset?.lifecycleState ?? "experimental");
-    setAgents(asset?.skill?.agents.join(", ") ?? "");
+    setAgents((asset ? metadataList(asset, "agents") : []).join(", "));
     setMessage(undefined);
   }, [asset?.id]);
 
   if (!asset) {
     return (
-      <Card>
-        <CardContent className="flex h-72 items-center justify-center text-sm text-muted-foreground">
-          Select an asset to inspect it.
-        </CardContent>
-      </Card>
+      <div className="flex min-h-48 items-center justify-center rounded-lg border border-dashed bg-card text-sm text-muted-foreground">
+        Select a skill to inspect metadata.
+      </div>
     );
   }
 
   const selectedAsset = asset;
-  const skill = selectedAsset.skill;
   const assetIssues = issues.filter(
-    (issue) => issue.assetId === selectedAsset.id || (skill && issue.skillId === skill.id)
+    (issue) => issue.assetId === selectedAsset.id || issue.skillId === selectedAsset.skill?.id
   );
-  const resources = skill?.resources ?? { scripts: [], references: [], assets: [] };
+  const headings = metadataList(selectedAsset, "headings");
+  const agentsList = metadataList(selectedAsset, "agents");
+  const storage = selectedAsset.storage;
 
   async function saveAsset(event: FormEvent) {
     event.preventDefault();
@@ -861,7 +926,7 @@ function AssetDetail({
         lifecycleState,
         agents: splitList(agents)
       });
-      setMessage("Asset saved.");
+      setMessage("Skill saved.");
       await onChanged();
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught));
@@ -876,7 +941,7 @@ function AssetDetail({
     setMessage(undefined);
     try {
       await deleteWorkspaceAsset(token, workspace.id, selectedAsset.id);
-      setMessage("Asset deleted.");
+      setMessage("Skill deleted.");
       await onChanged();
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught));
@@ -886,67 +951,42 @@ function AssetDetail({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle>{asset.displayName}</CardTitle>
-            <CardDescription className="mt-2">{asset.id}</CardDescription>
-          </div>
-          <Badge
-            variant="secondary"
-            className={healthBadgeClass(asset.health)}
-          >
-            {asset.health}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-sm leading-6">{asset.description || "No description."}</p>
-        <div className="grid gap-3 text-sm">
-          <KeyValue label="Kind" value={asset.kind} />
-          <KeyValue label="Name" value={asset.name} />
-          <KeyValue label="Package" value={asset.packageName ?? "-"} />
-          <KeyValue label="Owner" value={asset.owner ?? "-"} />
-          <KeyValue label="State" value={asset.lifecycleState} />
-          <KeyValue label="Source" value={asset.source?.path ?? "-"} />
-          <KeyValue label="Hash" value={asset.contentHash?.slice(0, 16) ?? "-"} />
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {asset.tags.map((tag) => (
-            <Badge key={tag} variant="outline">
-              {tag}
+    <form className="rounded-lg border bg-card p-4" onSubmit={saveAsset}>
+      <div className="flex flex-col gap-3 border-b pb-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="truncate text-lg font-semibold">{selectedAsset.displayName}</h2>
+            <Badge variant="secondary" className={healthBadgeClass(selectedAsset.health)}>
+              {selectedAsset.health}
             </Badge>
-          ))}
-        </div>
-        <div className="space-y-2">
-          <h4 className="text-sm font-medium">Resources</h4>
-          <div className="grid gap-2 text-sm text-muted-foreground">
-            <KeyValue label="Scripts" value={resources.scripts.length.toString()} />
-            <KeyValue label="References" value={resources.references.length.toString()} />
-            <KeyValue label="Assets" value={resources.assets.length.toString()} />
+            <Badge variant="outline">{selectedAsset.lifecycleState}</Badge>
           </div>
+          <p className="mt-1 max-w-4xl text-sm leading-6 text-muted-foreground">
+            {selectedAsset.description || "No description."}
+          </p>
         </div>
-        {assetIssues.length > 0 ? (
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium">Validation</h4>
-            {assetIssues.map((issue) => (
-              <div key={`${issue.code}-${issue.message}`} className="rounded-md border px-3 py-2 text-sm">
-                <div className="flex items-center gap-2 font-medium">
-                  {issue.severity === "error" ? (
-                    <AlertCircle className="h-4 w-4 text-destructive" aria-hidden="true" />
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4 text-amber-600" aria-hidden="true" />
-                  )}
-                  {issue.code}
-                </div>
-                <p className="mt-1 text-muted-foreground">{issue.message}</p>
-              </div>
-            ))}
-          </div>
-        ) : null}
-        {asset.kind === "skill" ? (
-          <form className="space-y-4 border-t pt-4" onSubmit={saveAsset}>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button type="submit" disabled={isSaving}>
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Save className="h-4 w-4" aria-hidden="true" />
+            )}
+            Save
+          </Button>
+          <Button type="button" variant="outline" onClick={removeAsset} disabled={isDeleting}>
+            {isDeleting ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+            )}
+            Delete
+          </Button>
+        </div>
+      </div>
+      <div className="grid gap-5 pt-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-5">
+          <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1.5 text-sm font-medium">
               Description
               <Input
@@ -954,104 +994,173 @@ function AssetDetail({
                 onChange={(event) => setDescription(event.target.value)}
               />
             </label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-1.5 text-sm font-medium">
-                Owner
-                <Input value={owner} onChange={(event) => setOwner(event.target.value)} />
-              </label>
-              <label className="grid gap-1.5 text-sm font-medium">
-                Lifecycle
-                <Select value={lifecycleState} onValueChange={setLifecycleState}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Lifecycle" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="experimental">experimental</SelectItem>
-                    <SelectItem value="stable">stable</SelectItem>
-                    <SelectItem value="deprecated">deprecated</SelectItem>
-                    <SelectItem value="archived">archived</SelectItem>
-                  </SelectContent>
-                </Select>
-              </label>
-            </div>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Owner
+              <Input value={owner} onChange={(event) => setOwner(event.target.value)} />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Lifecycle
+              <Select value={lifecycleState} onValueChange={setLifecycleState}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Lifecycle" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="experimental">experimental</SelectItem>
+                  <SelectItem value="stable">stable</SelectItem>
+                  <SelectItem value="deprecated">deprecated</SelectItem>
+                  <SelectItem value="archived">archived</SelectItem>
+                </SelectContent>
+              </Select>
+            </label>
             <label className="grid gap-1.5 text-sm font-medium">
               Tags
               <Input value={tags} onChange={(event) => setTags(event.target.value)} />
             </label>
-            <label className="grid gap-1.5 text-sm font-medium">
+            <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
               Agents
               <Input value={agents} onChange={(event) => setAgents(event.target.value)} />
             </label>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button type="submit" disabled={isSaving}>
-                {isSaving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                ) : (
-                  <Save className="h-4 w-4" aria-hidden="true" />
-                )}
-                Save
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={removeAsset}
-                disabled={isDeleting}
-              >
-                {isDeleting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                ) : (
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                )}
-                Delete
-              </Button>
-              {message ? <span className="text-sm text-muted-foreground">{message}</span> : null}
+          </div>
+          <div className="grid gap-3 text-sm md:grid-cols-2">
+            <KeyValue label="Asset ID" value={selectedAsset.id} />
+            <KeyValue label="Name" value={selectedAsset.name} />
+            <KeyValue label="Package" value={selectedAsset.packageName ?? "-"} />
+            <KeyValue label="Kind" value={selectedAsset.kind} />
+            <KeyValue label="Hash" value={shortHash(selectedAsset.contentHash)} />
+            <KeyValue label="Skill entry" value={metadataText(selectedAsset, "skillEntry") || "-"} />
+            <KeyValue label="Discovered" value={formatDate(selectedAsset.discoveredAt)} />
+            <KeyValue label="Updated" value={formatDate(selectedAsset.updatedAt)} />
+          </div>
+          <TokenList title="Agents" values={agentsList} empty="No agent compatibility metadata." />
+          <TokenList title="Headings" values={headings} empty="No headings parsed." />
+        </div>
+        <div className="space-y-4 rounded-lg border bg-background p-4">
+          <div>
+            <h3 className="text-sm font-medium">Storage</h3>
+            <div className="mt-3 grid gap-2 text-sm">
+              <KeyValue label="Provider" value={storage ? `${storage.provider}:${storage.bucket}` : "-"} />
+              <KeyValue label="Object" value={storage?.key ?? "-"} />
+              <KeyValue label="Original" value={storage?.originalName ?? "-"} />
+              <KeyValue label="Size" value={storage ? formatBytes(storage.size) : "-"} />
+              <KeyValue label="Content type" value={storage?.contentType ?? "-"} />
+              <KeyValue label="Checksum" value={shortHash(storage?.checksum)} />
+              <KeyValue label="ETag" value={storage?.etag ?? "-"} />
+              <KeyValue label="Uploaded" value={storage ? formatDate(storage.uploadedAt) : "-"} />
             </div>
-          </form>
-        ) : null}
-      </CardContent>
-    </Card>
+          </div>
+          <div>
+            <h3 className="text-sm font-medium">Contents</h3>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+              <MetadataCount label="Zip files" value={metadataNumber(selectedAsset, "zipEntries")} />
+              <MetadataCount label="Scripts" value={metadataNumber(selectedAsset, "scripts")} />
+              <MetadataCount label="References" value={metadataNumber(selectedAsset, "references")} />
+              <MetadataCount label="Assets" value={metadataNumber(selectedAsset, "assets")} />
+            </div>
+          </div>
+          {assetIssues.length > 0 ? (
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium">Validation</h3>
+              {assetIssues.map((issue) => (
+                <div key={`${issue.code}-${issue.message}`} className="rounded-md border px-3 py-2 text-sm">
+                  <div className="flex items-center gap-2 font-medium">
+                    {issue.severity === "error" ? (
+                      <AlertCircle className="h-4 w-4 text-destructive" aria-hidden="true" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4 text-amber-600" aria-hidden="true" />
+                    )}
+                    {issue.code}
+                  </div>
+                  <p className="mt-1 text-muted-foreground">{issue.message}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
+        </div>
+      </div>
+    </form>
   );
 }
 
-function CreateSkillPanel({
+function MetadataCount({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border bg-card px-3 py-2">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 font-medium">{value}</div>
+    </div>
+  );
+}
+
+function TokenList({
+  title,
+  values,
+  empty
+}: {
+  title: string;
+  values: string[];
+  empty: string;
+}) {
+  return (
+    <div>
+      <h3 className="text-sm font-medium">{title}</h3>
+      {values.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {values.map((value) => (
+            <Badge key={value} variant="outline" className="rounded-md">
+              {value}
+            </Badge>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-muted-foreground">{empty}</p>
+      )}
+    </div>
+  );
+}
+
+function UploadSkillZipForm({
   workspace,
   token,
-  onCreated
+  storage,
+  onUploaded
 }: {
   workspace: WorkspaceRecord;
   token: string;
-  onCreated: () => Promise<void>;
+  storage?: StorageStatus;
+  onUploaded: () => Promise<void>;
 }) {
+  const [file, setFile] = useState<File | undefined>();
   const [name, setName] = useState("");
-  const [dir, setDir] = useState(workspace.skillRoot);
   const [description, setDescription] = useState("");
   const [owner, setOwner] = useState("");
   const [tags, setTags] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | undefined>();
 
-  useEffect(() => {
-    setDir(workspace.skillRoot);
-  }, [workspace.skillRoot]);
-
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (!file) {
+      setMessage("Select a .zip file first.");
+      return;
+    }
+
     setIsSaving(true);
     setMessage(undefined);
     try {
-      const result = await createWorkspaceAsset(token, workspace.id, {
-        kind: "skill",
+      const result = await uploadWorkspaceSkillZip(token, workspace.id, {
+        file,
         name,
-        dir,
         description,
         owner,
         tags: splitList(tags)
       });
-      setMessage(`Created ${result.path}`);
+      setMessage(`Uploaded ${result.uploaded.storage?.key ?? result.uploaded.displayName}`);
+      setFile(undefined);
       setName("");
       setDescription("");
+      setOwner("");
       setTags("");
-      await onCreated();
+      await onUploaded();
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -1060,64 +1169,61 @@ function CreateSkillPanel({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Create Skill Asset</CardTitle>
-        <CardDescription>Create a skill asset backed by a standards-compatible `SKILL.md`.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form className="grid gap-4" onSubmit={submit}>
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="grid gap-1.5 text-sm font-medium">
-              Skill name
-              <Input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="code-review"
-                required
-              />
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium">
-              Directory
-              <Input value={dir} onChange={(event) => setDir(event.target.value)} />
-            </label>
-          </div>
-          <label className="grid gap-1.5 text-sm font-medium">
-            Description
-            <Input
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="What does this skill do, and when should agents use it?"
-            />
-          </label>
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="grid gap-1.5 text-sm font-medium">
-              Owner
-              <Input value={owner} onChange={(event) => setOwner(event.target.value)} />
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium">
-              Harhub tags
-              <Input
-                value={tags}
-                onChange={(event) => setTags(event.target.value)}
-                placeholder="review, frontend"
-              />
-            </label>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button type="submit" disabled={isSaving}>
-              {isSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <Plus className="h-4 w-4" aria-hidden="true" />
-              )}
-              Create
-            </Button>
-            {message ? <span className="text-sm text-muted-foreground">{message}</span> : null}
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+    <form className="grid gap-4" onSubmit={submit}>
+      {!storage?.configured ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          S3 storage is not configured. Set HARHUB_S3_BUCKET and restart the API before uploading.
+        </div>
+      ) : null}
+      <label className="grid gap-1.5 text-sm font-medium">
+        Skill zip
+        <Input
+          type="file"
+          accept=".zip,application/zip"
+          onChange={(event) => setFile(event.target.files?.[0])}
+          required
+        />
+      </label>
+      <label className="grid gap-1.5 text-sm font-medium">
+        Name override
+        <Input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="code-review"
+        />
+      </label>
+      <label className="grid gap-1.5 text-sm font-medium">
+        Description
+        <Input
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          placeholder="What does this skill do?"
+        />
+      </label>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="grid gap-1.5 text-sm font-medium">
+          Owner
+          <Input value={owner} onChange={(event) => setOwner(event.target.value)} />
+        </label>
+        <label className="grid gap-1.5 text-sm font-medium">
+          Tags
+          <Input
+            value={tags}
+            onChange={(event) => setTags(event.target.value)}
+            placeholder="review, frontend"
+          />
+        </label>
+      </div>
+      <Button type="submit" disabled={isSaving}>
+        {isSaving ? (
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+        ) : (
+          <Upload className="h-4 w-4" aria-hidden="true" />
+        )}
+        Upload
+      </Button>
+      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
+    </form>
   );
 }
 
@@ -1539,17 +1645,53 @@ function AccountView({
 
 function KeyValue({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid grid-cols-[92px_minmax(0,1fr)] gap-2">
+    <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-2">
       <span className="text-muted-foreground">{label}</span>
-      <span className="truncate font-medium">{value}</span>
+      <span className="truncate font-medium" title={value}>{value}</span>
     </div>
   );
+}
+
+function metadataList(asset: AssetRecord, key: string): string[] {
+  const value = asset.metadata[key];
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  return [];
+}
+
+function metadataNumber(asset: AssetRecord, key: string): number {
+  const value = asset.metadata[key];
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function metadataText(asset: AssetRecord, key: string): string {
+  const value = asset.metadata[key];
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.join(", ");
+  return "";
+}
+
+function formatDate(value?: string): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
+function shortHash(value?: string): string {
+  return value ? value.slice(0, 16) : "-";
 }
 
 function viewTitle(view: View): string {
   if (view === "workspace") return "Workspace";
   if (view === "account") return "Account";
-  return "Assets";
+  return "Skills";
 }
 
 function healthBadgeClass(health: AssetRecord["health"]): string {
@@ -1557,6 +1699,19 @@ function healthBadgeClass(health: AssetRecord["health"]): string {
   if (health === "warning") return "border-amber-200 bg-amber-50 text-amber-800";
   if (health === "unknown") return "border-zinc-200 bg-zinc-50 text-zinc-700";
   return "border-lime-200 bg-lime-50 text-zinc-950";
+}
+
+function storageLabel(storage?: StorageStatus): string {
+  if (!storage) return "S3 storage";
+  if (!storage.configured) return "S3 storage not configured";
+  const prefix = storage.prefix ? `/${storage.prefix.replace(/\/$/g, "")}` : "";
+  return `S3: ${storage.bucket}${prefix}`;
+}
+
+function formatBytes(value: number): string {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function roleForWorkspace(memberships: WorkspaceMembership[], workspaceId?: string): string {

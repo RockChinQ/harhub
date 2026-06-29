@@ -1,13 +1,18 @@
 import cors from "cors";
 import express, { type Request, type Response } from "express";
+import multer from "multer";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import {
   assetCatalogToSkillCatalog,
   createAssetCatalog,
+  createUploadedSkillAsset,
   filterAssets,
   findAsset,
+  removeCatalogAsset,
   readAssetCatalog,
+  updateCatalogAsset,
+  upsertAsset,
   writeAssetCatalog
 } from "./assets.js";
 import {
@@ -44,17 +49,31 @@ import {
   updateWorkspaceMemberRole,
   updateWorkspaceForAccount
 } from "./state.js";
+import {
+  deleteStoredObject,
+  getStorageStatus,
+  uploadSkillZipObject
+} from "./storage.js";
+import { contentHash } from "./markdown.js";
 import type {
   AccountProfile,
   AssetCatalog,
+  AssetRecord,
   SkillCatalog,
   ValidationIssue,
   WorkspaceRecord
 } from "./types.js";
 
 const PORT = Number(process.env.PORT ?? 3300);
+const MAX_UPLOAD_BYTES = Number(process.env.HARHUB_MAX_UPLOAD_BYTES ?? 25 * 1024 * 1024);
 
 const app = express();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_UPLOAD_BYTES
+  }
+});
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
@@ -279,6 +298,7 @@ app.get("/api/workspaces/:workspaceId/assets", (req, res) => {
     workspace: context.workspace,
     catalogPath: getWorkspaceAssetCatalogPath(context.workspace.id),
     generatedAt: catalog.generatedAt,
+    storage: getStorageStatus(),
     assets,
     skills: assets
       .map((asset) => asset.skill)
@@ -327,6 +347,65 @@ app.post("/api/workspaces/:workspaceId/assets/validate", (req, res) => {
   });
 });
 
+app.post("/api/workspaces/:workspaceId/assets/upload", upload.single("file"), async (req, res) => {
+  const context = requireWorkspaceAccess(req, res);
+  if (!context) return;
+
+  const file = req.file;
+  if (!file) {
+    res.status(400).json({ error: "A zip file is required." });
+    return;
+  }
+
+  let uploaded: AssetRecord["storage"] | undefined;
+  try {
+    const requestedName =
+      typeof req.body?.name === "string" && req.body.name.trim()
+        ? req.body.name.trim()
+        : path.basename(file.originalname, path.extname(file.originalname));
+    const checksum = contentHash(file.buffer);
+
+    uploaded = await uploadSkillZipObject({
+      workspaceId: context.workspace.id,
+      objectName: requestedName,
+      originalName: file.originalname,
+      body: file.buffer,
+      contentType: file.mimetype || "application/zip",
+      checksum
+    });
+
+    const asset = await createUploadedSkillAsset({
+      workspaceId: context.workspace.id,
+      fileName: file.originalname,
+      buffer: file.buffer,
+      storage: uploaded,
+      name: requestedName,
+      description:
+        typeof req.body?.description === "string" ? req.body.description : undefined,
+      owner: typeof req.body?.owner === "string" ? req.body.owner : context.account.name,
+      tags: readOptionalStringList(req.body?.tags)
+    });
+    const catalog = upsertAsset(loadOrCreateWorkspaceAssetCatalog(context.workspace), asset);
+    writeAssetCatalog(getWorkspaceAssetCatalogPath(context.workspace.id), catalog);
+
+    res.status(201).json({
+      workspace: context.workspace,
+      catalogPath: getWorkspaceAssetCatalogPath(context.workspace.id),
+      generatedAt: catalog.generatedAt,
+      storage: getStorageStatus(),
+      uploaded: asset,
+      assets: catalog.assets,
+      skills: catalog.skills,
+      issues: []
+    });
+  } catch (error) {
+    if (uploaded) {
+      await deleteStoredObject(uploaded).catch(() => undefined);
+    }
+    sendError(res, error, 400);
+  }
+});
+
 app.post("/api/workspaces/:workspaceId/assets", (req, res) => {
   const context = requireWorkspaceAccess(req, res);
   if (!context) return;
@@ -346,8 +425,37 @@ app.patch("/api/workspaces/:workspaceId/assets/:query", (req, res) => {
   try {
     const catalog = loadOrCreateWorkspaceAssetCatalog(context.workspace);
     const asset = findAsset(catalog, req.params.query);
-    if (!asset?.skill) {
-      res.status(404).json({ error: "Skill asset not found" });
+    if (!asset) {
+      res.status(404).json({ error: "Asset not found" });
+      return;
+    }
+
+    if (!asset.skill) {
+      const nextCatalog = updateCatalogAsset(catalog, asset.id, {
+        description:
+          typeof req.body?.description === "string" ? req.body.description : undefined,
+        owner: typeof req.body?.owner === "string" ? req.body.owner : undefined,
+        tags: Array.isArray(req.body?.tags)
+          ? req.body.tags.filter((tag: unknown): tag is string => typeof tag === "string")
+          : undefined,
+        lifecycleState:
+          typeof req.body?.lifecycleState === "string"
+            ? req.body.lifecycleState
+            : undefined,
+        agents: Array.isArray(req.body?.agents)
+          ? req.body.agents.filter((agent: unknown): agent is string => typeof agent === "string")
+          : undefined
+      });
+      writeAssetCatalog(getWorkspaceAssetCatalogPath(context.workspace.id), nextCatalog);
+      res.json({
+        workspace: context.workspace,
+        catalogPath: getWorkspaceAssetCatalogPath(context.workspace.id),
+        generatedAt: nextCatalog.generatedAt,
+        storage: getStorageStatus(),
+        assets: nextCatalog.assets,
+        skills: nextCatalog.skills,
+        issues: []
+      });
       return;
     }
 
@@ -378,15 +486,36 @@ app.patch("/api/workspaces/:workspaceId/assets/:query", (req, res) => {
   }
 });
 
-app.delete("/api/workspaces/:workspaceId/assets/:query", (req, res) => {
+app.delete("/api/workspaces/:workspaceId/assets/:query", async (req, res) => {
   const context = requireWorkspaceAccess(req, res);
   if (!context) return;
 
   try {
     const catalog = loadOrCreateWorkspaceAssetCatalog(context.workspace);
     const asset = findAsset(catalog, req.params.query);
-    if (!asset?.skill) {
-      res.status(404).json({ error: "Skill asset not found" });
+    if (!asset) {
+      res.status(404).json({ error: "Asset not found" });
+      return;
+    }
+
+    if (asset.storage) {
+      await deleteStoredObject(asset.storage);
+      const nextCatalog = removeCatalogAsset(catalog, asset.id);
+      writeAssetCatalog(getWorkspaceAssetCatalogPath(context.workspace.id), nextCatalog);
+      res.json({
+        workspace: context.workspace,
+        catalogPath: getWorkspaceAssetCatalogPath(context.workspace.id),
+        generatedAt: nextCatalog.generatedAt,
+        storage: getStorageStatus(),
+        assets: nextCatalog.assets,
+        skills: nextCatalog.skills,
+        issues: []
+      });
+      return;
+    }
+
+    if (!asset.skill) {
+      res.status(400).json({ error: "Asset has no removable storage object." });
       return;
     }
 
@@ -576,15 +705,27 @@ function loadOrCreateWorkspaceAssetCatalog(workspace: WorkspaceRecord): AssetCat
 }
 
 function scanAndPersistWorkspace(workspace: WorkspaceRecord, roots: string[]) {
+  const previousAssetCatalog = existsSync(getWorkspaceAssetCatalogPath(workspace.id))
+    ? readAssetCatalog(getWorkspaceAssetCatalogPath(workspace.id))
+    : undefined;
   const skills = scanSkills({ roots });
   const issues = validateSkills(skills);
   const catalog = {
     ...createCatalog(skills),
     workspaceId: workspace.id
   };
+  const storedAssets = previousAssetCatalog?.assets.filter((asset) => asset.storage) ?? [];
+  const scannedAssetCatalog = createAssetCatalog(skills, issues);
   const assetCatalog = {
-    ...createAssetCatalog(skills, issues),
-    workspaceId: workspace.id
+    ...scannedAssetCatalog,
+    workspaceId: workspace.id,
+    assets: [
+      ...scannedAssetCatalog.assets,
+      ...storedAssets.filter(
+        (storedAsset) =>
+          !scannedAssetCatalog.assets.some((scannedAsset) => scannedAsset.id === storedAsset.id)
+      )
+    ].sort((a, b) => a.id.localeCompare(b.id))
   };
 
   writeCatalog(getWorkspaceCatalogPath(workspace.id), catalog);
@@ -597,6 +738,7 @@ function scanAndPersistWorkspace(workspace: WorkspaceRecord, roots: string[]) {
     catalogPath: getWorkspaceCatalogPath(workspace.id),
     assetCatalogPath: getWorkspaceAssetCatalogPath(workspace.id),
     generatedAt: catalog.generatedAt,
+    storage: getStorageStatus(),
     assets: assetCatalog.assets,
     skills,
     issues
@@ -656,6 +798,21 @@ function readOptionalPathList(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const paths = value.filter((item): item is string => typeof item === "string");
   return paths.length > 0 ? paths : undefined;
+}
+
+function readOptionalStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [];
 }
 
 function readPathList(value: unknown, fallback: string[]): string[] {

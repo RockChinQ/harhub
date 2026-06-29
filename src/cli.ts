@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   DEFAULT_ASSET_CATALOG_PATH,
@@ -57,6 +57,8 @@ async function main(argv: string[]): Promise<number> {
         return runAssetsShow(parsed);
       case "create":
         return runAssetsCreate(parsed);
+      case "upload":
+        return runAssetsUpload(parsed);
       default:
         console.error(`Unknown assets command: ${subcommand}`);
         printAssetsHelp();
@@ -318,6 +320,64 @@ function runAssetsCreate(parsed: ParsedArgs): number {
   return 0;
 }
 
+async function runAssetsUpload(parsed: ParsedArgs): Promise<number> {
+  const zipPath = parsed.positionals[0];
+  const workspaceId = optionString(parsed, "workspace");
+  const token = optionString(parsed, "token") ?? process.env.HARHUB_TOKEN;
+  const api = (optionString(parsed, "api") ?? "http://127.0.0.1:3300").replace(/\/+$/g, "");
+
+  if (!zipPath || !workspaceId) {
+    console.error("Usage: harhub assets upload <skill.zip> --workspace <workspace-id> --token <token>");
+    return 1;
+  }
+
+  if (!token) {
+    console.error("A token is required. Pass --token or set HARHUB_TOKEN.");
+    return 1;
+  }
+
+  const absolutePath = path.resolve(process.cwd(), zipPath);
+  const buffer = readFileSync(absolutePath);
+  const form = new FormData();
+  form.set(
+    "file",
+    new Blob([buffer], { type: "application/zip" }),
+    path.basename(absolutePath)
+  );
+
+  const name = optionString(parsed, "name");
+  const description = optionString(parsed, "description");
+  const owner = optionString(parsed, "owner");
+  const tags = optionArray(parsed, "tag");
+  if (name) form.set("name", name);
+  if (description) form.set("description", description);
+  if (owner) form.set("owner", owner);
+  if (tags.length > 0) form.set("tags", tags.join(","));
+
+  const response = await fetch(`${api}/api/workspaces/${workspaceId}/assets/upload`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: form
+  });
+  const data = await response.json().catch(() => undefined);
+
+  if (!response.ok) {
+    console.error(typeof data?.error === "string" ? data.error : `Upload failed with ${response.status}`);
+    return 1;
+  }
+
+  if (parsed.options.json) {
+    console.log(JSON.stringify(data, null, 2));
+    return 0;
+  }
+
+  console.log(`Uploaded ${data.uploaded?.displayName ?? path.basename(absolutePath)}`);
+  console.log(`Object: ${data.uploaded?.storage?.key ?? "-"}`);
+  return 0;
+}
+
 function parseArgs(args: string[]): ParsedArgs {
   const positionals: string[] = [];
   const options: Record<string, string | boolean | string[]> = {};
@@ -493,6 +553,7 @@ Usage:
   harhub assets validate [paths...] [--json]
   harhub assets list [--catalog .harhub/assets.json] [--kind skill] [--tag value] [--owner value] [--package value] [--json]
   harhub assets show <id|name|slug> [--catalog .harhub/assets.json] [--json]
+  harhub assets upload <skill.zip> --workspace <workspace-id> --token <token> [--api http://127.0.0.1:3300] [--name slug] [--description text] [--owner owner] [--tag value] [--json]
   harhub assets create <name> [--kind skill] [--dir skills] [--description text] [--owner owner] [--tag value]
 `);
 }

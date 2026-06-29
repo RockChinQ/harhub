@@ -14,6 +14,33 @@ export type AssetLifecycleState = SkillLifecycleState;
 
 export type AssetHealth = "valid" | "warning" | "error" | "unknown";
 
+export type StorageProvider = "s3";
+
+export interface StoredObject {
+  provider: StorageProvider;
+  bucket: string;
+  key: string;
+  region?: string;
+  endpoint?: string;
+  url?: string;
+  size: number;
+  contentType: string;
+  checksum?: string;
+  etag?: string;
+  uploadedAt: string;
+  originalName?: string;
+}
+
+export interface StorageStatus {
+  provider: StorageProvider;
+  configured: boolean;
+  bucket?: string;
+  region?: string;
+  endpoint?: string;
+  prefix?: string;
+  publicBaseUrl?: string;
+}
+
 export interface AccountProfile {
   id: string;
   email: string;
@@ -104,6 +131,7 @@ export interface AssetRecord {
   tags: string[];
   contentHash?: string;
   source?: SkillSource;
+  storage?: StoredObject;
   validation: {
     errors: number;
     warnings: number;

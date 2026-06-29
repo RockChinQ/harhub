@@ -2,6 +2,7 @@ import type {
   AccountProfile,
   AssetRecord,
   SkillRecord,
+  StorageStatus,
   ValidationIssue,
   WorkspaceMember,
   WorkspaceMembership,
@@ -38,6 +39,7 @@ export interface AssetListResponse {
   workspace: WorkspaceRecord;
   catalogPath: string;
   generatedAt: string;
+  storage: StorageStatus;
   assets: AssetRecord[];
   skills: SkillRecord[];
 }
@@ -45,6 +47,10 @@ export interface AssetListResponse {
 export interface AssetScanResponse extends AssetListResponse {
   assetCatalogPath?: string;
   issues: ValidationIssue[];
+}
+
+export interface AssetUploadResponse extends AssetScanResponse {
+  uploaded: AssetRecord;
 }
 
 export interface WorkspaceMutationResponse extends SessionResponse {
@@ -167,6 +173,34 @@ export async function createWorkspaceAsset(
       method: "POST",
       headers: JSON_HEADERS,
       body: JSON.stringify(input)
+    }
+  );
+}
+
+export async function uploadWorkspaceSkillZip(
+  token: string,
+  workspaceId: string,
+  input: {
+    file: File;
+    name?: string;
+    description?: string;
+    owner?: string;
+    tags: string[];
+  }
+): Promise<AssetUploadResponse> {
+  const form = new FormData();
+  form.set("file", input.file);
+  if (input.name) form.set("name", input.name);
+  if (input.description) form.set("description", input.description);
+  if (input.owner) form.set("owner", input.owner);
+  if (input.tags.length > 0) form.set("tags", input.tags.join(","));
+
+  return request<AssetUploadResponse>(
+    `/api/workspaces/${workspaceId}/assets/upload`,
+    {
+      token,
+      method: "POST",
+      body: form
     }
   );
 }

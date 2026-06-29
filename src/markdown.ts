@@ -37,7 +37,7 @@ export function parseMarkdown(content: string): ParsedMarkdown {
   };
 }
 
-export function contentHash(content: string): string {
+export function contentHash(content: string | Buffer): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
