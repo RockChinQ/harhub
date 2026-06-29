@@ -40,13 +40,22 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
   SidebarMenuButton,
+  SidebarMenuItem,
   SidebarProvider
 } from "./components/ui/sidebar";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "./components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import {
   createWorkspace,
@@ -223,37 +232,38 @@ export function App() {
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupLabel>Workspace</SidebarGroupLabel>
-            <select
-              value={activeWorkspace?.id ?? ""}
-              onChange={(event) => setActiveWorkspaceId(event.target.value)}
-              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label="Workspace"
-            >
-              {session.workspaces.map((workspace) => (
-                <option key={workspace.id} value={workspace.id}>
-                  {workspace.name}
-                </option>
-              ))}
-            </select>
+            <SidebarGroupContent>
+              <WorkspaceSelect
+                workspaces={session.workspaces}
+                value={activeWorkspace?.id ?? ""}
+                onValueChange={setActiveWorkspaceId}
+              />
+            </SidebarGroupContent>
           </SidebarGroup>
           <SidebarGroup className="mt-5">
             <SidebarGroupLabel>Navigate</SidebarGroupLabel>
             <SidebarMenu>
-              <SidebarMenuButton active={view === "skills"} onClick={() => setView("skills")}>
-                <Box className="h-4 w-4" aria-hidden="true" />
-                Skills
-              </SidebarMenuButton>
-              <SidebarMenuButton
-                active={view === "workspace"}
-                onClick={() => setView("workspace")}
-              >
-                <Building2 className="h-4 w-4" aria-hidden="true" />
-                Workspace
-              </SidebarMenuButton>
-              <SidebarMenuButton active={view === "account"} onClick={() => setView("account")}>
-                <UserCircle className="h-4 w-4" aria-hidden="true" />
-                Account
-              </SidebarMenuButton>
+              <SidebarMenuItem>
+                <SidebarMenuButton isActive={view === "skills"} onClick={() => setView("skills")}>
+                  <Box className="h-4 w-4" aria-hidden="true" />
+                  <span>Skills</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={view === "workspace"}
+                  onClick={() => setView("workspace")}
+                >
+                  <Building2 className="h-4 w-4" aria-hidden="true" />
+                  <span>Workspace</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton isActive={view === "account"} onClick={() => setView("account")}>
+                  <UserCircle className="h-4 w-4" aria-hidden="true" />
+                  <span>Account</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroup>
         </SidebarContent>
@@ -299,18 +309,11 @@ export function App() {
               ) : null}
             </div>
             <div className="flex flex-col gap-2 lg:hidden">
-              <select
+              <WorkspaceSelect
+                workspaces={session.workspaces}
                 value={activeWorkspace?.id ?? ""}
-                onChange={(event) => setActiveWorkspaceId(event.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm"
-                aria-label="Workspace"
-              >
-                {session.workspaces.map((workspace) => (
-                  <option key={workspace.id} value={workspace.id}>
-                    {workspace.name}
-                  </option>
-                ))}
-              </select>
+                onValueChange={setActiveWorkspaceId}
+              />
               <div className="grid grid-cols-3 gap-2">
                 <Button variant={view === "skills" ? "default" : "outline"} onClick={() => setView("skills")}>
                   Skills
@@ -474,6 +477,31 @@ function AuthScreen({
   );
 }
 
+function WorkspaceSelect({
+  workspaces,
+  value,
+  onValueChange
+}: {
+  workspaces: WorkspaceRecord[];
+  value: string;
+  onValueChange: (value: string) => void;
+}) {
+  return (
+    <Select value={value} onValueChange={onValueChange}>
+      <SelectTrigger aria-label="Workspace">
+        <SelectValue placeholder="Select workspace" />
+      </SelectTrigger>
+      <SelectContent>
+        {workspaces.map((workspace) => (
+          <SelectItem key={workspace.id} value={workspace.id}>
+            {workspace.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 function SkillsView({
   workspace,
   token,
@@ -538,19 +566,22 @@ function SkillsView({
               placeholder="Search skills, packages, descriptions"
               aria-label="Search skills"
             />
-            <select
-              value={tagFilter}
-              onChange={(event) => onTagFilterChange(event.target.value)}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label="Filter by tag"
+            <Select
+              value={tagFilter || "all"}
+              onValueChange={(value) => onTagFilterChange(value === "all" ? "" : value)}
             >
-              <option value="">All tags</option>
-              {tags.map((tag) => (
-                <option key={tag} value={tag}>
-                  {tag}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="sm:w-44" aria-label="Filter by tag">
+                <SelectValue placeholder="All tags" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All tags</SelectItem>
+                {tags.map((tag) => (
+                  <SelectItem key={tag} value={tag}>
+                    {tag}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <SkillTable
             skills={filteredSkills}
@@ -659,7 +690,13 @@ function SkillTable({
                 {skill.owner ?? "-"}
               </td>
               <td className="px-3 py-3">
-                <Badge variant={skill.lifecycleState === "stable" ? "success" : "secondary"}>
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    skill.lifecycleState === "stable" &&
+                      "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  )}
+                >
                   {skill.lifecycleState}
                 </Badge>
               </td>
@@ -699,7 +736,14 @@ function SkillDetail({
             <CardTitle>{skill.displayName}</CardTitle>
             <CardDescription className="mt-2">{skill.id}</CardDescription>
           </div>
-          <Badge variant={skillIssues.some((issue) => issue.severity === "error") ? "warning" : "success"}>
+          <Badge
+            variant="secondary"
+            className={cn(
+              skillIssues.some((issue) => issue.severity === "error")
+                ? "border-amber-200 bg-amber-50 text-amber-800"
+                : "border-emerald-200 bg-emerald-50 text-emerald-800"
+            )}
+          >
             {skillIssues.length === 0 ? "valid" : `${skillIssues.length} issue(s)`}
           </Badge>
         </div>
