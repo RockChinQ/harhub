@@ -11,6 +11,7 @@ Most teams already have this harness material, but it is spread across repositor
 - [Product Design](./product-design.md): main workflows, information architecture, and operating model.
 - [Architecture](./architecture.md): system design, core services, data model, composition model, and integration strategy.
 - [Roadmap](./roadmap.md): phased delivery plan, MVP boundary, and open questions.
+- [Agent Skills Standard](./skill-standard.md): the external Skill format Harhub supports in the MVP.
 
 ## Working Definition
 
@@ -26,4 +27,3 @@ It can include:
 - Ownership, provenance, compatibility, security, and rollout metadata.
 
 Harhub treats these as first-class managed assets rather than scattered repository files.
-

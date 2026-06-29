@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.harhub/
+*.log
+.DS_Store

@@ -1,0 +1,19 @@
+apiVersion: harhub.io/v1
+kind: HarnessPackage
+metadata:
+  name: example-engineering-skills
+  owner: platform
+  description: Example skills for validating the Harhub Skills MVP.
+  tags: [engineering, example]
+spec:
+  version: 0.1.0
+  maturity: experimental
+  compatibility:
+    agents: [codex]
+  artifacts:
+    - type: skill
+      path: code-review/SKILL.md
+      tags: [review]
+    - type: skill
+      path: release-notes/SKILL.md
+      tags: [release]
