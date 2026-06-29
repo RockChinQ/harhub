@@ -14,6 +14,7 @@ import {
 import { slugify } from "./markdown.js";
 import type {
   AccountProfile,
+  WorkspaceMember,
   WorkspaceMembership,
   WorkspaceRecord,
   WorkspaceRole
@@ -55,6 +56,10 @@ export function getStatePath(): string {
 
 export function getWorkspaceCatalogPath(workspaceId: string): string {
   return path.resolve(process.cwd(), `.harhub/workspaces/${workspaceId}/skills.json`);
+}
+
+export function getWorkspaceAssetCatalogPath(workspaceId: string): string {
+  return path.resolve(process.cwd(), `.harhub/workspaces/${workspaceId}/assets.json`);
 }
 
 export function loadState(): AppState {
@@ -189,7 +194,8 @@ export function signUpAccount(input: {
     email,
     name: input.name.trim() || (email.split("@")[0] ?? "User"),
     passwordHash: hashPassword(input.password),
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   };
 
   const workspace = createWorkspaceRecord(
@@ -202,6 +208,62 @@ export function signUpAccount(input: {
   saveState(state);
 
   return toPublicAccount(account);
+}
+
+export function updateAccountProfile(
+  accountId: string,
+  input: { name?: string; email?: string }
+): AccountProfile {
+  const state = loadState();
+  const account = state.accounts.find((item) => item.id === accountId);
+  if (!account) throw new Error("Account not found.");
+
+  const nextEmail = input.email?.trim().toLowerCase();
+  if (nextEmail) {
+    if (!nextEmail.includes("@")) {
+      throw new Error("A valid email is required.");
+    }
+
+    if (
+      state.accounts.some(
+        (item) => item.id !== account.id && item.email.toLowerCase() === nextEmail
+      )
+    ) {
+      throw new Error("An account already exists for this email.");
+    }
+
+    account.email = nextEmail;
+  }
+
+  if (input.name?.trim()) {
+    account.name = input.name.trim();
+  }
+
+  account.updatedAt = new Date().toISOString();
+  saveState(state);
+  return toPublicAccount(account);
+}
+
+export function changeAccountPassword(
+  accountId: string,
+  input: { currentPassword: string; newPassword: string }
+): void {
+  const state = loadState();
+  const account = state.accounts.find((item) => item.id === accountId);
+  if (!account) throw new Error("Account not found.");
+
+  if (!verifyPassword(input.currentPassword, account.passwordHash)) {
+    throw new Error("Current password is incorrect.");
+  }
+
+  if (input.newPassword.length < 6) {
+    throw new Error("Password must be at least 6 characters.");
+  }
+
+  account.passwordHash = hashPassword(input.newPassword);
+  account.updatedAt = new Date().toISOString();
+  state.sessions = state.sessions.filter((session) => session.accountId !== accountId);
+  saveState(state);
 }
 
 export function createWorkspaceForAccount(
@@ -254,8 +316,111 @@ export function updateWorkspaceForAccount(
     workspace.skillRoot = input.skillRoot.trim();
   }
 
+  workspace.updatedAt = new Date().toISOString();
   saveState(state);
   return workspace;
+}
+
+export function listWorkspaceMembers(
+  accountId: string,
+  workspaceId: string
+): WorkspaceMember[] {
+  const state = loadState();
+  requireWorkspaceMembership(state, accountId, workspaceId);
+
+  return state.memberships
+    .filter((membership) => membership.workspaceId === workspaceId)
+    .map((membership) => {
+      const account = state.accounts.find((item) => item.id === membership.accountId);
+      if (!account) return undefined;
+      return {
+        account: toPublicAccount(account),
+        membership
+      };
+    })
+    .filter((member): member is WorkspaceMember => Boolean(member))
+    .sort((a, b) => a.account.email.localeCompare(b.account.email));
+}
+
+export function addWorkspaceMember(
+  actorAccountId: string,
+  workspaceId: string,
+  input: { email: string; role: WorkspaceRole }
+): WorkspaceMember {
+  const state = loadState();
+  requireWorkspaceAdmin(state, actorAccountId, workspaceId);
+
+  const email = input.email.trim().toLowerCase();
+  const account = state.accounts.find((item) => item.email.toLowerCase() === email);
+  if (!account) {
+    throw new Error("Invitee must create an account before being added.");
+  }
+
+  if (
+    state.memberships.some(
+      (membership) =>
+        membership.accountId === account.id && membership.workspaceId === workspaceId
+    )
+  ) {
+    throw new Error("Account is already a workspace member.");
+  }
+
+  const membership = createMembership(account.id, workspaceId, input.role);
+  state.memberships.push(membership);
+  saveState(state);
+
+  return {
+    account: toPublicAccount(account),
+    membership
+  };
+}
+
+export function updateWorkspaceMemberRole(
+  actorAccountId: string,
+  workspaceId: string,
+  membershipId: string,
+  role: WorkspaceRole
+): WorkspaceMember {
+  const state = loadState();
+  requireWorkspaceAdmin(state, actorAccountId, workspaceId);
+  const membership = state.memberships.find(
+    (item) => item.id === membershipId && item.workspaceId === workspaceId
+  );
+  if (!membership) throw new Error("Workspace member not found.");
+
+  const previousRole = membership.role;
+  membership.role = role;
+  membership.updatedAt = new Date().toISOString();
+  ensureWorkspaceHasOwner(
+    state,
+    workspaceId,
+    previousRole === "owner" && role !== "owner" ? membership.id : undefined
+  );
+  saveState(state);
+
+  const account = state.accounts.find((item) => item.id === membership.accountId);
+  if (!account) throw new Error("Account not found.");
+  return {
+    account: toPublicAccount(account),
+    membership
+  };
+}
+
+export function removeWorkspaceMember(
+  actorAccountId: string,
+  workspaceId: string,
+  membershipId: string
+): void {
+  const state = loadState();
+  requireWorkspaceAdmin(state, actorAccountId, workspaceId);
+  const membership = state.memberships.find(
+    (item) => item.id === membershipId && item.workspaceId === workspaceId
+  );
+  if (!membership) throw new Error("Workspace member not found.");
+
+  ensureWorkspaceHasOwner(state, workspaceId, membership.role === "owner" ? membership.id : undefined);
+  state.memberships = state.memberships.filter((item) => item.id !== membershipId);
+  saveState(state);
 }
 
 function createSeedState(): AppState {
@@ -264,7 +429,8 @@ function createSeedState(): AppState {
     email: "admin@harhub.local",
     name: "Harhub Admin",
     passwordHash: hashPassword("harhub"),
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   };
   const workspace: WorkspaceRecord = {
     id: "ws_demo",
@@ -272,7 +438,8 @@ function createSeedState(): AppState {
     slug: "engineering-platform",
     defaultScanPaths: ["examples"],
     skillRoot: "skills",
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   };
 
   return {
@@ -294,6 +461,18 @@ function normalizeState(state: AppState): AppState {
     return createSeedState();
   }
 
+  for (const account of state.accounts) {
+    account.updatedAt ??= account.createdAt;
+  }
+
+  for (const membership of state.memberships) {
+    membership.updatedAt ??= membership.createdAt;
+  }
+
+  for (const workspace of state.workspaces) {
+    workspace.updatedAt ??= workspace.createdAt;
+  }
+
   return state;
 }
 
@@ -308,7 +487,8 @@ function createWorkspaceRecord(
     slug: state ? uniqueWorkspaceSlug(state, name) : slugify(name),
     defaultScanPaths: cleanPathList(options.defaultScanPaths ?? ["examples"]),
     skillRoot: options.skillRoot?.trim() || "skills",
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   };
 }
 
@@ -337,8 +517,50 @@ function createMembership(
     accountId,
     workspaceId,
     role,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   };
+}
+
+function requireWorkspaceMembership(
+  state: AppState,
+  accountId: string,
+  workspaceId: string
+): WorkspaceMembership {
+  const membership = state.memberships.find(
+    (item) => item.accountId === accountId && item.workspaceId === workspaceId
+  );
+  if (!membership) throw new Error("Workspace access is required.");
+  return membership;
+}
+
+function requireWorkspaceAdmin(
+  state: AppState,
+  accountId: string,
+  workspaceId: string
+): WorkspaceMembership {
+  const membership = requireWorkspaceMembership(state, accountId, workspaceId);
+  if (!["owner", "admin"].includes(membership.role)) {
+    throw new Error("Workspace admin access is required.");
+  }
+  return membership;
+}
+
+function ensureWorkspaceHasOwner(
+  state: AppState,
+  workspaceId: string,
+  excludingMembershipId?: string
+): void {
+  const ownerCount = state.memberships.filter(
+    (membership) =>
+      membership.workspaceId === workspaceId &&
+      membership.role === "owner" &&
+      membership.id !== excludingMembershipId
+  ).length;
+
+  if (ownerCount === 0) {
+    throw new Error("Workspace must keep at least one owner.");
+  }
 }
 
 function cleanPathList(paths: string[]): string[] {
@@ -351,7 +573,8 @@ function toPublicAccount(account: AccountRecord): AccountProfile {
     id: account.id,
     email: account.email,
     name: account.name,
-    createdAt: account.createdAt
+    createdAt: account.createdAt,
+    updatedAt: account.updatedAt
   };
 }
 

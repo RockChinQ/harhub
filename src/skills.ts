@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
 import {
@@ -34,6 +41,14 @@ const STANDARD_FRONTMATTER_KEYS = new Set(["name", "description"]);
 
 export interface ScanOptions {
   roots: string[];
+}
+
+export interface SkillMetadataUpdate {
+  description?: string;
+  owner?: string;
+  tags?: string[];
+  lifecycleState?: string;
+  agents?: string[];
 }
 
 export function scanSkills(options: ScanOptions): SkillRecord[] {
@@ -345,6 +360,40 @@ Use this skill when an agent needs a repeatable procedure for a specific task.
   return skillPath;
 }
 
+export function updateSkillMetadata(
+  skill: SkillRecord,
+  input: SkillMetadataUpdate
+): void {
+  if (typeof input.description === "string") {
+    updateSkillDescription(skill, input.description);
+  }
+
+  const skillDir = path.dirname(skill.source.absolutePath);
+  const manifestInfo = findNearestManifest(skillDir, skill.source.root);
+  const manifestRoot = manifestInfo.path
+    ? path.dirname(manifestInfo.path)
+    : path.dirname(skillDir);
+  const artifactPath = pathRelativeToRoot(manifestRoot, skill.source.absolutePath);
+
+  upsertHarhubManifest(manifestRoot, {
+    path: artifactPath,
+    ...(typeof input.owner === "string" ? { owner: input.owner.trim() } : {}),
+    ...(Array.isArray(input.tags) ? { tags: unique(input.tags.map((tag) => tag.trim())) } : {}),
+    ...(normalizeLifecycle(input.lifecycleState) ? {
+      lifecycleState: normalizeLifecycle(input.lifecycleState)
+    } : {}),
+    ...(Array.isArray(input.agents) ? {
+      agents: unique(input.agents.map((agent) => agent.trim()))
+    } : {}),
+    replaceTags: Array.isArray(input.tags)
+  });
+}
+
+export function deleteSkill(skill: SkillRecord): void {
+  removeHarhubManifestArtifact(skill);
+  rmSync(path.dirname(skill.source.absolutePath), { recursive: true, force: true });
+}
+
 function normalizeLifecycle(value: unknown): SkillLifecycleState | undefined {
   if (
     value === "experimental" ||
@@ -424,7 +473,14 @@ function listResourceDir(skillDir: string, resourceDir: string): string[] {
 
 function upsertHarhubManifest(
   skillRoot: string,
-  artifact: { path: string; owner?: string; tags: string[] }
+  artifact: {
+    path: string;
+    owner?: string;
+    tags?: string[];
+    lifecycleState?: SkillLifecycleState;
+    agents?: string[];
+    replaceTags?: boolean;
+  }
 ): void {
   const manifestPath = path.join(skillRoot, "harhub.yaml");
   const manifest =
@@ -452,8 +508,17 @@ function upsertHarhubManifest(
     next.metadata.owner = artifact.owner;
   }
 
-  if (artifact.tags.length > 0) {
+  if (artifact.tags && artifact.tags.length > 0 && !artifact.replaceTags) {
     next.metadata.tags = unique([...(next.metadata.tags ?? []), ...artifact.tags]);
+  }
+
+  if (artifact.lifecycleState) {
+    next.spec.maturity = artifact.lifecycleState;
+  }
+
+  if (artifact.agents) {
+    next.spec.compatibility ??= {};
+    next.spec.compatibility.agents = artifact.agents;
   }
 
   const existing = next.spec.artifacts.find(
@@ -461,18 +526,86 @@ function upsertHarhubManifest(
   );
 
   if (existing) {
-    existing.owner = artifact.owner ?? existing.owner;
-    existing.tags = unique([...(existing.tags ?? []), ...artifact.tags]);
+    if (Object.hasOwn(artifact, "owner")) {
+      if (artifact.owner) {
+        existing.owner = artifact.owner;
+      } else {
+        delete existing.owner;
+      }
+    }
+
+    if (artifact.tags) {
+      if (artifact.replaceTags) {
+        existing.tags = artifact.tags;
+      } else {
+        existing.tags = unique([...(existing.tags ?? []), ...artifact.tags]);
+      }
+    }
   } else {
     next.spec.artifacts.push({
       type: "skill",
       path: artifact.path,
       ...(artifact.owner ? { owner: artifact.owner } : {}),
-      ...(artifact.tags.length > 0 ? { tags: artifact.tags } : {})
+      ...(artifact.tags && artifact.tags.length > 0 ? { tags: artifact.tags } : {})
     });
   }
 
   writeFileSync(manifestPath, YAML.stringify(next));
+}
+
+function updateSkillDescription(skill: SkillRecord, description: string): void {
+  const content = readFileSync(skill.source.absolutePath, "utf8");
+  const frontmatter = splitSkillFrontmatter(content);
+  const nextFrontmatter = {
+    ...frontmatter.frontmatter,
+    name: stringValue(frontmatter.frontmatter.name) ?? skill.name,
+    description: description.trim()
+  };
+
+  writeFileSync(
+    skill.source.absolutePath,
+    `---\n${YAML.stringify(nextFrontmatter).trimEnd()}\n---\n\n${frontmatter.body.trimStart()}`
+  );
+}
+
+function removeHarhubManifestArtifact(skill: SkillRecord): void {
+  const skillDir = path.dirname(skill.source.absolutePath);
+  const manifestInfo = findNearestManifest(skillDir, skill.source.root);
+  if (!manifestInfo.path) return;
+
+  const manifest =
+    (YAML.parse(readFileSync(manifestInfo.path, "utf8")) as SkillPackageManifest | undefined) ??
+    undefined;
+  if (!manifest?.spec?.artifacts) return;
+
+  const manifestRoot = path.dirname(manifestInfo.path);
+  const artifactPath = pathRelativeToRoot(manifestRoot, skill.source.absolutePath);
+  manifest.spec.artifacts = manifest.spec.artifacts.filter(
+    (artifact) => artifact.type !== "skill" || artifact.path !== artifactPath
+  );
+
+  writeFileSync(manifestInfo.path, YAML.stringify(manifest));
+}
+
+function splitSkillFrontmatter(content: string): {
+  frontmatter: Record<string, unknown>;
+  body: string;
+} {
+  if (!content.startsWith("---\n")) {
+    return { frontmatter: {}, body: content };
+  }
+
+  const end = content.indexOf("\n---", 4);
+  if (end === -1) {
+    return { frontmatter: {}, body: content };
+  }
+
+  const raw = content.slice(4, end);
+  const body = content.slice(end + 4).replace(/^\n/, "");
+  return {
+    frontmatter: (YAML.parse(raw) as Record<string, unknown>) ?? {},
+    body
+  };
 }
 
 function titleFromSlug(slug: string): string {

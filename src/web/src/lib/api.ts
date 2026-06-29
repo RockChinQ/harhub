@@ -1,9 +1,12 @@
 import type {
   AccountProfile,
+  AssetRecord,
   SkillRecord,
   ValidationIssue,
+  WorkspaceMember,
   WorkspaceMembership,
-  WorkspaceRecord
+  WorkspaceRecord,
+  WorkspaceRole
 } from "../../../types";
 
 const JSON_HEADERS = {
@@ -31,8 +34,30 @@ export interface SkillScanResponse extends SkillListResponse {
   issues: ValidationIssue[];
 }
 
+export interface AssetListResponse {
+  workspace: WorkspaceRecord;
+  catalogPath: string;
+  generatedAt: string;
+  assets: AssetRecord[];
+  skills: SkillRecord[];
+}
+
+export interface AssetScanResponse extends AssetListResponse {
+  assetCatalogPath?: string;
+  issues: ValidationIssue[];
+}
+
 export interface WorkspaceMutationResponse extends SessionResponse {
   workspace: WorkspaceRecord;
+}
+
+export interface WorkspaceMembersResponse {
+  workspace: WorkspaceRecord;
+  members: WorkspaceMember[];
+}
+
+export interface WorkspaceMemberMutationResponse extends WorkspaceMembersResponse {
+  member: WorkspaceMember;
 }
 
 export async function getSession(token: string): Promise<SessionResponse> {
@@ -68,6 +93,119 @@ export async function logout(token: string): Promise<void> {
     token,
     method: "POST"
   });
+}
+
+export async function updateAccount(
+  token: string,
+  input: { name?: string; email?: string }
+): Promise<SessionResponse> {
+  return request<SessionResponse>("/api/account", {
+    token,
+    method: "PATCH",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(input)
+  });
+}
+
+export async function changePassword(
+  token: string,
+  input: { currentPassword: string; newPassword: string }
+): Promise<void> {
+  await request<void>("/api/account/password", {
+    token,
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(input)
+  });
+}
+
+export async function getWorkspaceAssets(
+  token: string,
+  workspaceId: string,
+  filters: { kind?: string; tag?: string; owner?: string; package?: string } = {}
+): Promise<AssetListResponse> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value);
+  }
+
+  return request<AssetListResponse>(
+    `/api/workspaces/${workspaceId}/assets?${params.toString()}`,
+    { token }
+  );
+}
+
+export async function scanWorkspaceAssets(
+  token: string,
+  workspaceId: string,
+  paths: string[]
+): Promise<AssetScanResponse> {
+  return request<AssetScanResponse>(`/api/workspaces/${workspaceId}/assets/scan`, {
+    token,
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ paths })
+  });
+}
+
+export async function createWorkspaceAsset(
+  token: string,
+  workspaceId: string,
+  input: {
+    kind: "skill";
+    name: string;
+    dir: string;
+    description?: string;
+    owner?: string;
+    tags: string[];
+  }
+): Promise<AssetScanResponse & { path: string }> {
+  return request<AssetScanResponse & { path: string }>(
+    `/api/workspaces/${workspaceId}/assets`,
+    {
+      token,
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(input)
+    }
+  );
+}
+
+export async function updateWorkspaceAsset(
+  token: string,
+  workspaceId: string,
+  assetId: string,
+  input: {
+    description?: string;
+    owner?: string;
+    tags?: string[];
+    lifecycleState?: string;
+    agents?: string[];
+  }
+): Promise<AssetScanResponse> {
+  return request<AssetScanResponse>(
+    `/api/workspaces/${workspaceId}/assets/${encodeURIComponent(assetId)}`,
+    {
+      token,
+      method: "PATCH",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(input)
+    }
+  );
+}
+
+export async function deleteWorkspaceAsset(
+  token: string,
+  workspaceId: string,
+  assetId: string
+): Promise<AssetScanResponse> {
+  return request<AssetScanResponse>(
+    `/api/workspaces/${workspaceId}/assets/${encodeURIComponent(assetId)}`,
+    {
+      token,
+      method: "DELETE"
+    }
+  );
 }
 
 export async function getWorkspaceSkills(
@@ -119,6 +257,60 @@ export async function createWorkspaceSkill(
       body: JSON.stringify(input)
     }
   );
+}
+
+export async function getWorkspaceMembers(
+  token: string,
+  workspaceId: string
+): Promise<WorkspaceMembersResponse> {
+  return request<WorkspaceMembersResponse>(
+    `/api/workspaces/${workspaceId}/members`,
+    { token }
+  );
+}
+
+export async function addWorkspaceMember(
+  token: string,
+  workspaceId: string,
+  input: { email: string; role: WorkspaceRole }
+): Promise<WorkspaceMemberMutationResponse> {
+  return request<WorkspaceMemberMutationResponse>(
+    `/api/workspaces/${workspaceId}/members`,
+    {
+      token,
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(input)
+    }
+  );
+}
+
+export async function updateWorkspaceMember(
+  token: string,
+  workspaceId: string,
+  membershipId: string,
+  role: WorkspaceRole
+): Promise<WorkspaceMemberMutationResponse> {
+  return request<WorkspaceMemberMutationResponse>(
+    `/api/workspaces/${workspaceId}/members/${membershipId}`,
+    {
+      token,
+      method: "PATCH",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ role })
+    }
+  );
+}
+
+export async function removeWorkspaceMember(
+  token: string,
+  workspaceId: string,
+  membershipId: string
+): Promise<void> {
+  await request<void>(`/api/workspaces/${workspaceId}/members/${membershipId}`, {
+    token,
+    method: "DELETE"
+  });
 }
 
 export async function createWorkspace(

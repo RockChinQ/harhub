@@ -8,11 +8,18 @@ export type SkillValidationSeverity = "error" | "warning";
 
 export type WorkspaceRole = "owner" | "admin" | "member" | "viewer";
 
+export type AssetKind = "skill";
+
+export type AssetLifecycleState = SkillLifecycleState;
+
+export type AssetHealth = "valid" | "warning" | "error" | "unknown";
+
 export interface AccountProfile {
   id: string;
   email: string;
   name: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface WorkspaceRecord {
@@ -22,6 +29,7 @@ export interface WorkspaceRecord {
   defaultScanPaths: string[];
   skillRoot: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface WorkspaceMembership {
@@ -30,6 +38,12 @@ export interface WorkspaceMembership {
   workspaceId: string;
   role: WorkspaceRole;
   createdAt: string;
+  updatedAt?: string;
+}
+
+export interface WorkspaceMember {
+  account: AccountProfile;
+  membership: WorkspaceMembership;
 }
 
 export interface SessionPayload {
@@ -76,12 +90,45 @@ export interface SkillCatalog {
   skills: SkillRecord[];
 }
 
+export interface AssetRecord {
+  id: string;
+  kind: AssetKind;
+  name: string;
+  displayName: string;
+  slug: string;
+  description: string;
+  owner?: string;
+  packageName?: string;
+  lifecycleState: AssetLifecycleState;
+  health: AssetHealth;
+  tags: string[];
+  contentHash?: string;
+  source?: SkillSource;
+  validation: {
+    errors: number;
+    warnings: number;
+  };
+  metadata: Record<string, string | number | boolean | string[] | undefined>;
+  skill?: SkillRecord;
+  discoveredAt: string;
+  updatedAt: string;
+}
+
+export interface AssetCatalog {
+  schemaVersion: 1;
+  generatedAt: string;
+  workspaceId?: string;
+  assets: AssetRecord[];
+  skills: SkillRecord[];
+}
+
 export interface ValidationIssue {
   severity: SkillValidationSeverity;
   code: string;
   message: string;
   path?: string;
   skillId?: string;
+  assetId?: string;
 }
 
 export interface SkillPackageManifest {

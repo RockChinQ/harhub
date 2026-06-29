@@ -1,27 +1,32 @@
 import {
   AlertCircle,
-  Box,
+  Activity,
   CheckCircle2,
+  Database,
   FileSearch,
   FolderInput,
   GalleryVerticalEnd,
   KeyRound,
+  Layers3,
   Loader2,
   LogOut,
   Plus,
   RefreshCcw,
-  Settings,
-  ShieldCheck,
+  Save,
   Tag,
+  Trash2,
+  UserPlus,
   type LucideIcon
 } from "lucide-react";
 import { type FormEvent, type MouseEvent, useEffect, useMemo, useState } from "react";
 import type {
   AccountProfile,
-  SkillRecord,
+  AssetRecord,
   ValidationIssue,
+  WorkspaceMember,
   WorkspaceMembership,
-  WorkspaceRecord
+  WorkspaceRecord,
+  WorkspaceRole
 } from "../../types";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
@@ -67,14 +72,22 @@ import {
 } from "./components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import {
+  addWorkspaceMember,
+  changePassword,
   createWorkspace,
-  createWorkspaceSkill,
+  createWorkspaceAsset,
+  deleteWorkspaceAsset,
   getSession,
-  getWorkspaceSkills,
+  getWorkspaceAssets,
+  getWorkspaceMembers,
   login,
   logout,
-  scanWorkspaceSkills,
+  removeWorkspaceMember,
+  scanWorkspaceAssets,
   signUp,
+  updateAccount,
+  updateWorkspaceAsset,
+  updateWorkspaceMember,
   updateWorkspace,
   type AuthResponse,
   type SessionResponse
@@ -83,8 +96,9 @@ import { cn } from "./lib/utils";
 
 const TOKEN_KEY = "harhub.token";
 const WORKSPACE_KEY = "harhub.workspace";
+const roleOptions: WorkspaceRole[] = ["owner", "admin", "member", "viewer"];
 
-type View = "skills" | "workspace" | "account";
+type View = "assets" | "workspace" | "account";
 
 export function App() {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) ?? "");
@@ -92,8 +106,8 @@ export function App() {
   const [activeWorkspaceId, setActiveWorkspaceId] = useState(
     () => localStorage.getItem(WORKSPACE_KEY) ?? ""
   );
-  const [view, setView] = useState<View>("skills");
-  const [skills, setSkills] = useState<SkillRecord[]>([]);
+  const [view, setView] = useState<View>("assets");
+  const [assets, setAssets] = useState<AssetRecord[]>([]);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [catalogPath, setCatalogPath] = useState("");
   const [selectedId, setSelectedId] = useState<string | undefined>();
@@ -125,7 +139,7 @@ export function App() {
     if (!activeWorkspace || !token) return;
     localStorage.setItem(WORKSPACE_KEY, activeWorkspace.id);
     setScanPath(activeWorkspace.defaultScanPaths.join(", "));
-    void refreshSkills(activeWorkspace.id);
+    void refreshAssets(activeWorkspace.id);
   }, [activeWorkspace?.id, token]);
 
   async function loadSession(nextToken: string) {
@@ -148,15 +162,17 @@ export function App() {
     }
   }
 
-  async function refreshSkills(workspaceId = activeWorkspace?.id) {
+  async function refreshAssets(workspaceId = activeWorkspace?.id) {
     if (!token || !workspaceId) return;
     setIsLoading(true);
     setError(undefined);
     try {
-      const result = await getWorkspaceSkills(token, workspaceId);
-      setSkills(result.skills);
+      const result = await getWorkspaceAssets(token, workspaceId);
+      setAssets(result.assets);
       setCatalogPath(result.catalogPath);
-      setSelectedId((current) => current ?? result.skills[0]?.id);
+      setSelectedId((current) =>
+        result.assets.some((asset) => asset.id === current) ? current : result.assets[0]?.id
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -170,11 +186,13 @@ export function App() {
     setError(undefined);
     try {
       const paths = splitList(scanPath);
-      const result = await scanWorkspaceSkills(token, activeWorkspace.id, paths);
-      setSkills(result.skills);
+      const result = await scanWorkspaceAssets(token, activeWorkspace.id, paths);
+      setAssets(result.assets);
       setIssues(result.issues);
-      setCatalogPath(result.catalogPath);
-      setSelectedId(result.skills[0]?.id);
+      setCatalogPath(result.assetCatalogPath ?? result.catalogPath);
+      setSelectedId((current) =>
+        result.assets.some((asset) => asset.id === current) ? current : result.assets[0]?.id
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -199,7 +217,7 @@ export function App() {
     localStorage.removeItem(WORKSPACE_KEY);
     setToken("");
     setSession(undefined);
-    setSkills([]);
+    setAssets([]);
     setIssues([]);
   }
 
@@ -209,7 +227,7 @@ export function App() {
       setActiveWorkspaceId(workspace.id);
       localStorage.setItem(WORKSPACE_KEY, workspace.id);
     }
-    await refreshSkills(workspace?.id ?? activeWorkspace?.id);
+    await refreshAssets(workspace?.id ?? activeWorkspace?.id);
   }
 
   if (!token || !session) {
@@ -246,10 +264,10 @@ export function App() {
           <SidebarGroup>
             <SidebarMenu className="gap-2">
               <SidebarSection
-                title="Skills"
-                detail="Management"
-                isActive={view === "skills"}
-                onSelect={() => setView("skills")}
+                title="Assets"
+                detail="Skill library"
+                isActive={view === "assets"}
+                onSelect={() => setView("assets")}
               />
               <SidebarSection
                 title="Workspace"
@@ -307,7 +325,7 @@ export function App() {
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
-          {view === "skills" ? (
+          {view === "assets" ? (
             <div className="ml-auto hidden items-center gap-2 md:flex">
               <Input
                 value={scanPath}
@@ -327,7 +345,7 @@ export function App() {
           ) : null}
         </header>
         <div className="flex flex-1 flex-col gap-4 p-4 sm:p-6 lg:p-8">
-          {view === "skills" ? (
+          {view === "assets" ? (
             <div className="flex flex-col gap-2 md:hidden">
               <Input
                 value={scanPath}
@@ -344,7 +362,7 @@ export function App() {
               </Button>
             </div>
           ) : null}
-          {catalogPath && view === "skills" ? (
+          {catalogPath && view === "assets" ? (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <FolderInput className="h-3.5 w-3.5" aria-hidden="true" />
               <span className="truncate">{catalogPath}</span>
@@ -355,11 +373,11 @@ export function App() {
               {error}
             </div>
           ) : null}
-          {view === "skills" && activeWorkspace ? (
-            <SkillsView
+          {view === "assets" && activeWorkspace ? (
+            <AssetsView
               workspace={activeWorkspace}
               token={token}
-              skills={skills}
+              assets={assets}
               issues={issues}
               query={query}
               tagFilter={tagFilter}
@@ -368,7 +386,7 @@ export function App() {
               onQueryChange={setQuery}
               onTagFilterChange={setTagFilter}
               onSelect={setSelectedId}
-              onRefresh={refreshSkills}
+              onRefresh={refreshAssets}
             />
           ) : null}
           {view === "workspace" && activeWorkspace ? (
@@ -380,7 +398,13 @@ export function App() {
             />
           ) : null}
           {view === "account" ? (
-            <AccountView account={session.account} memberships={session.memberships} />
+            <AccountView
+              token={token}
+              account={session.account}
+              memberships={session.memberships}
+              onSessionChange={setSession}
+              onPasswordChanged={handleLogout}
+            />
           ) : null}
         </div>
       </SidebarInset>
@@ -557,10 +581,10 @@ function WorkspaceSelect({
   );
 }
 
-function SkillsView({
+function AssetsView({
   workspace,
   token,
-  skills,
+  assets,
   issues,
   query,
   tagFilter,
@@ -573,7 +597,7 @@ function SkillsView({
 }: {
   workspace: WorkspaceRecord;
   token: string;
-  skills: SkillRecord[];
+  assets: AssetRecord[];
   issues: ValidationIssue[];
   query: string;
   tagFilter: string;
@@ -585,32 +609,43 @@ function SkillsView({
   onRefresh: () => Promise<void>;
 }) {
   const tags = useMemo(
-    () => Array.from(new Set(skills.flatMap((skill) => skill.tags))).sort(),
-    [skills]
+    () => Array.from(new Set(assets.flatMap((asset) => asset.tags))).sort(),
+    [assets]
   );
-  const filteredSkills = skills.filter((skill) => {
+  const skillAssets = assets.filter((asset) => asset.kind === "skill");
+  const filteredAssets = assets.filter((asset) => {
     const normalizedQuery = query.trim().toLowerCase();
     const matchesQuery =
       !normalizedQuery ||
-      skill.name.toLowerCase().includes(normalizedQuery) ||
-      skill.displayName.toLowerCase().includes(normalizedQuery) ||
-      skill.description.toLowerCase().includes(normalizedQuery) ||
-      skill.packageName?.toLowerCase().includes(normalizedQuery);
-    const matchesTag = !tagFilter || skill.tags.includes(tagFilter);
+      asset.name.toLowerCase().includes(normalizedQuery) ||
+      asset.displayName.toLowerCase().includes(normalizedQuery) ||
+      asset.description.toLowerCase().includes(normalizedQuery) ||
+      asset.kind.toLowerCase().includes(normalizedQuery) ||
+      asset.packageName?.toLowerCase().includes(normalizedQuery) ||
+      asset.owner?.toLowerCase().includes(normalizedQuery);
+    const matchesTag = !tagFilter || asset.tags.includes(tagFilter);
     return matchesQuery && matchesTag;
   });
-  const selectedSkill =
-    skills.find((skill) => skill.id === selectedId) ?? filteredSkills[0] ?? skills[0];
-  const errorCount = issues.filter((issue) => issue.severity === "error").length;
-  const warningCount = issues.filter((issue) => issue.severity === "warning").length;
+  const selectedAsset =
+    assets.find((asset) => asset.id === selectedId) ?? filteredAssets[0] ?? assets[0];
+  const errorCount =
+    assets.reduce((count, asset) => count + asset.validation.errors, 0) ||
+    issues.filter((issue) => issue.severity === "error").length;
+  const warningCount =
+    assets.reduce((count, asset) => count + asset.validation.warnings, 0) ||
+    issues.filter((issue) => issue.severity === "warning").length;
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-4">
-        <MetricCard icon={Box} label="Skills" value={skills.length.toString()} />
+        <MetricCard icon={Database} label="Assets" value={assets.length.toString()} />
+        <MetricCard icon={Layers3} label="Skill Assets" value={skillAssets.length.toString()} />
         <MetricCard icon={Tag} label="Tags" value={tags.length.toString()} />
-        <MetricCard icon={AlertCircle} label="Errors" value={errorCount.toString()} />
-        <MetricCard icon={ShieldCheck} label="Warnings" value={warningCount.toString()} />
+        <MetricCard
+          icon={Activity}
+          label="Issues"
+          value={(errorCount + warningCount).toString()}
+        />
       </div>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
         <div className="space-y-4">
@@ -618,8 +653,8 @@ function SkillsView({
             <Input
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
-              placeholder="Search skills, packages, descriptions"
-              aria-label="Search skills"
+              placeholder="Search assets, packages, owners"
+              aria-label="Search assets"
             />
             <Select
               value={tagFilter || "all"}
@@ -638,14 +673,20 @@ function SkillsView({
               </SelectContent>
             </Select>
           </div>
-          <SkillTable
-            skills={filteredSkills}
-            selectedId={selectedSkill?.id}
+          <AssetTable
+            assets={filteredAssets}
+            selectedId={selectedAsset?.id}
             isLoading={isLoading}
             onSelect={onSelect}
           />
         </div>
-        <SkillDetail skill={selectedSkill} issues={issues} />
+        <AssetDetail
+          workspace={workspace}
+          token={token}
+          asset={selectedAsset}
+          issues={issues}
+          onChanged={onRefresh}
+        />
       </div>
       <CreateSkillPanel workspace={workspace} token={token} onCreated={onRefresh} />
     </div>
@@ -674,13 +715,13 @@ function MetricCard({
   );
 }
 
-function SkillTable({
-  skills,
+function AssetTable({
+  assets,
   selectedId,
   isLoading,
   onSelect
 }: {
-  skills: SkillRecord[];
+  assets: AssetRecord[];
   selectedId?: string;
   isLoading: boolean;
   onSelect: (id: string) => void;
@@ -690,18 +731,18 @@ function SkillTable({
       <Card>
         <CardContent className="flex h-52 items-center justify-center text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-          Loading catalog
+          Loading assets
         </CardContent>
       </Card>
     );
   }
 
-  if (skills.length === 0) {
+  if (assets.length === 0) {
     return (
       <Card>
         <CardContent className="flex h-52 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
           <FileSearch className="h-6 w-6" aria-hidden="true" />
-          No skills matched the current filters.
+          No assets matched the current filters.
         </CardContent>
       </Card>
     );
@@ -712,47 +753,44 @@ function SkillTable({
       <table className="w-full text-left text-sm">
         <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
           <tr>
-            <th className="px-3 py-2 font-medium">Skill</th>
-            <th className="hidden px-3 py-2 font-medium sm:table-cell">Name</th>
+            <th className="px-3 py-2 font-medium">Asset</th>
+            <th className="hidden px-3 py-2 font-medium sm:table-cell">Kind</th>
             <th className="hidden px-3 py-2 font-medium md:table-cell">Package</th>
             <th className="hidden px-3 py-2 font-medium lg:table-cell">Owner</th>
-            <th className="px-3 py-2 font-medium">State</th>
+            <th className="px-3 py-2 font-medium">Health</th>
           </tr>
         </thead>
         <tbody>
-          {skills.map((skill) => (
+          {assets.map((asset) => (
             <tr
-              key={skill.id}
+              key={asset.id}
               className={cn(
                 "cursor-pointer border-b transition-colors last:border-0 hover:bg-accent/50",
-                selectedId === skill.id && "bg-accent"
+                selectedId === asset.id && "bg-accent"
               )}
-              onClick={() => onSelect(skill.id)}
+              onClick={() => onSelect(asset.id)}
             >
               <td className="px-3 py-3">
-                <div className="font-medium">{skill.displayName}</div>
+                <div className="font-medium">{asset.displayName}</div>
                 <div className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-                  {skill.description || skill.source.path}
+                  {asset.description || asset.source?.path}
                 </div>
               </td>
-              <td className="hidden px-3 py-3 font-mono text-xs text-muted-foreground sm:table-cell">
-                {skill.name}
+              <td className="hidden px-3 py-3 sm:table-cell">
+                <Badge variant="outline">{asset.kind}</Badge>
               </td>
               <td className="hidden px-3 py-3 text-muted-foreground md:table-cell">
-                {skill.packageName ?? "-"}
+                {asset.packageName ?? "-"}
               </td>
               <td className="hidden px-3 py-3 text-muted-foreground lg:table-cell">
-                {skill.owner ?? "-"}
+                {asset.owner ?? "-"}
               </td>
               <td className="px-3 py-3">
                 <Badge
                   variant="secondary"
-                  className={cn(
-                    skill.lifecycleState === "stable" &&
-                      "border-lime-200 bg-lime-50 text-zinc-950"
-                  )}
+                  className={healthBadgeClass(asset.health)}
                 >
-                  {skill.lifecycleState}
+                  {asset.health}
                 </Badge>
               </td>
             </tr>
@@ -763,57 +801,119 @@ function SkillTable({
   );
 }
 
-function SkillDetail({
-  skill,
-  issues
+function AssetDetail({
+  workspace,
+  token,
+  asset,
+  issues,
+  onChanged
 }: {
-  skill?: SkillRecord;
+  workspace: WorkspaceRecord;
+  token: string;
+  asset?: AssetRecord;
   issues: ValidationIssue[];
+  onChanged: () => Promise<void>;
 }) {
-  if (!skill) {
+  const [description, setDescription] = useState("");
+  const [owner, setOwner] = useState("");
+  const [tags, setTags] = useState("");
+  const [lifecycleState, setLifecycleState] = useState("experimental");
+  const [agents, setAgents] = useState("");
+  const [message, setMessage] = useState<string | undefined>();
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    setDescription(asset?.description ?? "");
+    setOwner(asset?.owner ?? "");
+    setTags(asset?.tags.join(", ") ?? "");
+    setLifecycleState(asset?.lifecycleState ?? "experimental");
+    setAgents(asset?.skill?.agents.join(", ") ?? "");
+    setMessage(undefined);
+  }, [asset?.id]);
+
+  if (!asset) {
     return (
       <Card>
         <CardContent className="flex h-72 items-center justify-center text-sm text-muted-foreground">
-          Select a skill to inspect it.
+          Select an asset to inspect it.
         </CardContent>
       </Card>
     );
   }
 
-  const skillIssues = issues.filter((issue) => issue.skillId === skill.id);
-  const resources = skill.resources ?? { scripts: [], references: [], assets: [] };
+  const selectedAsset = asset;
+  const skill = selectedAsset.skill;
+  const assetIssues = issues.filter(
+    (issue) => issue.assetId === selectedAsset.id || (skill && issue.skillId === skill.id)
+  );
+  const resources = skill?.resources ?? { scripts: [], references: [], assets: [] };
+
+  async function saveAsset(event: FormEvent) {
+    event.preventDefault();
+    setIsSaving(true);
+    setMessage(undefined);
+    try {
+      await updateWorkspaceAsset(token, workspace.id, selectedAsset.id, {
+        description,
+        owner,
+        tags: splitList(tags),
+        lifecycleState,
+        agents: splitList(agents)
+      });
+      setMessage("Asset saved.");
+      await onChanged();
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function removeAsset() {
+    if (!window.confirm(`Delete ${selectedAsset.displayName}?`)) return;
+    setIsDeleting(true);
+    setMessage(undefined);
+    try {
+      await deleteWorkspaceAsset(token, workspace.id, selectedAsset.id);
+      setMessage("Asset deleted.");
+      await onChanged();
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsDeleting(false);
+    }
+  }
 
   return (
     <Card>
       <CardHeader>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <CardTitle>{skill.displayName}</CardTitle>
-            <CardDescription className="mt-2">{skill.id}</CardDescription>
+            <CardTitle>{asset.displayName}</CardTitle>
+            <CardDescription className="mt-2">{asset.id}</CardDescription>
           </div>
           <Badge
             variant="secondary"
-            className={cn(
-              skillIssues.some((issue) => issue.severity === "error")
-                ? "border-amber-200 bg-amber-50 text-amber-800"
-                : "border-lime-200 bg-lime-50 text-zinc-950"
-            )}
+            className={healthBadgeClass(asset.health)}
           >
-            {skillIssues.length === 0 ? "valid" : `${skillIssues.length} issue(s)`}
+            {asset.health}
           </Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-sm leading-6">{skill.description || "No description."}</p>
+        <p className="text-sm leading-6">{asset.description || "No description."}</p>
         <div className="grid gap-3 text-sm">
-          <KeyValue label="Name" value={skill.name} />
-          <KeyValue label="Package" value={skill.packageName ?? "-"} />
-          <KeyValue label="Owner" value={skill.owner ?? "-"} />
-          <KeyValue label="Source" value={skill.source.path} />
-          <KeyValue label="Hash" value={skill.contentHash.slice(0, 16)} />
+          <KeyValue label="Kind" value={asset.kind} />
+          <KeyValue label="Name" value={asset.name} />
+          <KeyValue label="Package" value={asset.packageName ?? "-"} />
+          <KeyValue label="Owner" value={asset.owner ?? "-"} />
+          <KeyValue label="State" value={asset.lifecycleState} />
+          <KeyValue label="Source" value={asset.source?.path ?? "-"} />
+          <KeyValue label="Hash" value={asset.contentHash?.slice(0, 16) ?? "-"} />
         </div>
         <div className="flex flex-wrap gap-2">
-          {skill.tags.map((tag) => (
+          {asset.tags.map((tag) => (
             <Badge key={tag} variant="outline">
               {tag}
             </Badge>
@@ -827,10 +927,10 @@ function SkillDetail({
             <KeyValue label="Assets" value={resources.assets.length.toString()} />
           </div>
         </div>
-        {skillIssues.length > 0 ? (
+        {assetIssues.length > 0 ? (
           <div className="space-y-2">
             <h4 className="text-sm font-medium">Validation</h4>
-            {skillIssues.map((issue) => (
+            {assetIssues.map((issue) => (
               <div key={`${issue.code}-${issue.message}`} className="rounded-md border px-3 py-2 text-sm">
                 <div className="flex items-center gap-2 font-medium">
                   {issue.severity === "error" ? (
@@ -844,6 +944,69 @@ function SkillDetail({
               </div>
             ))}
           </div>
+        ) : null}
+        {asset.kind === "skill" ? (
+          <form className="space-y-4 border-t pt-4" onSubmit={saveAsset}>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Description
+              <Input
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+              />
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-1.5 text-sm font-medium">
+                Owner
+                <Input value={owner} onChange={(event) => setOwner(event.target.value)} />
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium">
+                Lifecycle
+                <Select value={lifecycleState} onValueChange={setLifecycleState}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Lifecycle" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="experimental">experimental</SelectItem>
+                    <SelectItem value="stable">stable</SelectItem>
+                    <SelectItem value="deprecated">deprecated</SelectItem>
+                    <SelectItem value="archived">archived</SelectItem>
+                  </SelectContent>
+                </Select>
+              </label>
+            </div>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Tags
+              <Input value={tags} onChange={(event) => setTags(event.target.value)} />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Agents
+              <Input value={agents} onChange={(event) => setAgents(event.target.value)} />
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="submit" disabled={isSaving}>
+                {isSaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Save className="h-4 w-4" aria-hidden="true" />
+                )}
+                Save
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={removeAsset}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                )}
+                Delete
+              </Button>
+              {message ? <span className="text-sm text-muted-foreground">{message}</span> : null}
+            </div>
+          </form>
         ) : null}
       </CardContent>
     </Card>
@@ -876,7 +1039,8 @@ function CreateSkillPanel({
     setIsSaving(true);
     setMessage(undefined);
     try {
-      const result = await createWorkspaceSkill(token, workspace.id, {
+      const result = await createWorkspaceAsset(token, workspace.id, {
+        kind: "skill",
         name,
         dir,
         description,
@@ -898,8 +1062,8 @@ function CreateSkillPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Create Skill</CardTitle>
-        <CardDescription>Scaffold a standards-compatible `SKILL.md` directory.</CardDescription>
+        <CardTitle>Create Skill Asset</CardTitle>
+        <CardDescription>Create a skill asset backed by a standards-compatible `SKILL.md`.</CardDescription>
       </CardHeader>
       <CardContent>
         <form className="grid gap-4" onSubmit={submit}>
@@ -972,13 +1136,31 @@ function WorkspaceView({
   const [scanPaths, setScanPaths] = useState(workspace.defaultScanPaths.join(", "));
   const [skillRoot, setSkillRoot] = useState(workspace.skillRoot);
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
+  const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [memberEmail, setMemberEmail] = useState("");
+  const [memberRole, setMemberRole] = useState<WorkspaceRole>("member");
   const [message, setMessage] = useState<string | undefined>();
+  const [memberMessage, setMemberMessage] = useState<string | undefined>();
 
   useEffect(() => {
     setName(workspace.name);
     setScanPaths(workspace.defaultScanPaths.join(", "));
     setSkillRoot(workspace.skillRoot);
   }, [workspace.id, workspace.name, workspace.defaultScanPaths, workspace.skillRoot]);
+
+  useEffect(() => {
+    void refreshMembers();
+  }, [workspace.id, token]);
+
+  async function refreshMembers() {
+    setMemberMessage(undefined);
+    try {
+      const result = await getWorkspaceMembers(token, workspace.id);
+      setMembers(result.members);
+    } catch (caught) {
+      setMemberMessage(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
 
   async function saveSettings(event: FormEvent) {
     event.preventDefault();
@@ -1013,6 +1195,45 @@ function WorkspaceView({
     }
   }
 
+  async function inviteMember(event: FormEvent) {
+    event.preventDefault();
+    setMemberMessage(undefined);
+    try {
+      const result = await addWorkspaceMember(token, workspace.id, {
+        email: memberEmail,
+        role: memberRole
+      });
+      setMembers(result.members);
+      setMemberEmail("");
+      setMemberMessage("Member added.");
+    } catch (caught) {
+      setMemberMessage(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
+  async function changeRole(membershipId: string, role: WorkspaceRole) {
+    setMemberMessage(undefined);
+    try {
+      const result = await updateWorkspaceMember(token, workspace.id, membershipId, role);
+      setMembers(result.members);
+      setMemberMessage("Role updated.");
+    } catch (caught) {
+      setMemberMessage(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
+  async function removeMember(membershipId: string) {
+    if (!window.confirm("Remove this member from the workspace?")) return;
+    setMemberMessage(undefined);
+    try {
+      await removeWorkspaceMember(token, workspace.id, membershipId);
+      await refreshMembers();
+      setMemberMessage("Member removed.");
+    } catch (caught) {
+      setMemberMessage(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card>
@@ -1035,7 +1256,7 @@ function WorkspaceView({
               <Input value={skillRoot} onChange={(event) => setSkillRoot(event.target.value)} />
             </label>
             <Button type="submit">
-              <Settings className="h-4 w-4" aria-hidden="true" />
+              <Save className="h-4 w-4" aria-hidden="true" />
               Save
             </Button>
           </form>
@@ -1070,30 +1291,235 @@ function WorkspaceView({
           {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
         </CardContent>
       </Card>
+      <Card className="lg:col-span-2">
+        <CardHeader>
+          <CardTitle>Members</CardTitle>
+          <CardDescription>{members.length} account(s) in this workspace</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="overflow-hidden rounded-lg border">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Account</th>
+                  <th className="hidden px-3 py-2 font-medium md:table-cell">Joined</th>
+                  <th className="px-3 py-2 font-medium">Role</th>
+                  <th className="w-16 px-3 py-2 font-medium"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {members.map((member) => (
+                  <tr key={member.membership.id} className="border-b last:border-0">
+                    <td className="px-3 py-3">
+                      <div className="font-medium">{member.account.name}</div>
+                      <div className="text-xs text-muted-foreground">{member.account.email}</div>
+                    </td>
+                    <td className="hidden px-3 py-3 text-muted-foreground md:table-cell">
+                      {new Date(member.membership.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-3 py-3">
+                      <Select
+                        value={member.membership.role}
+                        onValueChange={(value) =>
+                          void changeRole(member.membership.id, value as WorkspaceRole)
+                        }
+                      >
+                        <SelectTrigger className="h-8 w-28">
+                          <SelectValue placeholder="Role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {roleOptions.map((role) => (
+                            <SelectItem key={role} value={role}>
+                              {role}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="px-3 py-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => void removeMember(member.membership.id)}
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <form className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_140px_auto]" onSubmit={inviteMember}>
+            <Input
+              value={memberEmail}
+              onChange={(event) => setMemberEmail(event.target.value)}
+              placeholder="teammate@example.com"
+              type="email"
+              required
+            />
+            <Select value={memberRole} onValueChange={(value) => setMemberRole(value as WorkspaceRole)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Role" />
+              </SelectTrigger>
+              <SelectContent>
+                {roleOptions.map((role) => (
+                  <SelectItem key={role} value={role}>
+                    {role}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button type="submit">
+              <UserPlus className="h-4 w-4" aria-hidden="true" />
+              Add
+            </Button>
+          </form>
+          {memberMessage ? <p className="text-sm text-muted-foreground">{memberMessage}</p> : null}
+        </CardContent>
+      </Card>
     </div>
   );
 }
 
 function AccountView({
+  token,
   account,
-  memberships
+  memberships,
+  onSessionChange,
+  onPasswordChanged
 }: {
+  token: string;
   account: AccountProfile;
   memberships: WorkspaceMembership[];
+  onSessionChange: (session: SessionResponse) => void;
+  onPasswordChanged: () => Promise<void>;
 }) {
+  const [name, setName] = useState(account.name);
+  const [email, setEmail] = useState(account.email);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [profileMessage, setProfileMessage] = useState<string | undefined>();
+  const [passwordMessage, setPasswordMessage] = useState<string | undefined>();
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  useEffect(() => {
+    setName(account.name);
+    setEmail(account.email);
+  }, [account.id, account.name, account.email]);
+
+  async function saveProfile(event: FormEvent) {
+    event.preventDefault();
+    setIsSavingProfile(true);
+    setProfileMessage(undefined);
+    try {
+      const nextSession = await updateAccount(token, { name, email });
+      onSessionChange(nextSession);
+      setProfileMessage("Account saved.");
+    } catch (caught) {
+      setProfileMessage(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsSavingProfile(false);
+    }
+  }
+
+  async function savePassword(event: FormEvent) {
+    event.preventDefault();
+    setIsChangingPassword(true);
+    setPasswordMessage(undefined);
+    try {
+      await changePassword(token, { currentPassword, newPassword });
+      setPasswordMessage("Password changed. Sign in again.");
+      await onPasswordChanged();
+    } catch (caught) {
+      setPasswordMessage(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsChangingPassword(false);
+    }
+  }
+
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card>
         <CardHeader>
-          <CardTitle>{account.name}</CardTitle>
-          <CardDescription>{account.email}</CardDescription>
+          <CardTitle>Profile</CardTitle>
+          <CardDescription>{account.id}</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 text-sm">
-          <KeyValue label="Account" value={account.id} />
-          <KeyValue label="Created" value={new Date(account.createdAt).toLocaleString()} />
+        <CardContent>
+          <form className="grid gap-4" onSubmit={saveProfile}>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Name
+              <Input value={name} onChange={(event) => setName(event.target.value)} />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Email
+              <Input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </label>
+            <div className="grid gap-3 text-sm">
+              <KeyValue label="Created" value={new Date(account.createdAt).toLocaleString()} />
+              <KeyValue
+                label="Updated"
+                value={account.updatedAt ? new Date(account.updatedAt).toLocaleString() : "-"}
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <Button type="submit" disabled={isSavingProfile}>
+                {isSavingProfile ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Save className="h-4 w-4" aria-hidden="true" />
+                )}
+                Save
+              </Button>
+              {profileMessage ? <span className="text-sm text-muted-foreground">{profileMessage}</span> : null}
+            </div>
+          </form>
         </CardContent>
       </Card>
       <Card>
+        <CardHeader>
+          <CardTitle>Password</CardTitle>
+          <CardDescription>Changing it signs out every active session.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form className="grid gap-4" onSubmit={savePassword}>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Current password
+              <Input
+                type="password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              New password
+              <Input
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+              />
+            </label>
+            <div className="flex items-center gap-3">
+              <Button type="submit" disabled={isChangingPassword}>
+                {isChangingPassword ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <KeyRound className="h-4 w-4" aria-hidden="true" />
+                )}
+                Change
+              </Button>
+              {passwordMessage ? <span className="text-sm text-muted-foreground">{passwordMessage}</span> : null}
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+      <Card className="lg:col-span-2">
         <CardHeader>
           <CardTitle>Memberships</CardTitle>
           <CardDescription>{memberships.length} workspace role(s)</CardDescription>
@@ -1123,7 +1549,14 @@ function KeyValue({ label, value }: { label: string; value: string }) {
 function viewTitle(view: View): string {
   if (view === "workspace") return "Workspace";
   if (view === "account") return "Account";
-  return "Skills";
+  return "Assets";
+}
+
+function healthBadgeClass(health: AssetRecord["health"]): string {
+  if (health === "error") return "border-destructive/30 bg-destructive/10 text-destructive";
+  if (health === "warning") return "border-amber-200 bg-amber-50 text-amber-800";
+  if (health === "unknown") return "border-zinc-200 bg-zinc-50 text-zinc-700";
+  return "border-lime-200 bg-lime-50 text-zinc-950";
 }
 
 function roleForWorkspace(memberships: WorkspaceMembership[], workspaceId?: string): string {

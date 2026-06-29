@@ -3,32 +3,50 @@ import express, { type Request, type Response } from "express";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import {
+  assetCatalogToSkillCatalog,
+  createAssetCatalog,
+  filterAssets,
+  findAsset,
+  readAssetCatalog,
+  writeAssetCatalog
+} from "./assets.js";
+import {
   createCatalog,
   readCatalog,
   writeCatalog
 } from "./catalog.js";
 import {
+  deleteSkill,
   createSkillSkeleton,
   filterCatalog,
   findSkill,
   scanSkills,
+  updateSkillMetadata,
   validateSkills
 } from "./skills.js";
 import {
   authenticate,
+  addWorkspaceMember,
+  changeAccountPassword,
   createSession,
   createWorkspaceForAccount,
   deleteSession,
+  getWorkspaceAssetCatalogPath,
   getStatePath,
   getWorkspaceCatalogPath,
+  listWorkspaceMembers,
   listAccountWorkspaces,
   loadState,
   loginAccount,
+  removeWorkspaceMember,
   signUpAccount,
+  updateAccountProfile,
+  updateWorkspaceMemberRole,
   updateWorkspaceForAccount
 } from "./state.js";
 import type {
   AccountProfile,
+  AssetCatalog,
   SkillCatalog,
   ValidationIssue,
   WorkspaceRecord
@@ -103,6 +121,36 @@ app.post("/api/auth/logout", (req, res) => {
   res.status(204).send();
 });
 
+app.patch("/api/account", (req, res) => {
+  const context = requireAuth(req, res);
+  if (!context) return;
+
+  try {
+    const account = updateAccountProfile(context.account.id, {
+      name: typeof req.body?.name === "string" ? req.body.name : undefined,
+      email: typeof req.body?.email === "string" ? req.body.email : undefined
+    });
+    res.json(buildSessionPayload(account));
+  } catch (error) {
+    sendError(res, error, 400);
+  }
+});
+
+app.post("/api/account/password", (req, res) => {
+  const context = requireAuth(req, res);
+  if (!context) return;
+
+  try {
+    changeAccountPassword(context.account.id, {
+      currentPassword: String(req.body?.currentPassword ?? ""),
+      newPassword: String(req.body?.newPassword ?? "")
+    });
+    res.status(204).send();
+  } catch (error) {
+    sendError(res, error, 400);
+  }
+});
+
 app.get("/api/workspaces", (req, res) => {
   const context = requireAuth(req, res);
   if (!context) return;
@@ -146,6 +194,211 @@ app.patch("/api/workspaces/:workspaceId", (req, res) => {
     });
   } catch (error) {
     sendError(res, error, 403);
+  }
+});
+
+app.get("/api/workspaces/:workspaceId/members", (req, res) => {
+  const context = requireWorkspaceAccess(req, res);
+  if (!context) return;
+
+  try {
+    res.json({
+      workspace: context.workspace,
+      members: listWorkspaceMembers(context.account.id, context.workspace.id)
+    });
+  } catch (error) {
+    sendError(res, error, 403);
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/members", (req, res) => {
+  const context = requireWorkspaceAccess(req, res);
+  if (!context) return;
+
+  try {
+    const member = addWorkspaceMember(context.account.id, context.workspace.id, {
+      email: String(req.body?.email ?? ""),
+      role: readWorkspaceRole(req.body?.role)
+    });
+    res.status(201).json({
+      workspace: context.workspace,
+      member,
+      members: listWorkspaceMembers(context.account.id, context.workspace.id)
+    });
+  } catch (error) {
+    sendError(res, error, 400);
+  }
+});
+
+app.patch("/api/workspaces/:workspaceId/members/:membershipId", (req, res) => {
+  const context = requireWorkspaceAccess(req, res);
+  if (!context) return;
+
+  try {
+    const member = updateWorkspaceMemberRole(
+      context.account.id,
+      context.workspace.id,
+      req.params.membershipId,
+      readWorkspaceRole(req.body?.role)
+    );
+    res.json({
+      workspace: context.workspace,
+      member,
+      members: listWorkspaceMembers(context.account.id, context.workspace.id)
+    });
+  } catch (error) {
+    sendError(res, error, 400);
+  }
+});
+
+app.delete("/api/workspaces/:workspaceId/members/:membershipId", (req, res) => {
+  const context = requireWorkspaceAccess(req, res);
+  if (!context) return;
+
+  try {
+    removeWorkspaceMember(context.account.id, context.workspace.id, req.params.membershipId);
+    res.status(204).send();
+  } catch (error) {
+    sendError(res, error, 400);
+  }
+});
+
+app.get("/api/workspaces/:workspaceId/assets", (req, res) => {
+  const context = requireWorkspaceAccess(req, res);
+  if (!context) return;
+
+  const catalog = loadOrCreateWorkspaceAssetCatalog(context.workspace);
+  const assets = filterAssets(catalog, {
+    kind: stringQuery(req.query.kind),
+    tag: stringQuery(req.query.tag),
+    owner: stringQuery(req.query.owner),
+    packageName: stringQuery(req.query.package)
+  });
+
+  res.json({
+    workspace: context.workspace,
+    catalogPath: getWorkspaceAssetCatalogPath(context.workspace.id),
+    generatedAt: catalog.generatedAt,
+    assets,
+    skills: assets
+      .map((asset) => asset.skill)
+      .filter((skill): skill is SkillCatalog["skills"][number] => Boolean(skill))
+  });
+});
+
+app.get("/api/workspaces/:workspaceId/assets/:query", (req, res) => {
+  const context = requireWorkspaceAccess(req, res);
+  if (!context) return;
+
+  const catalog = loadOrCreateWorkspaceAssetCatalog(context.workspace);
+  const asset = findAsset(catalog, req.params.query);
+
+  if (!asset) {
+    res.status(404).json({ error: "Asset not found" });
+    return;
+  }
+
+  res.json(asset);
+});
+
+app.post("/api/workspaces/:workspaceId/assets/scan", (req, res) => {
+  const context = requireWorkspaceAccess(req, res);
+  if (!context) return;
+
+  const roots = readPathList(req.body?.paths, context.workspace.defaultScanPaths);
+  const response = scanAndPersistWorkspace(context.workspace, roots);
+  res.status(hasErrors(response.issues) ? 422 : 200).json(response);
+});
+
+app.post("/api/workspaces/:workspaceId/assets/validate", (req, res) => {
+  const context = requireWorkspaceAccess(req, res);
+  if (!context) return;
+
+  const roots = readPathList(req.body?.paths, context.workspace.defaultScanPaths);
+  const skills = scanSkills({ roots });
+  const issues = validateSkills(skills);
+  const assetCatalog = createAssetCatalog(skills, issues);
+
+  res.status(hasErrors(issues) ? 422 : 200).json({
+    workspace: context.workspace,
+    assets: assetCatalog.assets,
+    skills,
+    issues
+  });
+});
+
+app.post("/api/workspaces/:workspaceId/assets", (req, res) => {
+  const context = requireWorkspaceAccess(req, res);
+  if (!context) return;
+
+  if (String(req.body?.kind ?? "skill") !== "skill") {
+    res.status(400).json({ error: "Only skill assets are supported in this MVP." });
+    return;
+  }
+
+  createSkillAsset(req, res, context.workspace, context.account.name);
+});
+
+app.patch("/api/workspaces/:workspaceId/assets/:query", (req, res) => {
+  const context = requireWorkspaceAccess(req, res);
+  if (!context) return;
+
+  try {
+    const catalog = loadOrCreateWorkspaceAssetCatalog(context.workspace);
+    const asset = findAsset(catalog, req.params.query);
+    if (!asset?.skill) {
+      res.status(404).json({ error: "Skill asset not found" });
+      return;
+    }
+
+    updateSkillMetadata(asset.skill, {
+      description:
+        typeof req.body?.description === "string" ? req.body.description : undefined,
+      owner: typeof req.body?.owner === "string" ? req.body.owner : undefined,
+      tags: Array.isArray(req.body?.tags)
+        ? req.body.tags.filter((tag: unknown): tag is string => typeof tag === "string")
+        : undefined,
+      lifecycleState:
+        typeof req.body?.lifecycleState === "string"
+          ? req.body.lifecycleState
+          : undefined,
+      agents: Array.isArray(req.body?.agents)
+        ? req.body.agents.filter((agent: unknown): agent is string => typeof agent === "string")
+        : undefined
+    });
+
+    res.json(
+      scanAndPersistWorkspace(
+        context.workspace,
+        unique([context.workspace.skillRoot, ...context.workspace.defaultScanPaths])
+      )
+    );
+  } catch (error) {
+    sendError(res, error, 400);
+  }
+});
+
+app.delete("/api/workspaces/:workspaceId/assets/:query", (req, res) => {
+  const context = requireWorkspaceAccess(req, res);
+  if (!context) return;
+
+  try {
+    const catalog = loadOrCreateWorkspaceAssetCatalog(context.workspace);
+    const asset = findAsset(catalog, req.params.query);
+    if (!asset?.skill) {
+      res.status(404).json({ error: "Skill asset not found" });
+      return;
+    }
+
+    deleteSkill(asset.skill);
+    res.json(
+      scanAndPersistWorkspace(
+        context.workspace,
+        unique([context.workspace.skillRoot, ...context.workspace.defaultScanPaths])
+      )
+    );
+  } catch (error) {
+    sendError(res, error, 400);
   }
 });
 
@@ -211,35 +464,7 @@ app.post("/api/workspaces/:workspaceId/skills", (req, res) => {
   const context = requireWorkspaceAccess(req, res);
   if (!context) return;
 
-  try {
-    if (!String(req.body?.name ?? "").trim()) {
-      throw new Error("Skill name is required.");
-    }
-
-    const skillPath = createSkillSkeleton({
-      name: String(req.body.name),
-      dir: String(req.body?.dir ?? context.workspace.skillRoot),
-      description:
-        typeof req.body?.description === "string" ? req.body.description : undefined,
-      owner:
-        typeof req.body?.owner === "string" ? req.body.owner : context.account.name,
-      tags: Array.isArray(req.body?.tags)
-        ? req.body.tags.filter((tag: unknown): tag is string => typeof tag === "string")
-        : []
-    });
-
-    const response = scanAndPersistWorkspace(
-      context.workspace,
-      unique([context.workspace.skillRoot, ...context.workspace.defaultScanPaths])
-    );
-
-    res.status(201).json({
-      path: skillPath,
-      ...response
-    });
-  } catch (error) {
-    sendError(res, error, 400);
-  }
+  createSkillAsset(req, res, context.workspace, context.account.name);
 });
 
 // Backward-compatible demo workspace routes used by older smoke tests.
@@ -322,6 +547,11 @@ function requireWorkspaceAccess(req: Request, res: Response) {
 }
 
 function loadOrCreateWorkspaceCatalog(workspace: WorkspaceRecord): SkillCatalog {
+  const assetPath = getWorkspaceAssetCatalogPath(workspace.id);
+  if (existsSync(assetPath)) {
+    return assetCatalogToSkillCatalog(readAssetCatalog(assetPath));
+  }
+
   const catalogPath = getWorkspaceCatalogPath(workspace.id);
   if (existsSync(catalogPath)) {
     const catalog = readCatalog(catalogPath);
@@ -333,6 +563,18 @@ function loadOrCreateWorkspaceCatalog(workspace: WorkspaceRecord): SkillCatalog 
   return scanAndPersistWorkspace(workspace, workspace.defaultScanPaths).catalog;
 }
 
+function loadOrCreateWorkspaceAssetCatalog(workspace: WorkspaceRecord): AssetCatalog {
+  const catalogPath = getWorkspaceAssetCatalogPath(workspace.id);
+  if (existsSync(catalogPath)) {
+    const catalog = readAssetCatalog(catalogPath);
+    const needsRefresh = catalog.workspaceId !== workspace.id ||
+      catalog.assets.some((asset) => !asset.displayName || !asset.kind);
+    if (!needsRefresh) return catalog;
+  }
+
+  return scanAndPersistWorkspace(workspace, workspace.defaultScanPaths).assetCatalog;
+}
+
 function scanAndPersistWorkspace(workspace: WorkspaceRecord, roots: string[]) {
   const skills = scanSkills({ roots });
   const issues = validateSkills(skills);
@@ -340,17 +582,64 @@ function scanAndPersistWorkspace(workspace: WorkspaceRecord, roots: string[]) {
     ...createCatalog(skills),
     workspaceId: workspace.id
   };
+  const assetCatalog = {
+    ...createAssetCatalog(skills, issues),
+    workspaceId: workspace.id
+  };
 
   writeCatalog(getWorkspaceCatalogPath(workspace.id), catalog);
+  writeAssetCatalog(getWorkspaceAssetCatalogPath(workspace.id), assetCatalog);
 
   return {
     workspace,
     catalog,
+    assetCatalog,
     catalogPath: getWorkspaceCatalogPath(workspace.id),
+    assetCatalogPath: getWorkspaceAssetCatalogPath(workspace.id),
     generatedAt: catalog.generatedAt,
+    assets: assetCatalog.assets,
     skills,
     issues
   };
+}
+
+function createSkillAsset(
+  req: Request,
+  res: Response,
+  workspace: WorkspaceRecord,
+  defaultOwner: string
+): void {
+  try {
+    if (!String(req.body?.name ?? "").trim()) {
+      throw new Error("Skill name is required.");
+    }
+
+    const skillPath = createSkillSkeleton({
+      name: String(req.body.name),
+      dir: String(req.body?.dir ?? workspace.skillRoot),
+      description:
+        typeof req.body?.description === "string" ? req.body.description : undefined,
+      owner:
+        typeof req.body?.owner === "string" && req.body.owner.trim()
+          ? req.body.owner
+          : defaultOwner,
+      tags: Array.isArray(req.body?.tags)
+        ? req.body.tags.filter((tag: unknown): tag is string => typeof tag === "string")
+        : []
+    });
+
+    const response = scanAndPersistWorkspace(
+      workspace,
+      unique([workspace.skillRoot, ...workspace.defaultScanPaths])
+    );
+
+    res.status(201).json({
+      path: skillPath,
+      ...response
+    });
+  } catch (error) {
+    sendError(res, error, 400);
+  }
 }
 
 function getDemoWorkspace(): WorkspaceRecord {
@@ -387,6 +676,14 @@ function stringQuery(value: unknown): string | undefined {
 
 function hasErrors(issues: ValidationIssue[]): boolean {
   return issues.some((issue) => issue.severity === "error");
+}
+
+function readWorkspaceRole(value: unknown) {
+  if (value === "owner" || value === "admin" || value === "member" || value === "viewer") {
+    return value;
+  }
+
+  return "member";
 }
 
 function sendError(res: Response, error: unknown, status: number): void {
