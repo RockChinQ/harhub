@@ -12,6 +12,7 @@ Most teams already have this harness material, but it is spread across repositor
 - [Architecture](./architecture.md): system design, core services, data model, composition model, and integration strategy.
 - [Roadmap](./roadmap.md): phased delivery plan, MVP boundary, and open questions.
 - [Agent Skills Standard](./skill-standard.md): the external Skill format Harhub supports in the MVP.
+- [SaaS MVP](./saas-mvp.md): account, session, and workspace tenant model for the local-first app.
 
 ## Working Definition
 

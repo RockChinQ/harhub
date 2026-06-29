@@ -6,6 +6,38 @@ export type SkillLifecycleState =
 
 export type SkillValidationSeverity = "error" | "warning";
 
+export type WorkspaceRole = "owner" | "admin" | "member" | "viewer";
+
+export interface AccountProfile {
+  id: string;
+  email: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface WorkspaceRecord {
+  id: string;
+  name: string;
+  slug: string;
+  defaultScanPaths: string[];
+  skillRoot: string;
+  createdAt: string;
+}
+
+export interface WorkspaceMembership {
+  id: string;
+  accountId: string;
+  workspaceId: string;
+  role: WorkspaceRole;
+  createdAt: string;
+}
+
+export interface SessionPayload {
+  account: AccountProfile;
+  workspaces: WorkspaceRecord[];
+  memberships: WorkspaceMembership[];
+}
+
 export interface SkillSource {
   root: string;
   path: string;
@@ -40,6 +72,7 @@ export interface SkillRecord {
 export interface SkillCatalog {
   schemaVersion: 1;
   generatedAt: string;
+  workspaceId?: string;
   skills: SkillRecord[];
 }
 

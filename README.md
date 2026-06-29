@@ -37,6 +37,13 @@ npm run start
 
 Then open `http://127.0.0.1:3300`.
 
+Demo account:
+
+```text
+admin@harhub.local
+harhub
+```
+
 For local development with Vite:
 
 ```bash
@@ -51,10 +58,22 @@ The scan command writes a local catalog to `.harhub/skills.json`.
 ## Stack
 
 - TypeScript across CLI, API, shared skill logic, and frontend.
-- Express API for local Skills management.
+- Express API for account, workspace, and Skills management.
 - Vite + React frontend.
 - shadcn-style UI components under `src/web/src/components/ui`.
 - Tailwind CSS with CSS variables and `components.json` for shadcn conventions.
+
+## SaaS Model
+
+The current SaaS MVP is local-first but tenant-aware:
+
+- Accounts sign in with bearer-token sessions.
+- Workspaces represent tenants.
+- Memberships attach accounts to workspaces with roles.
+- Each workspace has its own scan paths, skill root, and catalog file.
+- Workspace catalogs are stored under `.harhub/workspaces/<workspace-id>/skills.json`.
+
+The local state file is `.harhub/state.json`, which is ignored by Git.
 
 ## Commands
 
@@ -77,11 +96,18 @@ node dist/cli.js skills list
 
 ```text
 GET  /api/health
-GET  /api/skills
-GET  /api/skills/:query
-POST /api/skills/scan
-POST /api/skills/validate
-POST /api/skills
+GET  /api/session
+POST /api/auth/login
+POST /api/auth/signup
+POST /api/auth/logout
+GET  /api/workspaces
+POST /api/workspaces
+PATCH /api/workspaces/:workspaceId
+GET  /api/workspaces/:workspaceId/skills
+GET  /api/workspaces/:workspaceId/skills/:query
+POST /api/workspaces/:workspaceId/skills/scan
+POST /api/workspaces/:workspaceId/skills/validate
+POST /api/workspaces/:workspaceId/skills
 ```
 
 The production server serves the built Vite app from `dist/web` and the API from the same port.
