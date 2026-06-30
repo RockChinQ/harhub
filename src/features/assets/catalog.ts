@@ -1,21 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import JSZip from "jszip";
-import {
-  contentHash,
-  parseMarkdown,
-  slugify,
-  stringValue
-} from "./markdown.js";
 import type {
   AssetCatalog,
   AssetHealth,
   AssetRecord,
   SkillCatalog,
   SkillRecord,
-  StoredObject,
   ValidationIssue
-} from "./types.js";
+} from "../../shared/types.js";
 
 export const DEFAULT_ASSET_CATALOG_PATH = ".harhub/assets.json";
 
@@ -50,81 +42,6 @@ export function readAssetCatalog(catalogPath: string): AssetCatalog {
 export function writeAssetCatalog(catalogPath: string, catalog: AssetCatalog): void {
   mkdirSync(path.dirname(catalogPath), { recursive: true });
   writeFileSync(catalogPath, `${JSON.stringify(catalog, null, 2)}\n`);
-}
-
-export async function createUploadedSkillAsset(input: {
-  workspaceId: string;
-  fileName: string;
-  buffer: Buffer;
-  storage: StoredObject;
-  name?: string;
-  description?: string;
-  owner?: string;
-  tags?: string[];
-}): Promise<AssetRecord> {
-  if (!input.fileName.toLowerCase().endsWith(".zip")) {
-    throw new Error("Only .zip skill uploads are supported.");
-  }
-
-  if (input.buffer.byteLength === 0) {
-    throw new Error("Uploaded skill zip is empty.");
-  }
-
-  const zip = await JSZip.loadAsync(input.buffer);
-  const skillEntry = Object.values(zip.files).find(
-    (entry) => !entry.dir && entry.name.split("/").pop() === "SKILL.md"
-  );
-
-  if (!skillEntry) {
-    throw new Error("Skill zip must contain a SKILL.md file.");
-  }
-
-  const skillMarkdown = await skillEntry.async("string");
-  const parsed = parseMarkdown(skillMarkdown);
-  const zipHash = contentHash(input.buffer);
-  const name =
-    slugify(input.name ?? "") ||
-    stringValue(parsed.frontmatter.name) ||
-    slugify(path.basename(input.fileName, path.extname(input.fileName))) ||
-    `uploaded-${zipHash.slice(0, 8)}`;
-  const description =
-    input.description?.trim() ||
-    stringValue(parsed.frontmatter.description) ||
-    parsed.description ||
-    "Uploaded skill asset.";
-  const displayName = parsed.title ?? titleFromSlug(name);
-  const now = new Date().toISOString();
-  const tags = unique(input.tags ?? []);
-
-  return {
-    id: `asset:skill:${input.workspaceId}:${name}`,
-    kind: "skill",
-    name,
-    displayName,
-    slug: name,
-    description,
-    owner: input.owner?.trim() || undefined,
-    packageName: "uploaded-skills",
-    lifecycleState: "experimental",
-    health: "valid",
-    tags,
-    contentHash: zipHash,
-    storage: input.storage,
-    validation: {
-      errors: 0,
-      warnings: parsed.hasFrontmatter ? 0 : 1
-    },
-    metadata: {
-      skillEntry: skillEntry.name,
-      zipEntries: Object.values(zip.files).filter((entry) => !entry.dir).length,
-      scripts: countZipEntries(zip, "scripts/"),
-      references: countZipEntries(zip, "references/"),
-      assets: countZipEntries(zip, "assets/"),
-      headings: parsed.headings
-    },
-    discoveredAt: now,
-    updatedAt: now
-  };
 }
 
 export function skillToAsset(
@@ -280,10 +197,6 @@ function normalizeAssetCatalog(catalog: AssetCatalog | SkillCatalog): AssetCatal
   };
 }
 
-function countZipEntries(zip: JSZip, pathPart: string): number {
-  return Object.values(zip.files).filter((entry) => !entry.dir && entry.name.includes(pathPart)).length;
-}
-
 function normalizeLifecycle(value: unknown): AssetRecord["lifecycleState"] | undefined {
   if (
     value === "experimental" ||
@@ -301,14 +214,6 @@ function healthFromIssueCounts(errors: number, warnings: number): AssetHealth {
   if (errors > 0) return "error";
   if (warnings > 0) return "warning";
   return "valid";
-}
-
-function titleFromSlug(slug: string): string {
-  return slug
-    .split("-")
-    .filter(Boolean)
-    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
-    .join(" ");
 }
 
 function unique(values: string[]): string[] {

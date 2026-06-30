@@ -5,8 +5,8 @@ import {
   S3Client
 } from "@aws-sdk/client-s3";
 import { randomUUID } from "node:crypto";
-import { slugify } from "./markdown.js";
-import type { StorageStatus, StoredObject } from "./types.js";
+import { slugify } from "../shared/markdown.js";
+import type { StorageStatus, StoredObject } from "../shared/types.js";
 
 const DEFAULT_REGION = "us-east-1";
 

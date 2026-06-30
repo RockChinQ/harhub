@@ -1,0 +1,139 @@
+import type { AssetPreview } from "../../../../shared/types";
+import { JSON_HEADERS, request } from "./request";
+import type {
+  AssetListResponse,
+  AssetScanResponse,
+  AssetUploadResponse
+} from "./types";
+
+export async function getWorkspaceAssets(
+  token: string,
+  workspaceId: string,
+  filters: { kind?: string; tag?: string; owner?: string; package?: string } = {}
+): Promise<AssetListResponse> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value);
+  }
+
+  return request<AssetListResponse>(
+    `/api/workspaces/${workspaceId}/assets?${params.toString()}`,
+    { token }
+  );
+}
+
+export async function scanWorkspaceAssets(
+  token: string,
+  workspaceId: string,
+  paths: string[]
+): Promise<AssetScanResponse> {
+  return request<AssetScanResponse>(`/api/workspaces/${workspaceId}/assets/scan`, {
+    token,
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ paths })
+  });
+}
+
+export async function createWorkspaceAsset(
+  token: string,
+  workspaceId: string,
+  input: {
+    kind: "skill";
+    name: string;
+    dir: string;
+    description?: string;
+    owner?: string;
+    tags: string[];
+  }
+): Promise<AssetScanResponse & { path: string }> {
+  return request<AssetScanResponse & { path: string }>(
+    `/api/workspaces/${workspaceId}/assets`,
+    {
+      token,
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(input)
+    }
+  );
+}
+
+export async function uploadWorkspaceSkillZip(
+  token: string,
+  workspaceId: string,
+  input: {
+    file: File;
+    name?: string;
+    description?: string;
+    owner?: string;
+    tags: string[];
+  }
+): Promise<AssetUploadResponse> {
+  const form = new FormData();
+  form.set("file", input.file);
+  if (input.name) form.set("name", input.name);
+  if (input.description) form.set("description", input.description);
+  if (input.owner) form.set("owner", input.owner);
+  if (input.tags.length > 0) form.set("tags", input.tags.join(","));
+
+  return request<AssetUploadResponse>(
+    `/api/workspaces/${workspaceId}/assets/upload`,
+    {
+      token,
+      method: "POST",
+      body: form
+    }
+  );
+}
+
+export async function updateWorkspaceAsset(
+  token: string,
+  workspaceId: string,
+  assetId: string,
+  input: {
+    description?: string;
+    owner?: string;
+    tags?: string[];
+    lifecycleState?: string;
+    agents?: string[];
+  }
+): Promise<AssetScanResponse> {
+  return request<AssetScanResponse>(
+    `/api/workspaces/${workspaceId}/assets/${encodeURIComponent(assetId)}`,
+    {
+      token,
+      method: "PATCH",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(input)
+    }
+  );
+}
+
+export async function deleteWorkspaceAsset(
+  token: string,
+  workspaceId: string,
+  assetId: string
+): Promise<AssetScanResponse> {
+  return request<AssetScanResponse>(
+    `/api/workspaces/${workspaceId}/assets/${encodeURIComponent(assetId)}`,
+    {
+      token,
+      method: "DELETE"
+    }
+  );
+}
+
+export async function getWorkspaceAssetPreview(
+  token: string,
+  workspaceId: string,
+  assetId: string,
+  filePath?: string
+): Promise<AssetPreview> {
+  const params = new URLSearchParams();
+  if (filePath) params.set("path", filePath);
+  const query = params.toString();
+  return request<AssetPreview>(
+    `/api/workspaces/${workspaceId}/assets/${encodeURIComponent(assetId)}/preview${query ? `?${query}` : ""}`,
+    { token }
+  );
+}

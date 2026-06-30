@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/sidebar"
 import type { SessionResponse } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import type { WorkspaceMembership, WorkspaceRecord } from "../../../types"
+import type { WorkspaceMembership, WorkspaceRecord } from "../../../shared/types"
 
 type AppSidebarView = "assets" | "asset-detail" | "workspace" | "account"
 

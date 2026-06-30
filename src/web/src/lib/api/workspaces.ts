@@ -1,0 +1,94 @@
+import type { WorkspaceRole } from "../../../../shared/types";
+import { JSON_HEADERS, request } from "./request";
+import type {
+  WorkspaceMemberMutationResponse,
+  WorkspaceMembersResponse,
+  WorkspaceMutationResponse
+} from "./types";
+
+export async function getWorkspaceMembers(
+  token: string,
+  workspaceId: string
+): Promise<WorkspaceMembersResponse> {
+  return request<WorkspaceMembersResponse>(
+    `/api/workspaces/${workspaceId}/members`,
+    { token }
+  );
+}
+
+export async function addWorkspaceMember(
+  token: string,
+  workspaceId: string,
+  input: { email: string; role: WorkspaceRole }
+): Promise<WorkspaceMemberMutationResponse> {
+  return request<WorkspaceMemberMutationResponse>(
+    `/api/workspaces/${workspaceId}/members`,
+    {
+      token,
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(input)
+    }
+  );
+}
+
+export async function updateWorkspaceMember(
+  token: string,
+  workspaceId: string,
+  membershipId: string,
+  role: WorkspaceRole
+): Promise<WorkspaceMemberMutationResponse> {
+  return request<WorkspaceMemberMutationResponse>(
+    `/api/workspaces/${workspaceId}/members/${membershipId}`,
+    {
+      token,
+      method: "PATCH",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ role })
+    }
+  );
+}
+
+export async function removeWorkspaceMember(
+  token: string,
+  workspaceId: string,
+  membershipId: string
+): Promise<void> {
+  await request<void>(`/api/workspaces/${workspaceId}/members/${membershipId}`, {
+    token,
+    method: "DELETE"
+  });
+}
+
+export async function createWorkspace(
+  token: string,
+  input: {
+    name: string;
+    defaultScanPaths: string[];
+    skillRoot: string;
+  }
+): Promise<WorkspaceMutationResponse> {
+  return request<WorkspaceMutationResponse>("/api/workspaces", {
+    token,
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(input)
+  });
+}
+
+export async function updateWorkspace(
+  token: string,
+  workspaceId: string,
+  input: {
+    name?: string;
+    defaultScanPaths?: string[];
+    skillRoot?: string;
+  }
+): Promise<WorkspaceMutationResponse> {
+  return request<WorkspaceMutationResponse>(`/api/workspaces/${workspaceId}`, {
+    token,
+    method: "PATCH",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(input)
+  });
+}
