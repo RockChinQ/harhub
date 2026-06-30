@@ -150,6 +150,37 @@ export interface AssetCatalog {
   skills: SkillRecord[];
 }
 
+export interface AssetFileTreeNode {
+  name: string;
+  path: string;
+  type: "directory" | "file";
+  size?: number;
+  children?: AssetFileTreeNode[];
+}
+
+export interface AssetFileSummary {
+  path: string;
+  name: string;
+  size: number;
+  isText: boolean;
+}
+
+export interface AssetFilePreview {
+  path: string;
+  name: string;
+  size: number;
+  isText: boolean;
+  truncated: boolean;
+  content?: string;
+}
+
+export interface AssetPreview {
+  asset: AssetRecord;
+  tree: AssetFileTreeNode[];
+  files: AssetFileSummary[];
+  selectedFile?: AssetFilePreview;
+}
+
 export interface ValidationIssue {
   severity: SkillValidationSeverity;
   code: string;

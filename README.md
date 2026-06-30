@@ -35,7 +35,7 @@ npm run build
 npm run start
 ```
 
-Then open `http://127.0.0.1:3300`.
+Then open `http://127.0.0.1:3310/skills`.
 
 Demo account:
 
@@ -50,8 +50,8 @@ For local development with Vite:
 npm run dev
 ```
 
-- API: `http://127.0.0.1:3300`
-- Web: `http://127.0.0.1:5173`
+- API: `http://127.0.0.1:3310`
+- Web: `http://127.0.0.1:5176/skills`
 
 ### S3 Storage
 

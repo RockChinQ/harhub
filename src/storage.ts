@@ -1,5 +1,6 @@
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   PutObjectCommand,
   S3Client
 } from "@aws-sdk/client-s3";
@@ -82,6 +83,40 @@ export async function deleteStoredObject(object: StoredObject): Promise<void> {
       Key: object.key
     })
   );
+}
+
+export async function readStoredObject(object: StoredObject): Promise<Buffer> {
+  if (object.provider !== "s3") {
+    throw new Error(`Unsupported storage provider: ${object.provider}`);
+  }
+
+  const config = readStorageConfig();
+  const bucket = object.bucket || config.bucket;
+  if (!bucket) {
+    throw new Error("S3 storage is not configured.");
+  }
+
+  const client = createS3Client(config);
+  const result = await client.send(
+    new GetObjectCommand({
+      Bucket: bucket,
+      Key: object.key
+    })
+  );
+
+  const body = result.Body;
+  if (!body) return Buffer.alloc(0);
+
+  const blobBody = body as { transformToByteArray?: () => Promise<Uint8Array> };
+  if (typeof blobBody.transformToByteArray === "function") {
+    return Buffer.from(await blobBody.transformToByteArray());
+  }
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of body as AsyncIterable<Uint8Array>) {
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
 }
 
 function readStorageConfig() {

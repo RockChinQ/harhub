@@ -1,5 +1,6 @@
 import type {
   AccountProfile,
+  AssetPreview,
   AssetRecord,
   SkillRecord,
   StorageStatus,
@@ -239,6 +240,21 @@ export async function deleteWorkspaceAsset(
       token,
       method: "DELETE"
     }
+  );
+}
+
+export async function getWorkspaceAssetPreview(
+  token: string,
+  workspaceId: string,
+  assetId: string,
+  filePath?: string
+): Promise<AssetPreview> {
+  const params = new URLSearchParams();
+  if (filePath) params.set("path", filePath);
+  const query = params.toString();
+  return request<AssetPreview>(
+    `/api/workspaces/${workspaceId}/assets/${encodeURIComponent(assetId)}/preview${query ? `?${query}` : ""}`,
+    { token }
   );
 }
 

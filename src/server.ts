@@ -1,6 +1,7 @@
 import cors from "cors";
 import express, { type Request, type Response } from "express";
 import multer from "multer";
+import JSZip, { type JSZipObject } from "jszip";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import {
@@ -52,20 +53,26 @@ import {
 import {
   deleteStoredObject,
   getStorageStatus,
+  readStoredObject,
   uploadSkillZipObject
 } from "./storage.js";
 import { contentHash } from "./markdown.js";
 import type {
   AccountProfile,
   AssetCatalog,
+  AssetFilePreview,
+  AssetFileSummary,
+  AssetFileTreeNode,
   AssetRecord,
   SkillCatalog,
   ValidationIssue,
   WorkspaceRecord
 } from "./types.js";
 
-const PORT = Number(process.env.PORT ?? 3300);
+const PORT = Number(process.env.PORT ?? 3310);
 const MAX_UPLOAD_BYTES = Number(process.env.HARHUB_MAX_UPLOAD_BYTES ?? 25 * 1024 * 1024);
+const MAX_PREVIEW_BYTES = 256 * 1024;
+const MAX_PREVIEW_CHARS = 120_000;
 
 const app = express();
 const upload = multer({
@@ -304,6 +311,43 @@ app.get("/api/workspaces/:workspaceId/assets", (req, res) => {
       .map((asset) => asset.skill)
       .filter((skill): skill is SkillCatalog["skills"][number] => Boolean(skill))
   });
+});
+
+app.get("/api/workspaces/:workspaceId/assets/:query/preview", async (req, res) => {
+  const context = requireWorkspaceAccess(req, res);
+  if (!context) return;
+
+  try {
+    const catalog = loadOrCreateWorkspaceAssetCatalog(context.workspace);
+    const asset = findAsset(catalog, req.params.query);
+    if (!asset) {
+      res.status(404).json({ error: "Asset not found" });
+      return;
+    }
+
+    if (!asset.storage) {
+      res.status(400).json({ error: "Asset has no stored zip to preview." });
+      return;
+    }
+
+    const buffer = await readStoredObject(asset.storage);
+    const zip = await JSZip.loadAsync(buffer);
+    const entries = Object.values(zip.files)
+      .filter((entry) => !entry.dir)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const requestedPath = stringQuery(req.query.path);
+    const fallbackPath = metadataString(asset, "skillEntry") || entries[0]?.name;
+    const selectedEntry = entries.find((entry) => entry.name === (requestedPath || fallbackPath));
+
+    res.json({
+      asset,
+      tree: buildZipTree(entries),
+      files: entries.map(zipEntrySummary),
+      selectedFile: selectedEntry ? await zipEntryPreview(selectedEntry) : undefined
+    });
+  } catch (error) {
+    sendError(res, error, 400);
+  }
 });
 
 app.get("/api/workspaces/:workspaceId/assets/:query", (req, res) => {
@@ -829,6 +873,132 @@ function readPathList(value: unknown, fallback: string[]): string[] {
 
 function stringQuery(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function metadataString(asset: AssetRecord, key: string): string | undefined {
+  const value = asset.metadata[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function buildZipTree(entries: JSZipObject[]): AssetFileTreeNode[] {
+  type MutableNode = AssetFileTreeNode & { childMap?: Map<string, MutableNode> };
+  const roots = new Map<string, MutableNode>();
+
+  for (const entry of entries) {
+    const parts = entry.name.split("/").filter(Boolean);
+    let level = roots;
+    let currentPath = "";
+
+    parts.forEach((part, index) => {
+      currentPath = currentPath ? `${currentPath}/${part}` : part;
+      const isFile = index === parts.length - 1;
+      let node = level.get(part);
+
+      if (!node) {
+        node = {
+          name: part,
+          path: currentPath,
+          type: isFile ? "file" : "directory",
+          ...(isFile ? { size: zipEntrySize(entry) } : { children: [], childMap: new Map() })
+        };
+        level.set(part, node);
+      }
+
+      if (!isFile) {
+        node.type = "directory";
+        node.children ??= [];
+        node.childMap ??= new Map();
+        level = node.childMap;
+      }
+    });
+  }
+
+  function finalize(nodes: Iterable<MutableNode>): AssetFileTreeNode[] {
+    return Array.from(nodes)
+      .sort((a, b) =>
+        a.type === b.type ? a.name.localeCompare(b.name) : a.type === "directory" ? -1 : 1
+      )
+      .map((node) => ({
+        name: node.name,
+        path: node.path,
+        type: node.type,
+        size: node.size,
+        children: node.childMap ? finalize(node.childMap.values()) : undefined
+      }));
+  }
+
+  return finalize(roots.values());
+}
+
+function zipEntrySummary(entry: JSZipObject): AssetFileSummary {
+  return {
+    path: entry.name,
+    name: path.posix.basename(entry.name),
+    size: zipEntrySize(entry),
+    isText: isTextZipEntry(entry.name)
+  };
+}
+
+async function zipEntryPreview(entry: JSZipObject): Promise<AssetFilePreview> {
+  const size = zipEntrySize(entry);
+  const isText = isTextZipEntry(entry.name);
+  const base = {
+    path: entry.name,
+    name: path.posix.basename(entry.name),
+    size,
+    isText
+  };
+
+  if (!isText) {
+    return {
+      ...base,
+      truncated: false
+    };
+  }
+
+  const content = await entry.async("string");
+  return {
+    ...base,
+    truncated: size > MAX_PREVIEW_BYTES || content.length > MAX_PREVIEW_CHARS,
+    content: content.slice(0, MAX_PREVIEW_CHARS)
+  };
+}
+
+function zipEntrySize(entry: JSZipObject): number {
+  const data = (entry as unknown as { _data?: { uncompressedSize?: number } })._data;
+  return data?.uncompressedSize ?? 0;
+}
+
+function isTextZipEntry(filePath: string): boolean {
+  const name = filePath.toLowerCase();
+  const extension = path.posix.extname(name);
+  return (
+    name.endsWith("skill.md") ||
+    [
+      ".md",
+      ".mdx",
+      ".txt",
+      ".json",
+      ".yaml",
+      ".yml",
+      ".csv",
+      ".tsv",
+      ".xml",
+      ".html",
+      ".css",
+      ".js",
+      ".jsx",
+      ".ts",
+      ".tsx",
+      ".py",
+      ".sh",
+      ".toml",
+      ".ini",
+      ".env",
+      ".gitignore",
+      ".license"
+    ].includes(extension)
+  );
 }
 
 function hasErrors(issues: ValidationIssue[]): boolean {

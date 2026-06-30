@@ -1,15 +1,16 @@
 import {
   AlertCircle,
-  Building2,
+  ArrowLeft,
   CheckCircle2,
   Clock3,
+  Eye,
   FileArchive,
-  GalleryVerticalEnd,
+  FileText,
+  Folder,
+  FolderOpen,
   HardDriveUpload,
   KeyRound,
-  Layers3,
   Loader2,
-  LogOut,
   PackageOpen,
   Plus,
   Save,
@@ -17,13 +18,14 @@ import {
   Tag,
   Trash2,
   Upload,
-  UserCircle,
   UserPlus,
   type LucideIcon
 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import type {
   AccountProfile,
+  AssetFileTreeNode,
+  AssetPreview,
   AssetRecord,
   StorageStatus,
   ValidationIssue,
@@ -43,20 +45,11 @@ import {
 } from "./components/ui/card";
 import { Input } from "./components/ui/input";
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
   SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarProvider,
   SidebarTrigger
 } from "./components/ui/sidebar";
+import { AppSidebar } from "./components/app-sidebar";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -80,6 +73,7 @@ import {
   createWorkspace,
   deleteWorkspaceAsset,
   getSession,
+  getWorkspaceAssetPreview,
   getWorkspaceAssets,
   getWorkspaceMembers,
   login,
@@ -100,7 +94,12 @@ const TOKEN_KEY = "harhub.token";
 const WORKSPACE_KEY = "harhub.workspace";
 const roleOptions: WorkspaceRole[] = ["owner", "admin", "member", "viewer"];
 
-type View = "assets" | "workspace" | "account";
+type View = "assets" | "asset-detail" | "workspace" | "account";
+
+interface AppRoute {
+  view: View;
+  assetQuery?: string;
+}
 
 export function App() {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) ?? "");
@@ -108,7 +107,7 @@ export function App() {
   const [activeWorkspaceId, setActiveWorkspaceId] = useState(
     () => localStorage.getItem(WORKSPACE_KEY) ?? ""
   );
-  const [view, setView] = useState<View>("assets");
+  const [route, setRoute] = useState<AppRoute>(() => readRouteFromLocation());
   const [assets, setAssets] = useState<AssetRecord[]>([]);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [storageStatus, setStorageStatus] = useState<StorageStatus | undefined>();
@@ -117,6 +116,7 @@ export function App() {
   const [tagFilter, setTagFilter] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
+  const view = route.view;
 
   useEffect(() => {
     if (!token) {
@@ -127,6 +127,19 @@ export function App() {
     void loadSession(token);
   }, [token]);
 
+  useEffect(() => {
+    const nextRoute = readRouteFromLocation();
+    replaceBrowserRoute(nextRoute);
+    setRoute(nextRoute);
+
+    function handlePopState() {
+      setRoute(readRouteFromLocation());
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   const activeWorkspace = useMemo(() => {
     if (!session) return undefined;
     return (
@@ -134,12 +147,39 @@ export function App() {
       session.workspaces[0]
     );
   }, [activeWorkspaceId, session]);
+  const routedAsset = useMemo(
+    () => route.assetQuery ? findUiAsset(assets, route.assetQuery) : undefined,
+    [assets, route.assetQuery]
+  );
+  const selectedAsset = useMemo(
+    () => routedAsset ?? assets.find((asset) => asset.id === selectedId),
+    [assets, routedAsset, selectedId]
+  );
 
   useEffect(() => {
     if (!activeWorkspace || !token) return;
     localStorage.setItem(WORKSPACE_KEY, activeWorkspace.id);
     void refreshAssets(activeWorkspace.id);
   }, [activeWorkspace?.id, token]);
+
+  useEffect(() => {
+    if (routedAsset && routedAsset.id !== selectedId) {
+      setSelectedId(routedAsset.id);
+    }
+  }, [routedAsset?.id, selectedId]);
+
+  function navigate(nextRoute: AppRoute, options: { replace?: boolean } = {}) {
+    const normalizedRoute = normalizeRoute(nextRoute);
+    const path = pathForRoute(normalizedRoute);
+
+    if (options.replace) {
+      window.history.replaceState(null, "", path);
+    } else if (window.location.pathname !== path) {
+      window.history.pushState(null, "", path);
+    }
+
+    setRoute(normalizedRoute);
+  }
 
   async function loadSession(nextToken: string) {
     setIsLoading(true);
@@ -170,8 +210,10 @@ export function App() {
       setAssets(result.assets);
       setStorageStatus(result.storage);
       const storedAssets = result.assets.filter((asset) => asset.storage);
+      const routeAsset = route.assetQuery ? findUiAsset(storedAssets, route.assetQuery) : undefined;
       setSelectedId((current) =>
-        storedAssets.some((asset) => asset.id === current) ? current : storedAssets[0]?.id
+        routeAsset?.id ??
+        (storedAssets.some((asset) => asset.id === current) ? current : storedAssets[0]?.id)
       );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -189,6 +231,7 @@ export function App() {
       setActiveWorkspaceId(workspace.id);
       localStorage.setItem(WORKSPACE_KEY, workspace.id);
     }
+    navigate({ view: "assets" }, { replace: true });
   }
 
   async function handleLogout() {
@@ -199,6 +242,7 @@ export function App() {
     setSession(undefined);
     setAssets([]);
     setIssues([]);
+    navigate({ view: "assets" }, { replace: true });
   }
 
   async function applySession(nextSession: SessionResponse, workspace?: WorkspaceRecord) {
@@ -221,102 +265,26 @@ export function App() {
   }
 
   return (
-    <SidebarProvider>
-      <Sidebar variant="floating">
-        <SidebarHeader>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton size="lg" asChild>
-                <a href="#" onClick={(event) => event.preventDefault()}>
-                  <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                    <GalleryVerticalEnd className="size-4" aria-hidden="true" />
-                  </div>
-                  <div className="flex min-w-0 flex-col gap-0.5 leading-none">
-                    <span className="truncate font-semibold">Harhub</span>
-                    <span className="truncate text-xs">{activeWorkspace?.name ?? "Workspace"}</span>
-                  </div>
-                </a>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarHeader>
-        <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>Library</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarSection
-                  icon={Layers3}
-                  title="Skills"
-                  detail="S3 asset library"
-                  isActive={view === "assets"}
-                  onSelect={() => setView("assets")}
-                />
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
-        <SidebarFooter className="border-t border-sidebar-border/70">
-          <div className="space-y-2 rounded-lg border border-sidebar-border bg-background/80 p-2">
-            <div className="flex items-center gap-2">
-              <WorkspaceSelect
-                workspaces={session.workspaces}
-                value={activeWorkspace?.id ?? ""}
-                onValueChange={setActiveWorkspaceId}
-                className="h-8 min-w-0 border-sidebar-border bg-background shadow-none focus:ring-sidebar-ring"
-              />
-              <Button
-                type="button"
-                variant={view === "workspace" ? "secondary" : "ghost"}
-                size="icon"
-                className="h-8 w-8 shrink-0"
-                onClick={() => setView("workspace")}
-                aria-label="Workspace settings"
-              >
-                <Building2 className="h-4 w-4" aria-hidden="true" />
-              </Button>
-            </div>
-            <div className="px-1 text-xs text-sidebar-foreground/65">
-              {roleForWorkspace(session.memberships, activeWorkspace?.id)}
-            </div>
-          </div>
-          <div className="space-y-2 rounded-lg border border-sidebar-border bg-background/80 p-2">
-            <button
-              type="button"
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                view === "account" && "bg-sidebar-accent text-sidebar-accent-foreground"
-              )}
-              onClick={() => setView("account")}
-            >
-              <UserCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium">{session.account.name}</span>
-                <span className="block truncate text-xs text-muted-foreground">
-                  {session.account.email}
-                </span>
-              </span>
-            </button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-8 w-full justify-start bg-background"
-              onClick={handleLogout}
-            >
-              <LogOut className="size-4" aria-hidden="true" />
-              <span>Sign out</span>
-            </Button>
-          </div>
-        </SidebarFooter>
-      </Sidebar>
-      <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
+    <SidebarProvider className="h-svh overflow-hidden">
+      <AppSidebar
+        session={session}
+        activeWorkspace={activeWorkspace}
+        view={view}
+        onNavigate={navigate}
+        onWorkspaceChange={(workspaceId) => {
+          setActiveWorkspaceId(workspaceId);
+          navigate({ view: "assets" });
+        }}
+        onLogout={handleLogout}
+      />
+      <SidebarInset className="h-svh min-w-0 overflow-hidden">
+        <header className="flex h-16 min-w-0 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
-          <Breadcrumb>
+          <Breadcrumb className="min-w-0">
             <BreadcrumbList>
               <BreadcrumbItem>
-                <span className="font-medium text-foreground">
+                <span className="block max-w-[40vw] truncate font-medium text-foreground">
                   {activeWorkspace?.name ?? "Workspace"}
                 </span>
               </BreadcrumbItem>
@@ -327,9 +295,9 @@ export function App() {
             </BreadcrumbList>
           </Breadcrumb>
         </header>
-        <div className="flex flex-1 flex-col gap-4 p-4 sm:p-6 lg:p-8">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-4 sm:p-6 lg:p-8">
           {error ? (
-            <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <div className="mb-4 shrink-0 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {error}
             </div>
           ) : null}
@@ -347,7 +315,23 @@ export function App() {
               onQueryChange={setQuery}
               onTagFilterChange={setTagFilter}
               onSelect={setSelectedId}
+              onOpenDetail={(assetId) => {
+                const asset = findUiAsset(assets, assetId);
+                if (!asset) return;
+                setSelectedId(asset.id);
+                navigate({ view: "asset-detail", assetQuery: routeQueryForAsset(asset) });
+              }}
               onRefresh={refreshAssets}
+            />
+          ) : null}
+          {view === "asset-detail" && activeWorkspace ? (
+            <SkillDetailView
+              workspace={activeWorkspace}
+              token={token}
+              asset={selectedAsset}
+              issues={issues}
+              onBack={() => navigate({ view: "assets" })}
+              onChanged={refreshAssets}
             />
           ) : null}
           {view === "workspace" && activeWorkspace ? (
@@ -367,40 +351,9 @@ export function App() {
               onPasswordChanged={handleLogout}
             />
           ) : null}
-        </div>
+        </main>
       </SidebarInset>
     </SidebarProvider>
-  );
-}
-
-function SidebarSection({
-  icon: Icon,
-  title,
-  detail,
-  isActive,
-  onSelect
-}: {
-  icon: LucideIcon;
-  title: string;
-  detail: string;
-  isActive: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton
-        isActive={isActive}
-        onClick={onSelect}
-        tooltip={title}
-        className="h-11 items-start"
-      >
-        <Icon className="mt-0.5 size-4" aria-hidden="true" />
-        <span className="flex min-w-0 flex-col gap-0.5 leading-tight">
-          <span className="truncate font-medium">{title}</span>
-          <span className="truncate text-xs text-sidebar-foreground/60">{detail}</span>
-        </span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
   );
 }
 
@@ -508,33 +461,6 @@ function AuthScreen({
   );
 }
 
-function WorkspaceSelect({
-  workspaces,
-  value,
-  onValueChange,
-  className
-}: {
-  workspaces: WorkspaceRecord[];
-  value: string;
-  onValueChange: (value: string) => void;
-  className?: string;
-}) {
-  return (
-    <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger aria-label="Workspace" className={className}>
-        <SelectValue placeholder="Select workspace" />
-      </SelectTrigger>
-      <SelectContent>
-        {workspaces.map((workspace) => (
-          <SelectItem key={workspace.id} value={workspace.id}>
-            {workspace.name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
-
 function AssetsView({
   workspace,
   token,
@@ -548,6 +474,7 @@ function AssetsView({
   onQueryChange,
   onTagFilterChange,
   onSelect,
+  onOpenDetail,
   onRefresh
 }: {
   workspace: WorkspaceRecord;
@@ -562,6 +489,7 @@ function AssetsView({
   onQueryChange: (value: string) => void;
   onTagFilterChange: (value: string) => void;
   onSelect: (id: string) => void;
+  onOpenDetail: (id: string) => void;
   onRefresh: () => Promise<void>;
 }) {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -609,12 +537,12 @@ function AssetsView({
   const latestUpload = uploadDates[uploadDates.length - 1];
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col gap-4 overflow-hidden">
+      <div className="flex shrink-0 min-w-0 flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold tracking-normal">Skills</h1>
-            <Badge variant="secondary" className="bg-lime-300 text-zinc-950 hover:bg-lime-300">
+            <Badge variant="secondary" className="bg-blue-600 text-white hover:bg-blue-600">
               {skillAssets.length} managed
             </Badge>
             {errorCount + warningCount > 0 ? (
@@ -626,8 +554,8 @@ function AssetsView({
           <div className="flex flex-wrap gap-2">
             <SkillSummaryPill
               icon={HardDriveUpload}
-              label={storageLabel(storage)}
-              value={`${managedAssets.length} S3 object(s)`}
+              label="Uploaded"
+              value={`${managedAssets.length} package(s)`}
             />
             <SkillSummaryPill icon={Tag} label="Tags" value={tags.length.toString()} />
             <SkillSummaryPill
@@ -650,7 +578,7 @@ function AssetsView({
           >
             <div className="border-b px-4 py-3">
               <div className="font-medium">Upload skill zip</div>
-              <div className="mt-1 text-xs text-muted-foreground">{storageLabel(storage)}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{uploadStatusLabel(storage)}</div>
             </div>
             <div className="p-4">
               <UploadSkillZipForm
@@ -666,7 +594,7 @@ function AssetsView({
           </PopoverContent>
         </Popover>
       </div>
-      <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 sm:flex-row sm:items-center">
+      <div className="flex shrink-0 min-w-0 flex-col gap-3 rounded-lg border bg-card p-3 sm:flex-row sm:items-center">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input
@@ -706,19 +634,20 @@ function AssetsView({
           </Button>
         ) : null}
       </div>
-      <SkillListTable
-        assets={filteredAssets}
-        selectedId={selectedAsset?.id}
-        isLoading={isLoading}
-        onSelect={onSelect}
-      />
-      <SkillMetadataPanel
-        workspace={workspace}
-        token={token}
-        asset={selectedAsset}
-        issues={issues}
-        onChanged={onRefresh}
-      />
+      <div className="grid min-h-0 min-w-0 flex-1 gap-4 overflow-auto xl:grid-cols-[minmax(0,1fr)_420px] xl:overflow-hidden">
+        <SkillListTable
+          assets={filteredAssets}
+          selectedId={selectedAsset?.id}
+          isLoading={isLoading}
+          onSelect={onSelect}
+          onOpenDetail={onOpenDetail}
+        />
+        <SkillQuickPreview
+          asset={selectedAsset}
+          issues={issues}
+          onOpenDetail={onOpenDetail}
+        />
+      </div>
     </div>
   );
 }
@@ -733,9 +662,9 @@ function SkillSummaryPill({
   value: string;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-md border bg-background px-2.5 py-1.5 text-xs">
+    <div className="flex min-w-0 max-w-full items-center gap-2 rounded-md border bg-background px-2.5 py-1.5 text-xs">
       <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="truncate text-muted-foreground">{label}</span>
+      <span className="min-w-0 truncate text-muted-foreground">{label}</span>
       <span className="shrink-0 font-medium">{value}</span>
     </div>
   );
@@ -745,16 +674,18 @@ function SkillListTable({
   assets,
   selectedId,
   isLoading,
-  onSelect
+  onSelect,
+  onOpenDetail
 }: {
   assets: AssetRecord[];
   selectedId?: string;
   isLoading: boolean;
   onSelect: (id: string) => void;
+  onOpenDetail: (id: string) => void;
 }) {
   if (isLoading) {
     return (
-      <div className="flex h-60 items-center justify-center rounded-lg border bg-card text-sm text-muted-foreground">
+      <div className="flex min-h-60 min-w-0 items-center justify-center rounded-lg border bg-card text-sm text-muted-foreground xl:h-full xl:min-h-0">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
         Loading skills
       </div>
@@ -763,7 +694,7 @@ function SkillListTable({
 
   if (assets.length === 0) {
     return (
-      <div className="flex h-60 flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-card text-sm text-muted-foreground">
+      <div className="flex min-h-60 min-w-0 flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-card text-sm text-muted-foreground xl:h-full xl:min-h-0">
         <PackageOpen className="h-7 w-7" aria-hidden="true" />
         No uploaded skill zips matched the current filters.
       </div>
@@ -771,98 +702,434 @@ function SkillListTable({
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-card">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px] text-left text-sm">
-          <thead className="border-b bg-muted/50 text-xs uppercase text-muted-foreground">
-            <tr>
-              <th className="px-4 py-3 font-medium">Skill</th>
-              <th className="px-4 py-3 font-medium">Package / Owner</th>
-              <th className="px-4 py-3 font-medium">Contents</th>
-              <th className="px-4 py-3 font-medium">Storage</th>
-              <th className="px-4 py-3 font-medium">Updated</th>
-              <th className="w-28 px-4 py-3 font-medium">Health</th>
-            </tr>
-          </thead>
-          <tbody>
-            {assets.map((asset) => {
-              const zipEntries = metadataNumber(asset, "zipEntries");
-              const scriptCount = metadataNumber(asset, "scripts");
-              const referenceCount = metadataNumber(asset, "references");
-              const assetCount = metadataNumber(asset, "assets");
-              const uploadedAt = asset.storage?.uploadedAt ?? asset.updatedAt;
+    <div className="min-h-[420px] w-full min-w-0 max-w-full overflow-hidden rounded-lg border bg-card xl:h-full xl:min-h-0">
+      <div className="h-full w-full min-w-0 overflow-y-auto overflow-x-hidden overscroll-y-contain">
+        <div className="sticky top-0 z-10 hidden min-w-0 grid-cols-[minmax(260px,1.5fr)_minmax(140px,.8fr)_minmax(140px,.7fr)_minmax(150px,.8fr)_108px] gap-3 border-b bg-muted/95 px-4 py-3 text-left text-xs uppercase text-muted-foreground backdrop-blur min-[1800px]:grid">
+          <div className="font-medium">Skill</div>
+          <div className="font-medium">Package / Owner</div>
+          <div className="font-medium">Contents</div>
+          <div className="font-medium">Archive</div>
+          <div className="font-medium">Status</div>
+        </div>
+        <div className="min-w-0">
+          {assets.map((asset) => {
+            const zipEntries = metadataNumber(asset, "zipEntries");
+            const scriptCount = metadataNumber(asset, "scripts");
+            const referenceCount = metadataNumber(asset, "references");
+            const assetCount = metadataNumber(asset, "assets");
+            const uploadedAt = asset.storage?.uploadedAt ?? asset.updatedAt;
+            const archiveName = asset.storage?.originalName ?? "-";
+            const size = asset.storage ? formatBytes(asset.storage.size) : "-";
 
-              return (
-                <tr
-                  key={asset.id}
-                  className={cn(
-                    "cursor-pointer border-b transition-colors last:border-0 hover:bg-accent/45",
-                    selectedId === asset.id && "bg-lime-50/80"
-                  )}
-                  onClick={() => onSelect(asset.id)}
-                >
-                  <td className="px-4 py-4 align-top">
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-lime-300 text-zinc-950">
-                        <FileArchive className="h-4 w-4" aria-hidden="true" />
+            return (
+              <div
+                key={asset.id}
+                role="button"
+                tabIndex={0}
+                className={cn(
+                  "grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] gap-3 border-b px-4 py-4 text-sm transition-colors last:border-0 hover:bg-accent/45 min-[1800px]:grid-cols-[minmax(260px,1.5fr)_minmax(140px,.8fr)_minmax(140px,.7fr)_minmax(150px,.8fr)_108px]",
+                  selectedId === asset.id && "bg-blue-50/80"
+                )}
+                onClick={() => onSelect(asset.id)}
+                onDoubleClick={() => onOpenDetail(asset.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") onOpenDetail(asset.id);
+                }}
+              >
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-600 text-white">
+                      <FileArchive className="h-4 w-4" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium">{asset.displayName}</div>
+                      <div className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+                        {asset.description || asset.name}
                       </div>
-                      <div className="min-w-0">
-                        <div className="truncate font-medium">{asset.displayName}</div>
-                        <div className="mt-1 line-clamp-2 max-w-xl text-xs leading-5 text-muted-foreground">
-                          {asset.description || asset.name}
+                      <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
+                        {asset.tags.slice(0, 4).map((tag) => (
+                          <Badge key={tag} variant="outline" className="h-5 max-w-full rounded-md px-1.5 text-[11px]">
+                            <span className="truncate">{tag}</span>
+                          </Badge>
+                        ))}
+                        {asset.tags.length > 4 ? (
+                          <Badge variant="outline" className="h-5 rounded-md px-1.5 text-[11px]">
+                            +{asset.tags.length - 4}
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <div className="mt-3 grid min-w-0 gap-1 text-xs text-muted-foreground min-[1800px]:hidden">
+                        <div className="truncate">
+                          {asset.packageName ?? "-"} · {asset.owner ?? "Unassigned"}
                         </div>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {asset.tags.slice(0, 4).map((tag) => (
-                            <Badge key={tag} variant="outline" className="h-5 rounded-md px-1.5 text-[11px]">
-                              {tag}
-                            </Badge>
-                          ))}
-                          {asset.tags.length > 4 ? (
-                            <Badge variant="outline" className="h-5 rounded-md px-1.5 text-[11px]">
-                              +{asset.tags.length - 4}
-                            </Badge>
-                          ) : null}
+                        <div className="truncate">
+                          {zipEntries || "-"} file(s) · {scriptCount} scripts · {referenceCount} refs · {assetCount} assets
+                        </div>
+                        <div className="truncate">
+                          {archiveName} · {size} · {formatDate(uploadedAt)}
                         </div>
                       </div>
                     </div>
-                  </td>
-                  <td className="px-4 py-4 align-top">
-                    <div className="font-medium">{asset.packageName ?? "-"}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">{asset.owner ?? "Unassigned"}</div>
-                  </td>
-                  <td className="px-4 py-4 align-top">
-                    <div className="grid gap-1 text-xs text-muted-foreground">
-                      <span>{zipEntries || "-"} file(s)</span>
-                      <span>{scriptCount} scripts · {referenceCount} refs · {assetCount} assets</span>
-                      <span className="truncate">{metadataText(asset, "skillEntry") || "SKILL.md"}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 align-top">
-                    <div className="truncate font-medium">{asset.storage?.originalName ?? "-"}</div>
-                    <div className="mt-1 max-w-[260px] truncate text-xs text-muted-foreground">
-                      {asset.storage?.key ?? "-"}
-                    </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {asset.storage ? formatBytes(asset.storage.size) : "-"}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 align-top">
-                    <div className="text-xs text-muted-foreground">{formatDate(uploadedAt)}</div>
-                    <Badge variant="outline" className="mt-2 rounded-md">
-                      {asset.lifecycleState}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-4 align-top">
-                    <Badge variant="secondary" className={healthBadgeClass(asset.health)}>
-                      {asset.health}
-                    </Badge>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                  </div>
+                </div>
+                <div className="hidden min-w-0 min-[1800px]:block">
+                  <div className="truncate font-medium">{asset.packageName ?? "-"}</div>
+                  <div className="mt-1 truncate text-xs text-muted-foreground">
+                    {asset.owner ?? "Unassigned"}
+                  </div>
+                </div>
+                <div className="hidden min-w-0 min-[1800px]:block">
+                  <div className="grid gap-1 text-xs text-muted-foreground">
+                    <span>{zipEntries || "-"} file(s)</span>
+                    <span className="truncate">{scriptCount} scripts · {referenceCount} refs · {assetCount} assets</span>
+                    <span className="truncate">{metadataText(asset, "skillEntry") || "SKILL.md"}</span>
+                  </div>
+                </div>
+                <div className="hidden min-w-0 min-[1800px]:block">
+                  <div className="truncate font-medium">{archiveName}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">{size}</div>
+                  <div className="mt-1 truncate text-xs text-muted-foreground">{formatDate(uploadedAt)}</div>
+                </div>
+                <div className="flex min-w-0 flex-col items-end gap-2 min-[1800px]:items-start">
+                  <Badge variant="secondary" className={healthBadgeClass(asset.health)}>
+                    {asset.health}
+                  </Badge>
+                  <Badge variant="outline" className="hidden rounded-md sm:inline-flex min-[1800px]:hidden">
+                    {asset.lifecycleState}
+                  </Badge>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onOpenDetail(asset.id);
+                    }}
+                  >
+                    <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span className="hidden sm:inline">Open</span>
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
+    </div>
+  );
+}
+
+function SkillQuickPreview({
+  asset,
+  issues,
+  onOpenDetail
+}: {
+  asset?: AssetRecord;
+  issues: ValidationIssue[];
+  onOpenDetail: (id: string) => void;
+}) {
+  if (!asset) {
+    return (
+      <aside className="flex min-h-72 min-w-0 items-center justify-center rounded-lg border border-dashed bg-card text-sm text-muted-foreground xl:h-full xl:min-h-0">
+        Select a skill to preview.
+      </aside>
+    );
+  }
+
+  const assetIssues = issues.filter(
+    (issue) => issue.assetId === asset.id || issue.skillId === asset.skill?.id
+  );
+
+  return (
+    <aside className="min-h-72 min-w-0 overflow-auto rounded-lg border bg-card p-4 xl:h-full xl:min-h-0">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-600 text-white">
+              <FileArchive className="h-4 w-4" aria-hidden="true" />
+            </div>
+            <h2 className="truncate text-lg font-semibold">{asset.displayName}</h2>
+          </div>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            {asset.description || "No description."}
+          </p>
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-1.5">
+        <Badge variant="secondary" className={healthBadgeClass(asset.health)}>
+          {asset.health}
+        </Badge>
+        <Badge variant="outline">{asset.lifecycleState}</Badge>
+        {asset.tags.slice(0, 6).map((tag) => (
+          <Badge key={tag} variant="outline">
+            {tag}
+          </Badge>
+        ))}
+      </div>
+      <div className="mt-5 grid gap-2 text-sm">
+        <KeyValue label="Package" value={asset.packageName ?? "-"} />
+        <KeyValue label="Owner" value={asset.owner ?? "-"} />
+        <KeyValue label="Files" value={metadataNumber(asset, "zipEntries").toString()} />
+        <KeyValue label="Scripts" value={metadataNumber(asset, "scripts").toString()} />
+        <KeyValue label="References" value={metadataNumber(asset, "references").toString()} />
+        <KeyValue label="Assets" value={metadataNumber(asset, "assets").toString()} />
+        <KeyValue label="Archive" value={asset.storage?.originalName ?? "-"} />
+        <KeyValue label="Size" value={asset.storage ? formatBytes(asset.storage.size) : "-"} />
+        <KeyValue label="Uploaded" value={asset.storage ? formatDate(asset.storage.uploadedAt) : "-"} />
+      </div>
+      {assetIssues.length > 0 ? (
+        <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {assetIssues.length} validation issue(s)
+        </div>
+      ) : null}
+      <Button className="mt-5 w-full" onClick={() => onOpenDetail(asset.id)}>
+        <Eye className="h-4 w-4" aria-hidden="true" />
+        Open details
+      </Button>
+    </aside>
+  );
+}
+
+function SkillDetailView({
+  workspace,
+  token,
+  asset,
+  issues,
+  onBack,
+  onChanged
+}: {
+  workspace: WorkspaceRecord;
+  token: string;
+  asset?: AssetRecord;
+  issues: ValidationIssue[];
+  onBack: () => void;
+  onChanged: () => Promise<void>;
+}) {
+  if (!asset) {
+    return (
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
+        <Button type="button" variant="outline" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          Back
+        </Button>
+        <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-dashed bg-card text-sm text-muted-foreground">
+          Select a skill from the list first.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
+      <div className="flex shrink-0 min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <Button type="button" variant="outline" onClick={onBack}>
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Back
+          </Button>
+          <div className="mt-4 flex min-w-0 flex-wrap items-center gap-2">
+            <h1 className="truncate text-2xl font-semibold tracking-normal">{asset.displayName}</h1>
+            <Badge variant="secondary" className={healthBadgeClass(asset.health)}>
+              {asset.health}
+            </Badge>
+            <Badge variant="outline">{asset.lifecycleState}</Badge>
+          </div>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">
+            {asset.description || "No description."}
+          </p>
+        </div>
+      </div>
+      <div className="grid min-h-0 min-w-0 flex-1 gap-4 overflow-auto 2xl:grid-cols-[430px_minmax(0,1fr)] 2xl:overflow-hidden">
+        <SkillMetadataPanel
+          workspace={workspace}
+          token={token}
+          asset={asset}
+          issues={issues}
+          onChanged={onChanged}
+          className="2xl:h-full"
+        />
+        <SkillFileExplorer workspace={workspace} token={token} asset={asset} />
+      </div>
+    </div>
+  );
+}
+
+function SkillFileExplorer({
+  workspace,
+  token,
+  asset
+}: {
+  workspace: WorkspaceRecord;
+  token: string;
+  asset: AssetRecord;
+}) {
+  const [selectedPath, setSelectedPath] = useState<string | undefined>();
+  const [preview, setPreview] = useState<AssetPreview | undefined>();
+  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState<string | undefined>();
+
+  useEffect(() => {
+    setSelectedPath(undefined);
+    setPreview(undefined);
+  }, [asset.id]);
+
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoading(true);
+    setMessage(undefined);
+    getWorkspaceAssetPreview(token, workspace.id, asset.id, selectedPath)
+      .then((result) => {
+        if (!isMounted) return;
+        setPreview(result);
+      })
+      .catch((caught) => {
+        if (!isMounted) return;
+        setMessage(caught instanceof Error ? caught.message : String(caught));
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [asset.id, selectedPath, token, workspace.id]);
+
+  const currentPath = selectedPath ?? preview?.selectedFile?.path;
+
+  return (
+    <section className="flex min-h-[620px] min-w-0 flex-col overflow-hidden rounded-lg border bg-card 2xl:h-full 2xl:min-h-0">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
+        <div>
+          <h2 className="font-semibold">Files</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {preview ? `${preview.files.length} file(s)` : "Loading"}
+          </p>
+        </div>
+        {isLoading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden="true" /> : null}
+      </div>
+      {message ? (
+        <div className="mx-4 mt-4 shrink-0 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {message}
+        </div>
+      ) : null}
+      <div className="grid min-h-0 min-w-0 flex-1 lg:grid-cols-[300px_minmax(0,1fr)]">
+        <div className="flex min-h-0 min-w-0 flex-col border-b lg:border-b-0 lg:border-r">
+          <div className="shrink-0 border-b px-3 py-2 text-xs font-medium uppercase text-muted-foreground">
+            Directory
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto p-2">
+            {preview?.tree.length ? (
+              <FileTree nodes={preview.tree} selectedPath={currentPath} onSelect={setSelectedPath} />
+            ) : (
+              <div className="px-2 py-8 text-center text-sm text-muted-foreground">
+                No files.
+              </div>
+            )}
+          </div>
+        </div>
+        <FilePreviewPane file={preview?.selectedFile} />
+      </div>
+    </section>
+  );
+}
+
+function FileTree({
+  nodes,
+  selectedPath,
+  onSelect,
+  depth = 0
+}: {
+  nodes: AssetFileTreeNode[];
+  selectedPath?: string;
+  onSelect: (path: string) => void;
+  depth?: number;
+}) {
+  return (
+    <div className="space-y-0.5">
+      {nodes.map((node) => {
+        const isFile = node.type === "file";
+        const isSelected = selectedPath === node.path;
+        return (
+          <div key={node.path}>
+            <button
+              type="button"
+              className={cn(
+                "flex w-full min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs transition-colors",
+                isFile ? "hover:bg-accent" : "cursor-default text-muted-foreground",
+                isSelected && "bg-blue-50 text-blue-950"
+              )}
+              style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
+              onClick={() => {
+                if (isFile) onSelect(node.path);
+              }}
+            >
+              {isFile ? (
+                <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              ) : node.children?.length ? (
+                <FolderOpen className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              ) : (
+                <Folder className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              )}
+              <span className="min-w-0 flex-1 truncate">{node.name}</span>
+              {isFile ? (
+                <span className="shrink-0 text-[11px] text-muted-foreground">
+                  {formatBytes(node.size ?? 0)}
+                </span>
+              ) : null}
+            </button>
+            {node.children?.length ? (
+              <FileTree
+                nodes={node.children}
+                selectedPath={selectedPath}
+                onSelect={onSelect}
+                depth={depth + 1}
+              />
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function FilePreviewPane({ file }: { file?: AssetPreview["selectedFile"] }) {
+  if (!file) {
+    return (
+      <div className="flex min-h-[360px] min-w-0 items-center justify-center text-sm text-muted-foreground lg:min-h-0">
+        Select a file.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-col">
+      <div className="flex shrink-0 min-w-0 items-center justify-between gap-3 border-b px-4 py-3">
+        <div className="min-w-0">
+          <div className="truncate font-medium">{file.name}</div>
+          <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
+            {file.path}
+          </div>
+        </div>
+        <Badge variant="outline">{formatBytes(file.size)}</Badge>
+      </div>
+      {file.isText ? (
+        <div className="min-h-0 flex-1 overflow-auto bg-zinc-950 p-4 text-zinc-50">
+          <pre className="whitespace-pre-wrap break-words text-xs leading-5">
+            {file.content ?? ""}
+          </pre>
+          {file.truncated ? (
+            <div className="mt-4 rounded-md border border-blue-300/40 bg-blue-500/10 px-3 py-2 text-xs text-blue-100">
+              Preview truncated.
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="flex min-h-[360px] flex-1 flex-col items-center justify-center gap-2 px-4 text-center text-sm text-muted-foreground lg:min-h-0">
+          <FileArchive className="h-8 w-8" aria-hidden="true" />
+          Binary file preview is not available.
+        </div>
+      )}
     </div>
   );
 }
@@ -872,13 +1139,15 @@ function SkillMetadataPanel({
   token,
   asset,
   issues,
-  onChanged
+  onChanged,
+  className
 }: {
   workspace: WorkspaceRecord;
   token: string;
   asset?: AssetRecord;
   issues: ValidationIssue[];
   onChanged: () => Promise<void>;
+  className?: string;
 }) {
   const [description, setDescription] = useState("");
   const [owner, setOwner] = useState("");
@@ -900,7 +1169,7 @@ function SkillMetadataPanel({
 
   if (!asset) {
     return (
-      <div className="flex min-h-48 items-center justify-center rounded-lg border border-dashed bg-card text-sm text-muted-foreground">
+      <div className={cn("flex min-h-48 items-center justify-center rounded-lg border border-dashed bg-card text-sm text-muted-foreground", className)}>
         Select a skill to inspect metadata.
       </div>
     );
@@ -951,8 +1220,14 @@ function SkillMetadataPanel({
   }
 
   return (
-    <form className="rounded-lg border bg-card p-4" onSubmit={saveAsset}>
-      <div className="flex flex-col gap-3 border-b pb-4 lg:flex-row lg:items-start lg:justify-between">
+    <form
+      className={cn(
+        "flex min-h-[620px] min-w-0 flex-col overflow-hidden rounded-lg border bg-card 2xl:min-h-0",
+        className
+      )}
+      onSubmit={saveAsset}
+    >
+      <div className="flex shrink-0 flex-col gap-3 border-b bg-card p-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="truncate text-lg font-semibold">{selectedAsset.displayName}</h2>
@@ -984,7 +1259,8 @@ function SkillMetadataPanel({
           </Button>
         </div>
       </div>
-      <div className="grid gap-5 pt-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="min-h-0 flex-1 overflow-auto p-4">
+        <div className="grid gap-5">
         <div className="space-y-5">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1.5 text-sm font-medium">
@@ -1036,15 +1312,10 @@ function SkillMetadataPanel({
         </div>
         <div className="space-y-4 rounded-lg border bg-background p-4">
           <div>
-            <h3 className="text-sm font-medium">Storage</h3>
+            <h3 className="text-sm font-medium">Uploaded package</h3>
             <div className="mt-3 grid gap-2 text-sm">
-              <KeyValue label="Provider" value={storage ? `${storage.provider}:${storage.bucket}` : "-"} />
-              <KeyValue label="Object" value={storage?.key ?? "-"} />
-              <KeyValue label="Original" value={storage?.originalName ?? "-"} />
+              <KeyValue label="Archive" value={storage?.originalName ?? "-"} />
               <KeyValue label="Size" value={storage ? formatBytes(storage.size) : "-"} />
-              <KeyValue label="Content type" value={storage?.contentType ?? "-"} />
-              <KeyValue label="Checksum" value={shortHash(storage?.checksum)} />
-              <KeyValue label="ETag" value={storage?.etag ?? "-"} />
               <KeyValue label="Uploaded" value={storage ? formatDate(storage.uploadedAt) : "-"} />
             </div>
           </div>
@@ -1077,6 +1348,7 @@ function SkillMetadataPanel({
           ) : null}
           {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
         </div>
+      </div>
       </div>
     </form>
   );
@@ -1154,7 +1426,7 @@ function UploadSkillZipForm({
         owner,
         tags: splitList(tags)
       });
-      setMessage(`Uploaded ${result.uploaded.storage?.key ?? result.uploaded.displayName}`);
+      setMessage(`Uploaded ${result.uploaded.storage?.originalName ?? result.uploaded.displayName}.`);
       setFile(undefined);
       setName("");
       setDescription("");
@@ -1162,7 +1434,7 @@ function UploadSkillZipForm({
       setTags("");
       await onUploaded();
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : String(caught));
+      setMessage(uploadErrorMessage(caught));
     } finally {
       setIsSaving(false);
     }
@@ -1172,7 +1444,7 @@ function UploadSkillZipForm({
     <form className="grid gap-4" onSubmit={submit}>
       {!storage?.configured ? (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          S3 storage is not configured. Set HARHUB_S3_BUCKET and restart the API before uploading.
+          Uploads are not configured yet. Ask an administrator to enable package uploads before continuing.
         </div>
       ) : null}
       <label className="grid gap-1.5 text-sm font-medium">
@@ -1214,7 +1486,7 @@ function UploadSkillZipForm({
           />
         </label>
       </div>
-      <Button type="submit" disabled={isSaving}>
+      <Button type="submit" disabled={isSaving || !storage?.configured}>
         {isSaving ? (
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
         ) : (
@@ -1341,7 +1613,8 @@ function WorkspaceView({
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="min-h-0 flex-1 overflow-auto pr-1">
+      <div className="grid gap-4 lg:grid-cols-2">
       <Card>
         <CardHeader>
           <CardTitle>Workspace Settings</CardTitle>
@@ -1403,8 +1676,8 @@ function WorkspaceView({
           <CardDescription>{members.length} account(s) in this workspace</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="overflow-hidden rounded-lg border">
-            <table className="w-full text-left text-sm">
+          <div className="min-w-0 overflow-x-auto rounded-lg border">
+            <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-medium">Account</th>
@@ -1485,6 +1758,7 @@ function WorkspaceView({
           {memberMessage ? <p className="text-sm text-muted-foreground">{memberMessage}</p> : null}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
@@ -1547,7 +1821,8 @@ function AccountView({
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="min-h-0 flex-1 overflow-auto pr-1">
+      <div className="grid gap-4 lg:grid-cols-2">
       <Card>
         <CardHeader>
           <CardTitle>Profile</CardTitle>
@@ -1639,6 +1914,7 @@ function AccountView({
           ))}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
@@ -1649,6 +1925,69 @@ function KeyValue({ label, value }: { label: string; value: string }) {
       <span className="text-muted-foreground">{label}</span>
       <span className="truncate font-medium" title={value}>{value}</span>
     </div>
+  );
+}
+
+function readRouteFromLocation(): AppRoute {
+  return normalizeRoute(routeFromPath(window.location.pathname));
+}
+
+function routeFromPath(pathname: string): AppRoute {
+  const segments = pathname.split("/").filter(Boolean);
+  const section = segments[0];
+
+  if (!section || section === "skills" || section === "assets") {
+    const assetQuery = segments[1] ? decodeRoutePart(segments.slice(1).join("/")) : undefined;
+    return assetQuery ? { view: "asset-detail", assetQuery } : { view: "assets" };
+  }
+
+  if (section === "workspace") return { view: "workspace" };
+  if (section === "account") return { view: "account" };
+
+  return { view: "assets" };
+}
+
+function normalizeRoute(route: AppRoute): AppRoute {
+  if (route.view === "asset-detail" && !route.assetQuery) {
+    return { view: "assets" };
+  }
+  return route;
+}
+
+function pathForRoute(route: AppRoute): string {
+  if (route.view === "asset-detail" && route.assetQuery) {
+    return `/skills/${encodeURIComponent(route.assetQuery)}`;
+  }
+  if (route.view === "workspace") return "/workspace";
+  if (route.view === "account") return "/account";
+  return "/skills";
+}
+
+function replaceBrowserRoute(route: AppRoute): void {
+  const path = pathForRoute(normalizeRoute(route));
+  if (window.location.pathname !== path) {
+    window.history.replaceState(null, "", path);
+  }
+}
+
+function decodeRoutePart(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function routeQueryForAsset(asset: AssetRecord): string {
+  return asset.slug || asset.name || asset.id;
+}
+
+function findUiAsset(assets: AssetRecord[], query: string): AssetRecord | undefined {
+  const normalized = query.toLowerCase();
+  return assets.find((asset) =>
+    [asset.id, asset.slug, asset.name, asset.displayName]
+      .filter(Boolean)
+      .some((value) => value.toLowerCase() === normalized)
   );
 }
 
@@ -1689,6 +2028,7 @@ function shortHash(value?: string): string {
 }
 
 function viewTitle(view: View): string {
+  if (view === "asset-detail") return "Skill Detail";
   if (view === "workspace") return "Workspace";
   if (view === "account") return "Account";
   return "Skills";
@@ -1698,25 +2038,26 @@ function healthBadgeClass(health: AssetRecord["health"]): string {
   if (health === "error") return "border-destructive/30 bg-destructive/10 text-destructive";
   if (health === "warning") return "border-amber-200 bg-amber-50 text-amber-800";
   if (health === "unknown") return "border-zinc-200 bg-zinc-50 text-zinc-700";
-  return "border-lime-200 bg-lime-50 text-zinc-950";
+  return "border-blue-200 bg-blue-50 text-blue-950";
 }
 
-function storageLabel(storage?: StorageStatus): string {
-  if (!storage) return "S3 storage";
-  if (!storage.configured) return "S3 storage not configured";
-  const prefix = storage.prefix ? `/${storage.prefix.replace(/\/$/g, "")}` : "";
-  return `S3: ${storage.bucket}${prefix}`;
+function uploadStatusLabel(storage?: StorageStatus): string {
+  if (!storage?.configured) return "Uploads need setup";
+  return "Ready to accept skill packages";
+}
+
+function uploadErrorMessage(caught: unknown): string {
+  const message = caught instanceof Error ? caught.message : String(caught);
+  if (/s3|bucket|object storage|harhub_s3/i.test(message)) {
+    return "Uploads are not configured yet. Ask an administrator to enable package uploads before continuing.";
+  }
+  return message;
 }
 
 function formatBytes(value: number): string {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function roleForWorkspace(memberships: WorkspaceMembership[], workspaceId?: string): string {
-  const membership = memberships.find((item) => item.workspaceId === workspaceId);
-  return membership ? `Role: ${membership.role}` : "No workspace role";
 }
 
 function splitList(value: string): string[] {

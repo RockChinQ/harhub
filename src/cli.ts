@@ -324,7 +324,7 @@ async function runAssetsUpload(parsed: ParsedArgs): Promise<number> {
   const zipPath = parsed.positionals[0];
   const workspaceId = optionString(parsed, "workspace");
   const token = optionString(parsed, "token") ?? process.env.HARHUB_TOKEN;
-  const api = (optionString(parsed, "api") ?? "http://127.0.0.1:3300").replace(/\/+$/g, "");
+  const api = (optionString(parsed, "api") ?? "http://127.0.0.1:3310").replace(/\/+$/g, "");
 
   if (!zipPath || !workspaceId) {
     console.error("Usage: harhub assets upload <skill.zip> --workspace <workspace-id> --token <token>");
@@ -553,7 +553,7 @@ Usage:
   harhub assets validate [paths...] [--json]
   harhub assets list [--catalog .harhub/assets.json] [--kind skill] [--tag value] [--owner value] [--package value] [--json]
   harhub assets show <id|name|slug> [--catalog .harhub/assets.json] [--json]
-  harhub assets upload <skill.zip> --workspace <workspace-id> --token <token> [--api http://127.0.0.1:3300] [--name slug] [--description text] [--owner owner] [--tag value] [--json]
+  harhub assets upload <skill.zip> --workspace <workspace-id> --token <token> [--api http://127.0.0.1:3310] [--name slug] [--description text] [--owner owner] [--tag value] [--json]
   harhub assets create <name> [--kind skill] [--dir skills] [--description text] [--owner owner] [--tag value]
 `);
 }
