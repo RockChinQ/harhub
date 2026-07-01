@@ -1,13 +1,15 @@
 # MVP Metrics And TODO
 
-Harhub's MVP strategy is **open-source distribution plus a hosted SaaS operation**. The product should stay narrowly focused on Agent Skills for now: make skills trustworthy, searchable, previewable, and reusable before expanding into rules, MCP governance, bundle composition, or PR automation.
+Harhub's MVP strategy is **open-source distribution plus a hosted SaaS operation**. The product category should be **team AI harness management**: managing the Skills, MCP servers, rules, project instructions, and governance metadata that teams use to make agents reliable.
+
+The product should stay narrowly focused on Agent Skills in the first implementation, but this is a wedge rather than the final category. Skills are useful because they have a concrete package shape, can be validated, can be uploaded and previewed, and create a measurable reuse loop. The broader product should expand into rules, MCP governance, bundle composition, PR automation, and cross-tool distribution only after the Skills loop is proven.
 
 ## Target Shape
 
 Harhub should launch as two connected surfaces:
 
-- **Open-source project**: a self-hostable TypeScript app and CLI that validates, catalogs, and manages Agent Skills without inventing a custom skill standard.
-- **Hosted SaaS**: a free cloud workspace for teams that do not want to run storage, auth, and catalog infrastructure themselves.
+- **Open-source project**: a self-hostable TypeScript app and CLI that validates, catalogs, and manages harness assets without inventing custom formats. The MVP implementation only manages Agent Skills.
+- **Hosted SaaS**: a free cloud workspace for teams that do not want to run storage, auth, catalog, and governance infrastructure themselves.
 
 The hosted MVP is free-only at launch. Instead of charging immediately, it should protect operating cost with clear usage limits and use over-limit states as demand signals for a future paid plan.
 
@@ -22,6 +24,13 @@ What exists in the code today:
 - **Validation foundation**: recursive `SKILL.md` scanning, official frontmatter checks, slug validation, description checks, local-link validation, duplicate checks, and obvious secret pattern detection.
 - **CLI foundation**: local scan, validate, list, show, create, asset scan, asset validate, asset create, and API-backed zip upload.
 
+How to interpret the current implementation:
+
+- **Current wedge**: Skills asset management.
+- **Target category**: team AI harness management.
+- **Buyer/user pain**: teams need one place to discover, review, validate, publish, and audit the AI context that is otherwise scattered across Cursor rules, Claude/Codex Skills, Copilot instructions, MCP configs, and repo-local `AGENTS.md`.
+- **Defensible value**: cross-tool compatibility, lifecycle governance, policy checks, usage analytics, and distribution workflows that individual AI coding tools are unlikely to solve across competing ecosystems.
+
 Important gaps for the target MVP:
 
 - **Quota is not modeled**: upload size has a process-level cap, but there is no per-user, per-workspace, per-asset, daily upload, or total storage quota.
@@ -33,14 +42,23 @@ Important gaps for the target MVP:
 - **No hosted onboarding funnel**: signup does not yet drive users through the exact activation path of uploading/importing three valid skills and installing one.
 - **Open-source launch surface is thin**: the README is usable, but launch still needs deployment docs, environment templates, contributor docs, license clarity, and a SaaS CTA.
 
+Important gaps for the broader team-harness product:
+
+- **No multi-artifact inventory**: the current scanner is Skills-first and does not inventory `.cursor/rules`, `AGENTS.md`, Copilot instructions, MCP definitions, prompt files, or workflow docs.
+- **No cross-tool target model**: there is no target abstraction for Codex, Claude Code, Cursor, GitHub Copilot, ChatGPT, CI, or repo materialization.
+- **No governance workflow**: there is no review, approval, audit, rollout, rollback, or policy exception model for harness changes.
+- **No MCP risk model**: MCP servers, tools, scopes, environment requirements, and secret boundaries are not represented yet.
+- **No composition contract**: there is no way to resolve an org baseline plus team-specific and repo-specific harness packs with precedence and conflict handling.
+
 ## North Star Metric
 
-**Activated Workspace**
+**Activated Harness Workspace**
 
 A workspace is activated when, within 7 days of creation, it has:
 
 1. At least **3 valid Skill assets**.
 2. At least **1 distribution action** on any Skill.
+3. At least **1 named owner** for the workspace or uploaded harness assets.
 
 A distribution action can be one of:
 
@@ -49,7 +67,7 @@ A distribution action can be one of:
 - Copy target install path.
 - Copy hosted asset URL, if public sharing is later enabled.
 
-This metric is sharper than signup count because it proves the core loop: skill supply, validation trust, catalog discovery, and practical reuse.
+This metric is sharper than signup count because it proves the core loop: harness supply, validation trust, catalog discovery, ownership, and practical reuse.
 
 ## Supporting Metrics
 
@@ -92,6 +110,13 @@ Track conversion through:
 - CLI install/download attempts.
 - Self-host deployment attempts.
 - SaaS signup clicks from README/docs.
+
+### Harness Management Demand
+
+- Number of non-Skill harness artifacts users try to add manually.
+- Requests for Cursor rules, `AGENTS.md`, Copilot instructions, or MCP config support.
+- Number of teams asking for approval, audit, rollout, rollback, or org-baseline features.
+- Number of workspaces with multiple agent tools in use.
 
 ### Cost Guardrails
 
@@ -187,33 +212,48 @@ Over-limit behavior:
 
 ## P1 TODO
 
-### 1. Import Sources
+### 1. Harness Inventory Beyond Skills
+
+- [ ] Scan configured repositories for `.cursor/rules`, `AGENTS.md`, `.github/copilot-instructions.md`, prompt files, MCP config files, and known harness directories.
+- [ ] Classify discovered files by artifact type, owner, source repo, and compatibility target.
+- [ ] Add read-only catalog views for rules, instructions, and MCP definitions before adding mutation workflows.
+- [ ] Detect duplicate or near-duplicate rules and instructions.
+- [ ] Track demand for each artifact type before implementing full composition.
+
+### 2. Import Sources
 
 - [ ] Import a Skill from a GitHub repository path.
 - [ ] Import from a zip URL with server-side fetch and validation.
 - [ ] Scan a connected repository for candidate `SKILL.md` files.
 - [ ] Preserve source repo, branch, commit, and path on imported assets.
 
-### 2. Versioning And Releases
+### 3. Versioning And Releases
 
 - [ ] Add asset version records instead of overwriting the same logical asset.
 - [ ] Add release notes and changelog fields.
 - [ ] Show diff between versions.
 - [ ] Track consumers pinned to a version after distribution actions exist.
 
-### 3. Review Workflow
+### 4. Review Workflow
 
 - [ ] Add draft/reviewed/approved lifecycle for uploaded Skills.
 - [ ] Require owner/admin approval before a Skill becomes stable.
 - [ ] Add validation report history.
 - [ ] Add comments or review notes only after the core activation loop works.
 
-### 4. Better Distribution
+### 5. Better Distribution
 
 - [ ] Add a CLI command to install a hosted Skill into a local Codex skills directory.
 - [ ] Add signed short-lived download URLs or API-token based download.
 - [ ] Add copy snippets for Codex and Claude-compatible installation paths.
 - [ ] Add workspace API tokens for CI or automation.
+
+### 6. MCP And Rules Governance
+
+- [ ] Model MCP server metadata, tool scopes, required environment variables, install targets, and risk labels.
+- [ ] Add policy checks for forbidden tools, secret-like values, missing env var declarations, and unaudited high-risk MCP access.
+- [ ] Add rules package metadata for Cursor, Codex `AGENTS.md`, Copilot instructions, and generic Markdown instructions.
+- [ ] Define target-specific rendering rules for each supported agent surface.
 
 ## Launch Checklist
 
@@ -226,6 +266,7 @@ Over-limit behavior:
 - [ ] User can preview `SKILL.md` and bundled files.
 - [ ] User can download or copy install instructions for a Skill.
 - [ ] User can understand quota usage before hitting a hard block.
+- [ ] Product copy makes clear that Skills are the first wedge toward broader AI harness management.
 
 ### Engineering
 
@@ -262,7 +303,8 @@ The MVP is ready for a public free launch when:
 3. The team can see activated workspaces, storage usage, quota hits, upload failures, and distribution actions.
 4. The open-source repo can be self-hosted from documented steps without private infrastructure.
 5. Uploaded Skill zips are private by default and are only downloaded through authorized routes.
-6. The product stays Skills-only; no rules, MCP governance, bundle composition, or PR automation are required for MVP launch.
+6. The implemented product stays Skills-only, while the positioning clearly explains the broader team AI harness management category.
+7. At least 5 teams explicitly request support for rules, MCP, `AGENTS.md`, Copilot instructions, or cross-tool distribution after using or reviewing the Skills MVP.
 
 ## First Four-Week Milestone
 
@@ -281,6 +323,7 @@ If this milestone is missed, inspect the funnel in this order:
 3. Are validation errors blocking or teaching?
 4. Is installation/download useful enough to count as reuse?
 5. Are quota limits too tight or merely unclear?
+6. Is the problem too narrow because users want rules/MCP/instructions management more urgently than Skills storage?
 
 ## Decisions Needed
 
@@ -291,3 +334,4 @@ If this milestone is missed, inspect the funnel in this order:
 - [ ] OSS license.
 - [ ] Public signup timing: open signup, invite code, or waitlist.
 - [ ] First distribution target: Codex local skills path, Claude-compatible path, or generic zip download.
+- [ ] First non-Skill expansion target: Cursor rules, `AGENTS.md`, Copilot instructions, or MCP registry/governance.

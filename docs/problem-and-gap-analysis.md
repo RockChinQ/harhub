@@ -6,7 +6,9 @@ Teams are rapidly creating agent harness material across many repositories: `AGE
 
 The result is fragmentation. Two repositories may solve the same harness problem differently. A high-quality skill may exist but remain invisible. An unsafe MCP permission pattern may be copied between projects. A team may improve its agent rules, but other teams do not know, cannot compare, and cannot upgrade safely.
 
-Harhub fills this gap by becoming a registry, composition engine, validation layer, and distribution system for agent harnesses.
+Harhub fills this gap by becoming a registry, governance layer, validation layer, composition engine, and distribution system for agent harnesses.
+
+The market should not be framed as "a place to upload Skills." That is too narrow and easy for individual agent vendors to subsume. The stronger category is **team AI harness management**: a cross-tool control plane for the context, tools, rules, and policies that engineering teams want agents to follow.
 
 ## Current Gap
 
@@ -36,6 +38,14 @@ Harhub should complement those systems:
 - Validate harnesses with tests, policy checks, and agent behavior evaluations.
 - Distribute bundles back into repos, CLIs, IDEs, CI systems, and agent runtimes.
 
+It should also complement vendor-specific AI admin panels. Cursor, GitHub Copilot, Claude, Codex, and ChatGPT can each manage parts of their own ecosystem, but teams using multiple tools still need a neutral layer that can:
+
+- Inventory harness assets across competing agent surfaces.
+- Normalize ownership, lifecycle, risk, and approval metadata.
+- Translate approved assets into target-specific formats.
+- Keep source-of-truth files in Git while providing SaaS governance and auditability.
+- Detect drift between approved harness packages and what repositories actually run.
+
 ## Core Opportunity
 
 The opportunity is to create a shared harness layer between raw repository files and agent execution.
@@ -51,9 +61,27 @@ That layer should answer questions such as:
 - Which instructions conflict, and which one wins?
 - Did this harness update improve or degrade agent performance on representative tasks?
 
+## Initial Wedge
+
+The first implementation should stay Skills-first because Skills have a clearer package boundary than generic rules:
+
+- A Skill can be uploaded as a directory or zip.
+- A Skill has standard metadata in `SKILL.md`.
+- A Skill can be validated for structure, links, naming, duplicate content, and secret-like patterns.
+- A Skill can be previewed, installed, downloaded, and reused.
+
+This wedge is useful only if it proves the broader control-plane loop:
+
+1. Teams bring harness assets into Harhub.
+2. Harhub validates and classifies them.
+3. Owners improve metadata and trust signals.
+4. Other users discover and reuse them.
+5. Admins gain enough visibility to justify governance and distribution workflows.
+
+If users mostly ask for Cursor rules, MCP registry, Copilot instructions, or `AGENTS.md` synchronization instead of Skill storage, that is not a failure. It is a signal to widen the managed asset types while keeping the same control-plane thesis.
+
 ## Product Thesis
 
 Agent harnesses will become shared organizational infrastructure. The winning system will manage them like a mix of package registry, policy engine, docs catalog, configuration compiler, and evaluation platform.
 
 Harhub should be that system.
-

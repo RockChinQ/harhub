@@ -1,7 +1,7 @@
 {
   "name": "harhub",
   "version": "0.1.0",
-  "description": "Local-first MVP for managing agent skills.",
+  "description": "Team AI harness management for skills, MCP, rules, and agent instructions.",
   "type": "module",
   "bin": {
     "harhub": "./dist/cli.js"

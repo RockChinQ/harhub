@@ -1,8 +1,10 @@
 # Harhub
 
-Harhub is a tenant-aware control plane for agent harness assets. This MVP focuses only on **Agent Skills** as an Asset kind: zip uploads are stored in S3/S3-compatible object storage, then indexed for workspace management.
+Harhub is a tenant-aware control plane for **team AI harness management**: the Skills, MCP servers, rules, project instructions, and governance metadata that make coding agents useful and safe inside an engineering organization.
 
-The broader product design lives in [`docs/`](./docs/README.md). The implemented MVP intentionally excludes rule composition, MCP governance, bundle composition, and PR automation.
+The implemented MVP uses **Agent Skills** as the first managed Asset kind: zip uploads are stored in S3/S3-compatible object storage, then indexed for workspace management. This keeps the first product slice narrow while validating the broader opportunity: a cross-tool registry, policy layer, and distribution workflow for team-managed AI harnesses.
+
+The broader product design lives in [`docs/`](./docs/README.md). Rule composition, MCP governance, bundle composition, and PR automation remain outside the current implementation, but they are now explicit expansion paths rather than separate products.
 
 ## Skill Standard
 
@@ -88,6 +90,17 @@ The current SaaS MVP is local-first but tenant-aware:
 - Workspace asset indexes are stored under `.harhub/workspaces/<workspace-id>/assets.json`; Skill zip bytes live in S3.
 
 The local state file is `.harhub/state.json`, which is ignored by Git.
+
+## Product Direction
+
+Harhub should not be just a Skill file browser. The long-term product is a team control plane for AI harness assets:
+
+- Discover and catalog existing `AGENTS.md`, `.cursor/rules`, Copilot instructions, Agent Skills, MCP definitions, and workflow playbooks.
+- Review, validate, approve, version, and roll back harness changes.
+- Publish team-approved harness packages to multiple targets such as Codex, Claude Code, Cursor, GitHub Copilot, CI, and repository files.
+- Govern MCP/tool access with explicit permissions, ownership, audit logs, and risk labels.
+
+The Skills-only MVP is the first wedge because Skills have a concrete package shape, clear validation rules, and an obvious reuse loop: upload, validate, preview, and install.
 
 ## Commands
 
