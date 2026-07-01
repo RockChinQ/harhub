@@ -129,7 +129,6 @@ export function WorkspaceView({
   }
 
   async function removeMember(membershipId: string) {
-    if (!window.confirm("Remove this member from the workspace?")) return;
     setMemberMessage(undefined);
     try {
       await removeWorkspaceMember(token, workspace.id, membershipId);

@@ -16,6 +16,17 @@ import {
 } from "../../app/format";
 import { KeyValue } from "../../components/common/key-value";
 import { TokenList } from "../../components/common/token-list";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
+} from "../../components/ui/alert-dialog";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -61,6 +72,7 @@ export function SkillMetadataPanel({
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
     setDescription(asset?.description ?? "");
@@ -123,12 +135,12 @@ export function SkillMetadataPanel({
   }
 
   async function removeAsset() {
-    if (!window.confirm(`Delete ${selectedAsset.displayName}?`)) return;
     setIsDeleting(true);
     setMessage(undefined);
     try {
       await deleteWorkspaceAsset(token, workspace.id, selectedAsset.id);
       setMessage("Skill deleted.");
+      setDeleteDialogOpen(false);
       await onChanged();
       onDeleted?.();
     } catch (caught) {
@@ -197,14 +209,45 @@ export function SkillMetadataPanel({
             )}
             Save
           </Button>
-          <Button type="button" variant="outline" onClick={removeAsset} disabled={isDeleting}>
-            {isDeleting ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <Trash2 className="h-4 w-4" aria-hidden="true" />
-            )}
-            Delete
-          </Button>
+          <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+            <AlertDialogTrigger asChild>
+              <Button type="button" variant="outline" disabled={isDeleting}>
+                {isDeleting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                )}
+                Delete
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete skill?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will remove {selectedAsset.displayName} from the workspace catalog.
+                  This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+                  disabled={isDeleting}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void removeAsset();
+                  }}
+                >
+                  {isDeleting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-4">

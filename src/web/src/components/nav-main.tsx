@@ -2,6 +2,7 @@
 
 import { ChevronRight, type LucideIcon } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import {
   Collapsible,
   CollapsibleContent,
@@ -43,17 +44,16 @@ export function NavMain({
         {items.map((item) => (
           <Collapsible key={item.title} asChild defaultOpen={item.isActive}>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild tooltip={item.title} isActive={item.isActive}>
-                <button
-                  type="button"
-                  onClick={item.onSelect}
-                  aria-current={item.isActive ? "page" : undefined}
-                >
-                  <item.icon />
-                  <span className="group-data-[collapsible=icon]:hidden">
-                    {item.title}
-                  </span>
-                </button>
+              <SidebarMenuButton
+                tooltip={item.title}
+                isActive={item.isActive}
+                onClick={item.onSelect}
+                aria-current={item.isActive ? "page" : undefined}
+              >
+                <item.icon />
+                <span className="group-data-[collapsible=icon]:hidden">
+                  {item.title}
+                </span>
               </SidebarMenuButton>
               {item.items?.length ? (
                 <>
@@ -68,9 +68,14 @@ export function NavMain({
                       {item.items?.map((subItem) => (
                         <SidebarMenuSubItem key={subItem.title}>
                           <SidebarMenuSubButton asChild isActive={subItem.isActive}>
-                            <button type="button" onClick={subItem.onSelect}>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="h-7 w-full justify-start px-2 text-sidebar-foreground"
+                              onClick={subItem.onSelect}
+                            >
                               <span>{subItem.title}</span>
-                            </button>
+                            </Button>
                           </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
                       ))}

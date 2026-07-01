@@ -335,15 +335,17 @@ const SidebarTrigger = React.forwardRef<
 SidebarTrigger.displayName = "SidebarTrigger"
 
 const SidebarRail = React.forwardRef<
-  HTMLButtonElement,
-  React.ComponentProps<"button">
+  React.ElementRef<typeof Button>,
+  React.ComponentProps<typeof Button>
 >(({ className, onClick, onPointerDown, ...props }, ref) => {
   const { setOpen, setSidebarWidth, toggleSidebar } = useSidebar()
   const suppressClickRef = React.useRef(false)
 
   return (
-    <button
+    <Button
       ref={ref}
+      type="button"
+      variant="ghost"
       data-sidebar="rail"
       aria-label="Resize or toggle Sidebar"
       tabIndex={-1}
@@ -410,7 +412,7 @@ const SidebarRail = React.forwardRef<
       }}
       title="Drag to resize. Click to toggle."
       className={cn(
-        "absolute inset-y-0 z-20 hidden w-4 -translate-x-1/2 touch-none transition-all ease-linear after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-sidebar-border group-data-[side=left]:-right-4 group-data-[side=right]:left-0 sm:flex",
+        "absolute inset-y-0 z-20 hidden h-auto w-4 -translate-x-1/2 touch-none rounded-none bg-transparent px-0 py-0 shadow-none transition-all ease-linear hover:bg-transparent hover:text-sidebar-foreground after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-sidebar-border group-data-[side=left]:-right-4 group-data-[side=right]:left-0 sm:flex",
         "[[data-side=left]_&]:cursor-col-resize [[data-side=right]_&]:cursor-col-resize",
         "group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full group-data-[collapsible=offcanvas]:hover:bg-sidebar",
         "[[data-side=left][data-collapsible=offcanvas]_&]:-right-2",

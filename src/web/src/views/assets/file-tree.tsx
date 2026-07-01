@@ -2,6 +2,7 @@ import { FileText, Folder, FolderOpen } from "lucide-react";
 
 import type { AssetFileTreeNode } from "../../../../shared/types";
 import { formatBytes } from "../../app/format";
+import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
 
 export function FileTree({
@@ -22,11 +23,13 @@ export function FileTree({
         const isSelected = selectedPath === node.path;
         return (
           <div key={node.path}>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               className={cn(
-                "flex w-full min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs transition-colors",
-                isFile ? "hover:bg-accent" : "cursor-default text-muted-foreground",
+                "h-auto w-full min-w-0 justify-start gap-1.5 px-2 py-1.5 text-left text-xs font-normal",
+                isFile ? "hover:bg-accent" : "cursor-default text-muted-foreground hover:bg-transparent",
                 isSelected && "bg-blue-50 text-blue-950"
               )}
               style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
@@ -47,7 +50,7 @@ export function FileTree({
                   {formatBytes(node.size ?? 0)}
                 </span>
               ) : null}
-            </button>
+            </Button>
             {node.children?.length ? (
               <FileTree
                 nodes={node.children}
