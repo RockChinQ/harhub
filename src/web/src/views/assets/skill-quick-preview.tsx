@@ -24,8 +24,22 @@ export function SkillQuickPreview({
     );
   }
 
-  const assetIssues = issues.filter(
-    (issue) => issue.assetId === asset.id || issue.skillId === asset.skill?.id
+  const assetSkillId = asset.skill?.id;
+  const assetIssues = [
+    ...(asset.validationIssues ?? []),
+    ...issues.filter(
+      (issue) =>
+        issue.assetId === asset.id ||
+        (Boolean(assetSkillId) && issue.skillId === assetSkillId)
+    )
+  ].filter(
+    (issue, index, allIssues) =>
+      allIssues.findIndex(
+        (item) =>
+          item.code === issue.code &&
+          item.message === issue.message &&
+          item.path === issue.path
+      ) === index
   );
 
   return (

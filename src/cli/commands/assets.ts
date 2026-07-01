@@ -5,6 +5,8 @@ import {
   filterAssets,
   findAsset,
   readAssetCatalog,
+  removeCatalogAsset,
+  updateCatalogAsset,
   writeAssetCatalog
 } from "../../features/assets/index.js";
 import {
@@ -190,6 +192,85 @@ export async function runAssetsUpload(parsed: ParsedArgs): Promise<number> {
   return 0;
 }
 
+export async function runAssetsUpdate(parsed: ParsedArgs): Promise<number> {
+  const query = parsed.positionals[0];
+  if (!query) {
+    console.error("Usage: harhub assets update <id|name|slug> [--description text] [--owner owner] [--tag value]");
+    return 1;
+  }
+
+  const input = readAssetUpdateInput(parsed);
+  if (optionString(parsed, "workspace")) {
+    return runAssetApiMutation(parsed, query, "PATCH", input, "Updated");
+  }
+
+  const catalogPath = resolveAssetCatalogPath(parsed);
+  const catalog = readAssetCatalog(catalogPath);
+  const asset = findAsset(catalog, query);
+  if (!asset) {
+    console.error(`Asset not found: ${query}`);
+    return 1;
+  }
+
+  const nextCatalog = updateCatalogAsset(catalog, asset.id, input);
+  writeAssetCatalog(catalogPath, nextCatalog);
+
+  if (parsed.options.json) {
+    console.log(JSON.stringify(findAsset(nextCatalog, asset.id), null, 2));
+    return 0;
+  }
+
+  console.log(`Updated ${asset.displayName}`);
+  return 0;
+}
+
+export async function runAssetsDelete(parsed: ParsedArgs): Promise<number> {
+  const query = parsed.positionals[0];
+  if (!query) {
+    console.error("Usage: harhub assets delete <id|name|slug>");
+    return 1;
+  }
+
+  if (optionString(parsed, "workspace")) {
+    return runAssetApiMutation(parsed, query, "DELETE", undefined, "Deleted");
+  }
+
+  const catalogPath = resolveAssetCatalogPath(parsed);
+  const catalog = readAssetCatalog(catalogPath);
+  const asset = findAsset(catalog, query);
+  if (!asset) {
+    console.error(`Asset not found: ${query}`);
+    return 1;
+  }
+
+  writeAssetCatalog(catalogPath, removeCatalogAsset(catalog, asset.id));
+
+  if (parsed.options.json) {
+    console.log(JSON.stringify({ deleted: asset }, null, 2));
+    return 0;
+  }
+
+  console.log(`Deleted ${asset.displayName}`);
+  return 0;
+}
+
+export async function runAssetsRevalidate(parsed: ParsedArgs): Promise<number> {
+  const query = parsed.positionals[0];
+  const workspaceId = optionString(parsed, "workspace");
+  if (!workspaceId) {
+    return runAssetsValidate(parsed);
+  }
+
+  return runAssetApiMutation(
+    parsed,
+    query,
+    "POST",
+    {},
+    query ? "Validated" : "Validated workspace",
+    "validate"
+  );
+}
+
 function setUploadMetadata(form: FormData, parsed: ParsedArgs): void {
   const name = optionString(parsed, "name");
   const description = optionString(parsed, "description");
@@ -199,4 +280,73 @@ function setUploadMetadata(form: FormData, parsed: ParsedArgs): void {
   if (description) form.set("description", description);
   if (owner) form.set("owner", owner);
   if (tags.length > 0) form.set("tags", tags.join(","));
+}
+
+function readAssetUpdateInput(parsed: ParsedArgs) {
+  const tags = optionArray(parsed, "tag");
+  const agents = optionArray(parsed, "agent");
+  return {
+    description: optionString(parsed, "description"),
+    owner: optionString(parsed, "owner"),
+    tags: tags.length > 0 ? tags : undefined,
+    lifecycleState: optionString(parsed, "lifecycle"),
+    agents: agents.length > 0 ? agents : undefined
+  };
+}
+
+async function runAssetApiMutation(
+  parsed: ParsedArgs,
+  query: string | undefined,
+  method: "PATCH" | "DELETE" | "POST",
+  body: unknown,
+  action: string,
+  suffix?: string
+): Promise<number> {
+  const workspaceId = optionString(parsed, "workspace");
+  const token = optionString(parsed, "token") ?? process.env.HARHUB_TOKEN;
+  const api = (optionString(parsed, "api") ?? "http://127.0.0.1:3310").replace(/\/+$/g, "");
+
+  if (!workspaceId) {
+    console.error("A workspace id is required. Pass --workspace <workspace-id>.");
+    return 1;
+  }
+
+  if (!token) {
+    console.error("A token is required. Pass --token or set HARHUB_TOKEN.");
+    return 1;
+  }
+
+  const pathParts = [`${api}/api/workspaces/${workspaceId}/assets`];
+  if (query) pathParts.push(encodeURIComponent(query));
+  if (suffix) pathParts.push(suffix);
+  const response = await fetch(pathParts.join("/"), {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(body && method !== "DELETE" ? { "Content-Type": "application/json" } : {})
+    },
+    ...(body && method !== "DELETE" ? { body: JSON.stringify(body) } : {})
+  });
+  const data = await response.json().catch(() => undefined);
+
+  if (!response.ok) {
+    if (parsed.options.json && data) {
+      console.log(JSON.stringify(data, null, 2));
+      return 1;
+    }
+    console.error(typeof data?.error === "string" ? data.error : `${action} failed with ${response.status}`);
+    return 1;
+  }
+
+  if (parsed.options.json) {
+    console.log(JSON.stringify(data, null, 2));
+    return 0;
+  }
+
+  const label = data?.validated?.displayName ?? data?.uploaded?.displayName ?? query ?? "workspace";
+  const issueCount = Array.isArray(data?.validatedIssues)
+    ? data.validatedIssues.length
+    : Array.isArray(data?.issues) ? data.issues.length : undefined;
+  console.log(`${action} ${label}${issueCount === undefined ? "" : ` (${issueCount} issue(s))`}`);
+  return 0;
 }

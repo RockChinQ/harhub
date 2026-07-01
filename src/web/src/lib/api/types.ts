@@ -23,6 +23,9 @@ export interface SkillListResponse {
   workspace: WorkspaceRecord;
   catalogPath: string;
   generatedAt: string;
+  storage?: StorageStatus;
+  issues?: ValidationIssue[];
+  assets?: AssetRecord[];
   skills: SkillRecord[];
 }
 
@@ -35,6 +38,7 @@ export interface AssetListResponse {
   catalogPath: string;
   generatedAt: string;
   storage: StorageStatus;
+  issues: ValidationIssue[];
   assets: AssetRecord[];
   skills: SkillRecord[];
 }
@@ -42,6 +46,8 @@ export interface AssetListResponse {
 export interface AssetScanResponse extends AssetListResponse {
   assetCatalogPath?: string;
   issues: ValidationIssue[];
+  validated?: AssetRecord;
+  validatedIssues?: ValidationIssue[];
 }
 
 export interface AssetUploadResponse extends AssetScanResponse {

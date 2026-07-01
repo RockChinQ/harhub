@@ -28,7 +28,7 @@ export function parseArgs(args: string[]): ParsedArgs {
       index += 1;
     }
 
-    if (key === "tag") {
+    if (key === "tag" || key === "agent") {
       const current = options[key];
       options[key] = Array.isArray(current)
         ? [...current, value]

@@ -1,5 +1,7 @@
 node_modules/
 dist/
 .harhub/
+.env
+.env.local
 *.log
 .DS_Store

@@ -1,4 +1,4 @@
-import { Clock3, HardDriveUpload, Search, Tag, Upload } from "lucide-react";
+import { Clock3, HardDriveUpload, Loader2, Search, ShieldCheck, Tag, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import type {
@@ -24,6 +24,7 @@ import { SkillListTable } from "./skill-list-table";
 import { SkillQuickPreview } from "./skill-quick-preview";
 import { SkillSummaryPill } from "./skill-summary-pill";
 import { UploadSkillZipForm } from "./upload-skill-zip-form";
+import { validateWorkspaceAssets } from "../../lib/api";
 
 export function AssetsView({
   workspace,
@@ -57,6 +58,8 @@ export function AssetsView({
   onRefresh: () => Promise<void>;
 }) {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationMessage, setValidationMessage] = useState<string | undefined>();
   const managedAssets = useMemo(
     () => assets.filter((asset) => asset.storage),
     [assets]
@@ -100,6 +103,25 @@ export function AssetsView({
     .sort();
   const latestUpload = uploadDates[uploadDates.length - 1];
 
+  async function validateAll() {
+    setIsValidating(true);
+    setValidationMessage(undefined);
+    try {
+      const response = await validateWorkspaceAssets(token, workspace.id);
+      const nextIssues = response.issues.length;
+      const nextMessage =
+        nextIssues > 0
+          ? `Validation completed with ${nextIssues} issue(s).`
+          : "Validation completed with no issues.";
+      await onRefresh();
+      setValidationMessage(nextMessage);
+    } catch (caught) {
+      setValidationMessage(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsValidating(false);
+    }
+  }
+
   return (
     <div className="flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col gap-4 overflow-hidden">
       <div className="flex shrink-0 min-w-0 flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -129,35 +151,50 @@ export function AssetsView({
             />
           </div>
         </div>
-        <Popover open={isUploadOpen} onOpenChange={setIsUploadOpen}>
-          <PopoverTrigger asChild>
-            <Button>
-              <Upload className="h-4 w-4" aria-hidden="true" />
-              Upload
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent
-            align="end"
-            className="w-[min(440px,calc(100vw-2rem))] p-0"
-          >
-            <div className="border-b px-4 py-3">
-              <div className="font-medium">Upload skill zip</div>
-              <div className="mt-1 text-xs text-muted-foreground">{uploadStatusLabel(storage)}</div>
-            </div>
-            <div className="p-4">
-              <UploadSkillZipForm
-                workspace={workspace}
-                token={token}
-                storage={storage}
-                onUploaded={async () => {
-                  await onRefresh();
-                  setIsUploadOpen(false);
-                }}
-              />
-            </div>
-          </PopoverContent>
-        </Popover>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <Button type="button" variant="outline" onClick={validateAll} disabled={isValidating}>
+            {isValidating ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+            )}
+            Validate
+          </Button>
+          <Popover open={isUploadOpen} onOpenChange={setIsUploadOpen}>
+            <PopoverTrigger asChild>
+              <Button>
+                <Upload className="h-4 w-4" aria-hidden="true" />
+                Upload
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              className="w-[min(440px,calc(100vw-2rem))] p-0"
+            >
+              <div className="border-b px-4 py-3">
+                <div className="font-medium">Upload skill zip</div>
+                <div className="mt-1 text-xs text-muted-foreground">{uploadStatusLabel(storage)}</div>
+              </div>
+              <div className="p-4">
+                <UploadSkillZipForm
+                  workspace={workspace}
+                  token={token}
+                  storage={storage}
+                  onUploaded={async () => {
+                    await onRefresh();
+                    setIsUploadOpen(false);
+                  }}
+                />
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
+      {validationMessage ? (
+        <div className="shrink-0 rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">
+          {validationMessage}
+        </div>
+      ) : null}
       <div className="flex shrink-0 min-w-0 flex-col gap-3 rounded-lg border bg-card p-3 sm:flex-row sm:items-center">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />

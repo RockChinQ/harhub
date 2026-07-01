@@ -19,6 +19,11 @@ Usage:
   harhub assets show <id|name|slug> [--catalog .harhub/assets.json] [--json]
   harhub assets upload <skill.zip> --workspace <workspace-id> --token <token> [--api http://127.0.0.1:3310] [--name slug] [--description text] [--owner owner] [--tag value] [--json]
   harhub assets create <name> [--kind skill] [--dir skills] [--description text] [--owner owner] [--tag value]
+  harhub assets update <id|name|slug> [--catalog .harhub/assets.json] [--description text] [--owner owner] [--tag value] [--lifecycle stable] [--agent claude-code] [--json]
+  harhub assets update <id|name|slug> --workspace <workspace-id> --token <token> [--api http://127.0.0.1:3310] [--description text] [--owner owner] [--tag value] [--lifecycle stable] [--agent claude-code] [--json]
+  harhub assets delete <id|name|slug> [--catalog .harhub/assets.json] [--json]
+  harhub assets delete <id|name|slug> --workspace <workspace-id> --token <token> [--api http://127.0.0.1:3310] [--json]
+  harhub assets revalidate [id|name|slug] --workspace <workspace-id> --token <token> [--api http://127.0.0.1:3310] [--json]
 `);
 }
 
@@ -31,5 +36,10 @@ Usage:
   harhub skills list [--catalog .harhub/skills.json] [--tag value] [--owner value] [--package value] [--json]
   harhub skills show <id|name|slug> [--catalog .harhub/skills.json] [--json]
   harhub skills create <name> [--dir skills] [--description text] [--owner owner] [--tag value]
+  harhub skills update <id|name|slug> [--catalog .harhub/skills.json] [--asset-catalog .harhub/assets.json] [--description text] [--owner owner] [--tag value] [--lifecycle stable] [--agent claude-code] [--json]
+  harhub skills update <id|name|slug> --workspace <workspace-id> --token <token> [--api http://127.0.0.1:3310] [--description text] [--owner owner] [--tag value] [--lifecycle stable] [--agent claude-code] [--json]
+  harhub skills delete <id|name|slug> [--catalog .harhub/skills.json] [--asset-catalog .harhub/assets.json] [--json]
+  harhub skills delete <id|name|slug> --workspace <workspace-id> --token <token> [--api http://127.0.0.1:3310] [--json]
+  harhub skills revalidate [id|name|slug] --workspace <workspace-id> --token <token> [--api http://127.0.0.1:3310] [--json]
 `);
 }

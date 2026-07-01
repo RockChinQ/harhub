@@ -17,7 +17,8 @@ export function SkillDetailView({
   asset,
   issues,
   onBack,
-  onChanged
+  onChanged,
+  onDeleted
 }: {
   workspace: WorkspaceRecord;
   token: string;
@@ -25,6 +26,7 @@ export function SkillDetailView({
   issues: ValidationIssue[];
   onBack: () => void;
   onChanged: () => Promise<void>;
+  onDeleted: () => void;
 }) {
   if (!asset) {
     return (
@@ -67,6 +69,7 @@ export function SkillDetailView({
           asset={asset}
           issues={issues}
           onChanged={onChanged}
+          onDeleted={onDeleted}
           className="2xl:h-full"
         />
         <SkillFileExplorer workspace={workspace} token={token} asset={asset} />

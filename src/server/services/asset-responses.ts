@@ -9,11 +9,14 @@ export function assetListPayload(
   generatedAt: string,
   assets: AssetRecord[]
 ) {
+  const issues = assets.flatMap((asset) => asset.validationIssues ?? []);
+
   return {
     workspace,
     catalogPath: getWorkspaceAssetCatalogPath(workspace.id),
     generatedAt,
     storage: getStorageStatus(),
+    issues,
     assets,
     skills: assets
       .map((asset) => asset.skill)

@@ -91,6 +91,7 @@ export function AppContent({
           issues={issues}
           onBack={() => onNavigate({ view: "assets" })}
           onChanged={onRefreshAssets}
+          onDeleted={() => onNavigate({ view: "assets" })}
         />
       ) : null}
       {view === "workspace" && activeWorkspace ? (

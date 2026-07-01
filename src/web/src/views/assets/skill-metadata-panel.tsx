@@ -1,4 +1,4 @@
-import { Loader2, Save, Trash2 } from "lucide-react";
+import { Loader2, Save, ShieldCheck, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
 import type {
@@ -26,7 +26,11 @@ import {
   SelectTrigger,
   SelectValue
 } from "../../components/ui/select";
-import { deleteWorkspaceAsset, updateWorkspaceAsset } from "../../lib/api";
+import {
+  deleteWorkspaceAsset,
+  updateWorkspaceAsset,
+  validateWorkspaceAsset
+} from "../../lib/api";
 import { cn } from "../../lib/utils";
 import { MetadataCount } from "./metadata-count";
 import { ValidationIssuesList } from "./validation-issues-list";
@@ -37,6 +41,7 @@ export function SkillMetadataPanel({
   asset,
   issues,
   onChanged,
+  onDeleted,
   className
 }: {
   workspace: WorkspaceRecord;
@@ -44,6 +49,7 @@ export function SkillMetadataPanel({
   asset?: AssetRecord;
   issues: ValidationIssue[];
   onChanged: () => Promise<void>;
+  onDeleted?: () => void;
   className?: string;
 }) {
   const [description, setDescription] = useState("");
@@ -54,6 +60,7 @@ export function SkillMetadataPanel({
   const [message, setMessage] = useState<string | undefined>();
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
 
   useEffect(() => {
     setDescription(asset?.description ?? "");
@@ -73,8 +80,22 @@ export function SkillMetadataPanel({
   }
 
   const selectedAsset = asset;
-  const assetIssues = issues.filter(
-    (issue) => issue.assetId === selectedAsset.id || issue.skillId === selectedAsset.skill?.id
+  const selectedSkillId = selectedAsset.skill?.id;
+  const assetIssues = [
+    ...(selectedAsset.validationIssues ?? []),
+    ...issues.filter(
+      (issue) =>
+        issue.assetId === selectedAsset.id ||
+        (Boolean(selectedSkillId) && issue.skillId === selectedSkillId)
+    )
+  ].filter(
+    (issue, index, allIssues) =>
+      allIssues.findIndex(
+        (item) =>
+          item.code === issue.code &&
+          item.message === issue.message &&
+          item.path === issue.path
+      ) === index
   );
   const headings = metadataList(selectedAsset, "headings");
   const agentsList = metadataList(selectedAsset, "agents");
@@ -109,10 +130,32 @@ export function SkillMetadataPanel({
       await deleteWorkspaceAsset(token, workspace.id, selectedAsset.id);
       setMessage("Skill deleted.");
       await onChanged();
+      onDeleted?.();
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setIsDeleting(false);
+    }
+  }
+
+  async function validateAsset() {
+    setIsValidating(true);
+    setMessage(undefined);
+    try {
+      const response = await validateWorkspaceAsset(token, workspace.id, selectedAsset.id);
+      const issueCount =
+        response.validatedIssues?.length ??
+        ((response.validated?.validation.errors ?? 0) + (response.validated?.validation.warnings ?? 0));
+      const nextMessage =
+        issueCount > 0
+          ? `Validation completed with ${issueCount} issue(s).`
+          : "Validation completed with no issues.";
+      await onChanged();
+      setMessage(nextMessage);
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsValidating(false);
     }
   }
 
@@ -138,6 +181,14 @@ export function SkillMetadataPanel({
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" onClick={validateAsset} disabled={isValidating}>
+            {isValidating ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+            )}
+            Validate
+          </Button>
           <Button type="submit" disabled={isSaving}>
             {isSaving ? (
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />

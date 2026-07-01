@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import {
   createUploadedSkillAsset,
   upsertAsset,
+  validateUploadedSkillZip,
   writeAssetCatalog
 } from "../../features/assets/index.js";
 import { contentHash } from "../../shared/markdown.js";
@@ -34,6 +35,13 @@ export async function handleAssetUpload(
   try {
     const requestedName = requestedAssetName(file.originalname, req.body?.name);
     const checksum = contentHash(file.buffer);
+    await validateUploadedSkillZip({
+      workspaceId: context.workspace.id,
+      fileName: file.originalname,
+      buffer: file.buffer,
+      name: requestedName
+    });
+
     uploaded = await uploadSkillZipObject({
       workspaceId: context.workspace.id,
       objectName: requestedName,

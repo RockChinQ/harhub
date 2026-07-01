@@ -70,6 +70,10 @@ export function skillToAsset(
       errors,
       warnings
     },
+    validationIssues: skillIssues.map((issue) => ({
+      ...issue,
+      assetId: skill.id.replace(/^skill:/, "asset:skill:")
+    })),
     metadata: {
       agents: skill.agents,
       headings: skill.headings,

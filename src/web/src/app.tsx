@@ -133,6 +133,7 @@ export function App() {
     try {
       const result = await getWorkspaceAssets(token, workspaceId);
       setAssets(result.assets);
+      setIssues(result.issues);
       setStorageStatus(result.storage);
       const storedAssets = result.assets.filter((asset) => asset.storage);
       const routeAsset = route.assetQuery ? findUiAsset(storedAssets, route.assetQuery) : undefined;

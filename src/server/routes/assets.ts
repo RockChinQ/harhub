@@ -1,16 +1,18 @@
 import type { Express, RequestHandler } from "express";
 import {
-  createAssetCatalog,
   filterAssets,
   findAsset
 } from "../../features/assets/index.js";
-import { scanSkills, validateSkills } from "../../features/skills/index.js";
 import { readStoredObject } from "../../storage/index.js";
 import { requireWorkspaceAccess } from "../auth.js";
 import { createSkillAsset } from "../services/skill-factory.js";
 import { deleteAsset, patchAsset } from "../services/asset-mutations.js";
 import { handleAssetUpload } from "../services/asset-upload.js";
 import { assetListPayload } from "../services/asset-responses.js";
+import {
+  validateWorkspaceAsset,
+  validateWorkspaceAssets
+} from "../services/asset-validation.js";
 import {
   loadOrCreateWorkspaceAssetCatalog,
   scanAndPersistWorkspace
@@ -99,16 +101,15 @@ function registerAssetMutationRoutes(
     const context = requireWorkspaceAccess(req, res);
     if (!context) return;
 
-    const roots = readPathList(req.body?.paths, context.workspace.defaultScanPaths);
-    const skills = scanSkills({ roots });
-    const issues = validateSkills(skills);
-    const assetCatalog = createAssetCatalog(skills, issues);
-    res.status(hasErrors(issues) ? 422 : 200).json({
-      workspace: context.workspace,
-      assets: assetCatalog.assets,
-      skills,
-      issues
-    });
+    void (async () => {
+      try {
+        const roots = readPathList(req.body?.paths, context.workspace.defaultScanPaths);
+        const response = await validateWorkspaceAssets(context.workspace, roots);
+        res.status(hasErrors(response.issues) ? 422 : 200).json(response);
+      } catch (error) {
+        sendError(res, error, 400);
+      }
+    })();
   });
 
   app.post("/api/workspaces/:workspaceId/assets/upload", upload.single("file"), async (req, res) => {
@@ -133,6 +134,20 @@ function registerAssetMutationRoutes(
     const context = requireWorkspaceAccess(req, res);
     if (!context) return;
     patchAsset(req, res, context);
+  });
+
+  app.post("/api/workspaces/:workspaceId/assets/:query/validate", (req, res) => {
+    const context = requireWorkspaceAccess(req, res);
+    if (!context) return;
+
+    void (async () => {
+      try {
+        const response = await validateWorkspaceAsset(context.workspace, req.params.query);
+        res.status(hasErrors(response.validatedIssues ?? []) ? 422 : 200).json(response);
+      } catch (error) {
+        sendError(res, error, 400);
+      }
+    })();
   });
 
   app.delete("/api/workspaces/:workspaceId/assets/:query", async (req, res) => {

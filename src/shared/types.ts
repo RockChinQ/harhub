@@ -136,6 +136,7 @@ export interface AssetRecord {
     errors: number;
     warnings: number;
   };
+  validationIssues?: ValidationIssue[];
   metadata: Record<string, string | number | boolean | string[] | undefined>;
   skill?: SkillRecord;
   discoveredAt: string;

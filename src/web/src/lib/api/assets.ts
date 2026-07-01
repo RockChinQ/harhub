@@ -123,6 +123,37 @@ export async function deleteWorkspaceAsset(
   );
 }
 
+export async function validateWorkspaceAssets(
+  token: string,
+  workspaceId: string
+): Promise<AssetScanResponse> {
+  return request<AssetScanResponse>(
+    `/api/workspaces/${workspaceId}/assets/validate`,
+    {
+      token,
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({})
+    }
+  );
+}
+
+export async function validateWorkspaceAsset(
+  token: string,
+  workspaceId: string,
+  assetId: string
+): Promise<AssetScanResponse> {
+  return request<AssetScanResponse>(
+    `/api/workspaces/${workspaceId}/assets/${encodeURIComponent(assetId)}/validate`,
+    {
+      token,
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({})
+    }
+  );
+}
+
 export async function getWorkspaceAssetPreview(
   token: string,
   workspaceId: string,
