@@ -1,20 +1,18 @@
-import { existsSync } from "node:fs";
 import {
   assetCatalogToSkillCatalog,
-  createAssetCatalog,
-  readAssetCatalog,
-  writeAssetCatalog
+  createAssetCatalog
 } from "../../features/assets/index.js";
 import {
   createCatalog,
-  readCatalog,
   scanSkills,
-  validateSkills,
-  writeCatalog
+  validateSkills
 } from "../../features/skills/index.js";
 import {
-  getWorkspaceAssetCatalogPath,
-  getWorkspaceCatalogPath
+  describeWorkspaceCatalogStorage,
+  readWorkspaceAssetCatalog,
+  readWorkspaceSkillCatalog,
+  writeWorkspaceAssetCatalog,
+  writeWorkspaceSkillCatalog
 } from "../../state/index.js";
 import { getStorageStatus } from "../../storage/index.js";
 import type {
@@ -23,41 +21,37 @@ import type {
   WorkspaceRecord
 } from "../../shared/types.js";
 
-export function loadOrCreateWorkspaceCatalog(workspace: WorkspaceRecord): SkillCatalog {
-  const assetPath = getWorkspaceAssetCatalogPath(workspace.id);
-  if (existsSync(assetPath)) {
-    return assetCatalogToSkillCatalog(readAssetCatalog(assetPath));
+export async function loadOrCreateWorkspaceCatalog(workspace: WorkspaceRecord): Promise<SkillCatalog> {
+  const assetCatalog = await readWorkspaceAssetCatalog(workspace.id);
+  if (assetCatalog) {
+    return assetCatalogToSkillCatalog(assetCatalog);
   }
 
-  const catalogPath = getWorkspaceCatalogPath(workspace.id);
-  if (existsSync(catalogPath)) {
-    const catalog = readCatalog(catalogPath);
+  const catalog = await readWorkspaceSkillCatalog(workspace.id);
+  if (catalog) {
     const needsRefresh =
       catalog.workspaceId !== workspace.id ||
       catalog.skills.some((skill) => !skill.displayName || !skill.source);
     if (!needsRefresh) return catalog;
   }
 
-  return scanAndPersistWorkspace(workspace, workspace.defaultScanPaths).catalog;
+  return (await scanAndPersistWorkspace(workspace, workspace.defaultScanPaths)).catalog;
 }
 
-export function loadOrCreateWorkspaceAssetCatalog(workspace: WorkspaceRecord): AssetCatalog {
-  const catalogPath = getWorkspaceAssetCatalogPath(workspace.id);
-  if (existsSync(catalogPath)) {
-    const catalog = readAssetCatalog(catalogPath);
+export async function loadOrCreateWorkspaceAssetCatalog(workspace: WorkspaceRecord): Promise<AssetCatalog> {
+  const catalog = await readWorkspaceAssetCatalog(workspace.id);
+  if (catalog) {
     const needsRefresh =
       catalog.workspaceId !== workspace.id ||
       catalog.assets.some((asset) => !asset.displayName || !asset.kind);
     if (!needsRefresh) return catalog;
   }
 
-  return scanAndPersistWorkspace(workspace, workspace.defaultScanPaths).assetCatalog;
+  return (await scanAndPersistWorkspace(workspace, workspace.defaultScanPaths)).assetCatalog;
 }
 
-export function scanAndPersistWorkspace(workspace: WorkspaceRecord, roots: string[]) {
-  const previousAssetCatalog = existsSync(getWorkspaceAssetCatalogPath(workspace.id))
-    ? readAssetCatalog(getWorkspaceAssetCatalogPath(workspace.id))
-    : undefined;
+export async function scanAndPersistWorkspace(workspace: WorkspaceRecord, roots: string[]) {
+  const previousAssetCatalog = await readWorkspaceAssetCatalog(workspace.id);
   const skills = scanSkills({ roots });
   const issues = validateSkills(skills);
   const catalog = {
@@ -78,15 +72,15 @@ export function scanAndPersistWorkspace(workspace: WorkspaceRecord, roots: strin
     ].sort((a, b) => a.id.localeCompare(b.id))
   };
 
-  writeCatalog(getWorkspaceCatalogPath(workspace.id), catalog);
-  writeAssetCatalog(getWorkspaceAssetCatalogPath(workspace.id), assetCatalog);
+  await writeWorkspaceSkillCatalog(workspace.id, catalog);
+  await writeWorkspaceAssetCatalog(workspace.id, assetCatalog);
 
   return {
     workspace,
     catalog,
     assetCatalog,
-    catalogPath: getWorkspaceCatalogPath(workspace.id),
-    assetCatalogPath: getWorkspaceAssetCatalogPath(workspace.id),
+    catalogStorage: describeWorkspaceCatalogStorage(workspace.id),
+    assetCatalogStorage: describeWorkspaceCatalogStorage(workspace.id),
     generatedAt: catalog.generatedAt,
     storage: getStorageStatus(),
     assets: assetCatalog.assets,

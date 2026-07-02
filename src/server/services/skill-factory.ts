@@ -4,11 +4,11 @@ import type { WorkspaceRecord } from "../../shared/types.js";
 import { scanAndPersistWorkspace } from "./workspace-catalogs.js";
 import { sendError, unique } from "../utils/http.js";
 
-export function createSkillAsset(
+export async function createSkillAsset(
   req: Request,
   res: Response,
   workspace: WorkspaceRecord
-): void {
+): Promise<void> {
   try {
     if (!String(req.body?.name ?? "").trim()) {
       throw new Error("Skill name is required.");
@@ -21,7 +21,7 @@ export function createSkillAsset(
         typeof req.body?.description === "string" ? req.body.description : undefined
     });
 
-    const response = scanAndPersistWorkspace(
+    const response = await scanAndPersistWorkspace(
       workspace,
       unique([workspace.skillRoot, ...workspace.defaultScanPaths])
     );

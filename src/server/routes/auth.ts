@@ -18,8 +18,8 @@ import {
 } from "../utils/http.js";
 
 export function registerAuthRoutes(app: Express): void {
-  app.get("/api/session", (req, res) => {
-    const context = getAuthContext(req);
+  app.get("/api/session", async (req, res) => {
+    const context = await getAuthContext(req);
     if (!context) {
       res.status(401).json({
         error: "Not signed in",
@@ -31,62 +31,62 @@ export function registerAuthRoutes(app: Express): void {
       return;
     }
 
-    res.json(buildSessionPayload(context.account));
+    res.json(await buildSessionPayload(context.account));
   });
 
-  app.post("/api/auth/login", (req, res) => {
+  app.post("/api/auth/login", async (req, res) => {
     try {
-      const account = loginAccount(String(req.body?.email ?? ""), String(req.body?.password ?? ""));
-      const token = createSession(account.id);
-      res.json({ token, ...buildSessionPayload(account) });
+      const account = await loginAccount(String(req.body?.email ?? ""), String(req.body?.password ?? ""));
+      const token = await createSession(account.id);
+      res.json({ token, ...(await buildSessionPayload(account)) });
     } catch (error) {
       sendError(res, error, 401);
     }
   });
 
-  app.post("/api/auth/signup", (req, res) => {
+  app.post("/api/auth/signup", async (req, res) => {
     try {
-      const account = signUpAccount({
+      const account = await signUpAccount({
         email: String(req.body?.email ?? ""),
         name: String(req.body?.name ?? ""),
         password: String(req.body?.password ?? ""),
         workspaceName:
           typeof req.body?.workspaceName === "string" ? req.body.workspaceName : undefined
       });
-      const token = createSession(account.id);
-      res.status(201).json({ token, ...buildSessionPayload(account) });
+      const token = await createSession(account.id);
+      res.status(201).json({ token, ...(await buildSessionPayload(account)) });
     } catch (error) {
       sendError(res, error, 400);
     }
   });
 
-  app.post("/api/auth/logout", (req, res) => {
+  app.post("/api/auth/logout", async (req, res) => {
     const token = getBearerToken(req);
-    if (token) deleteSession(token);
+    if (token) await deleteSession(token);
     res.status(204).send();
   });
 
-  app.patch("/api/account", (req, res) => {
-    const context = requireAuth(req, res);
+  app.patch("/api/account", async (req, res) => {
+    const context = await requireAuth(req, res);
     if (!context) return;
 
     try {
-      const account = updateAccountProfile(context.account.id, {
+      const account = await updateAccountProfile(context.account.id, {
         name: typeof req.body?.name === "string" ? req.body.name : undefined,
         email: typeof req.body?.email === "string" ? req.body.email : undefined
       });
-      res.json(buildSessionPayload(account));
+      res.json(await buildSessionPayload(account));
     } catch (error) {
       sendError(res, error, 400);
     }
   });
 
-  app.post("/api/account/password", (req, res) => {
-    const context = requireAuth(req, res);
+  app.post("/api/account/password", async (req, res) => {
+    const context = await requireAuth(req, res);
     if (!context) return;
 
     try {
-      changeAccountPassword(context.account.id, {
+      await changeAccountPassword(context.account.id, {
         currentPassword: String(req.body?.currentPassword ?? ""),
         newPassword: String(req.body?.newPassword ?? "")
       });

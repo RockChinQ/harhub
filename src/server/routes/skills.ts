@@ -17,11 +17,11 @@ import {
 import { readPathList, sendError } from "../utils/http.js";
 
 export function registerSkillRoutes(app: Express): void {
-  app.get("/api/workspaces/:workspaceId/skills", (req, res) => {
-    const context = requireWorkspaceAccess(req, res);
+  app.get("/api/workspaces/:workspaceId/skills", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
 
-    const catalog = loadOrCreateWorkspaceAssetCatalog(context.workspace);
+    const catalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
     const assets = filterAssets(catalog, {
       kind: "skill"
     });
@@ -29,17 +29,17 @@ export function registerSkillRoutes(app: Express): void {
     res.json(assetListPayload(context.workspace, catalog.generatedAt, assets));
   });
 
-  app.get("/api/workspaces/:workspaceId/skills/:query", (req, res) => {
-    const context = requireWorkspaceAccess(req, res);
+  app.get("/api/workspaces/:workspaceId/skills/:query", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
 
-    const asset = findAsset(loadOrCreateWorkspaceAssetCatalog(context.workspace), req.params.query);
+    const asset = findAsset(await loadOrCreateWorkspaceAssetCatalog(context.workspace), req.params.query);
     if (asset) {
       res.json(asset);
       return;
     }
 
-    const skill = findSkill(loadOrCreateWorkspaceCatalog(context.workspace), req.params.query);
+    const skill = findSkill(await loadOrCreateWorkspaceCatalog(context.workspace), req.params.query);
     if (!skill) {
       res.status(404).json({ error: "Skill not found" });
       return;
@@ -48,58 +48,54 @@ export function registerSkillRoutes(app: Express): void {
     res.json(skill);
   });
 
-  app.post("/api/workspaces/:workspaceId/skills/scan", (req, res) => {
-    const context = requireWorkspaceAccess(req, res);
+  app.post("/api/workspaces/:workspaceId/skills/scan", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
 
     const roots = readPathList(req.body?.paths, context.workspace.defaultScanPaths);
-    const response = scanAndPersistWorkspace(context.workspace, roots);
+    const response = await scanAndPersistWorkspace(context.workspace, roots);
     res.json(response);
   });
 
-  app.post("/api/workspaces/:workspaceId/skills/validate", (req, res) => {
-    const context = requireWorkspaceAccess(req, res);
+  app.post("/api/workspaces/:workspaceId/skills/validate", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
 
-    void (async () => {
-      try {
-        const roots = readPathList(req.body?.paths, context.workspace.defaultScanPaths);
-        const response = await validateWorkspaceAssets(context.workspace, roots);
-        res.json(response);
-      } catch (error) {
-        sendError(res, error, 400);
-      }
-    })();
+    try {
+      const roots = readPathList(req.body?.paths, context.workspace.defaultScanPaths);
+      const response = await validateWorkspaceAssets(context.workspace, roots);
+      res.json(response);
+    } catch (error) {
+      sendError(res, error, 400);
+    }
   });
 
-  app.post("/api/workspaces/:workspaceId/skills", (req, res) => {
-    const context = requireWorkspaceAccess(req, res);
+  app.post("/api/workspaces/:workspaceId/skills", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
-    createSkillAsset(req, res, context.workspace);
+    await createSkillAsset(req, res, context.workspace);
   });
 
-  app.patch("/api/workspaces/:workspaceId/skills/:query", (req, res) => {
-    const context = requireWorkspaceAccess(req, res);
+  app.patch("/api/workspaces/:workspaceId/skills/:query", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
-    patchAsset(req, res, context);
+    await patchAsset(req, res, context);
   });
 
-  app.post("/api/workspaces/:workspaceId/skills/:query/validate", (req, res) => {
-    const context = requireWorkspaceAccess(req, res);
+  app.post("/api/workspaces/:workspaceId/skills/:query/validate", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
 
-    void (async () => {
-      try {
-        const response = await validateWorkspaceAsset(context.workspace, req.params.query);
-        res.json(response);
-      } catch (error) {
-        sendError(res, error, 400);
-      }
-    })();
+    try {
+      const response = await validateWorkspaceAsset(context.workspace, req.params.query);
+      res.json(response);
+    } catch (error) {
+      sendError(res, error, 400);
+    }
   });
 
   app.delete("/api/workspaces/:workspaceId/skills/:query", async (req, res) => {
-    const context = requireWorkspaceAccess(req, res);
+    const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
     await deleteAsset(req, res, context);
   });

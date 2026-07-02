@@ -22,7 +22,9 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 - **Tenant model**：workspaces、memberships、workspace roles、default scan paths 和 workspace-scoped catalogs。
 - **Skill asset flow**：S3-compatible zip upload、`SKILL.md` extraction、runtime indexing、search/filter、table view、detail view、file tree preview 和 deletion。
 - **Validation foundation**：递归 `SKILL.md` scanning、官方 frontmatter checks、name validation、description checks，以及官方可选字段 checks。
-- **CLI foundation**：local scan、validate、list、show、create、asset scan、asset validate、asset create 和 API-backed zip upload。
+- **CLI foundation**：local scan、validate、list、show、create、asset scan、asset validate、asset create、interactive TUI upload、local Skill directory packaging 和 API-backed zip upload。
+- **Open-source release path**：GitHub Release 触发 npm publish workflow，使用 `NPM_TOKEN` 发布；`0.1.0-beta.0` 已作为 npm beta 版本发布。
+- **Cloud-native persistence**：`HARHUB_DATABASE_URL` 存在时，accounts、sessions、workspace metadata、memberships 和 workspace asset indexes 存入 Postgres-compatible database；uploaded zip bytes 存入 S3-compatible object storage。本地 `.harhub` JSON 只作为 fallback。
 
 如何理解当前实现：
 
@@ -36,11 +38,27 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 - **Quota 尚未建模**：上传大小有 process-level cap，但没有 per-user、per-workspace、per-asset、daily upload 或 total storage quota。
 - **Uploaded zips 需要更强校验**：上传解析会验证 zip 包含 `SKILL.md`，但应运行与 local scans 相同的结构和安全检查，并持久化 validation issues。
 - **没有 activation/distribution event**：产品有 preview，但没有一等的“download”、“copy install command”、“copy Codex install path”或 usage event 来证明复用。
-- **没有 SaaS-grade persistence**：accounts、sessions、workspace metadata 和 asset indexes 都是本地 JSON 文件，适合 self-hosting/demo，但不够用于 hosted operation。
+- **SaaS persistence 仍需产品化**：Postgres backend 已可用，但还缺 explicit migration runner、normalized reporting schema、backup/export policy 和 production readiness checks。
 - **没有 operations dashboard**：缺少 signups、activated workspaces、asset counts、storage usage、failed uploads、quota hits 或 over-limit users 的 admin view。
 - **Role enforcement 不完整**：很多 asset actions 只要求 workspace access；hosted SaaS 应按角色显式限制 mutation。
 - **没有 hosted onboarding funnel**：signup 还没有引导用户完成上传或导入 3 个有效 Skills 并安装 1 个的激活路径。
-- **开源发布表面较薄**：README 可用，但发布仍需要 deployment docs、environment templates、contributor docs、license clarity 和 SaaS CTA。
+- **开源发布表面仍需补齐**：README、CLI quickstart、release workflow 和 npm beta 发布已可用，但仍需要 deployment docs、environment templates、contributor docs、license clarity 和 SaaS CTA。
+
+## 近期已完成
+
+- [x] 将 Skills 统一作为 Asset kind 管理，并保留 MCPs、Rules 为 disabled roadmap entries。
+- [x] 将前端固定到 `127.0.0.1:5176`，API 固定到 `127.0.0.1:3310`。
+- [x] 将 Skill zip upload 接到 S3/S3-compatible storage，并提供本地 MinIO 开发路径。
+- [x] 将 Skill detail 做成 URL-addressable 页面，支持 file tree 和 file preview。
+- [x] 将 destructive confirmation 改为 shadcn AlertDialog，避免原生 confirm。
+- [x] 清理 Harhub-only Skill frontmatter，保持 `SKILL.md` 对齐 agentskills.io。
+- [x] 修复 selected asset validation，避免 detail 页泄漏其他 assets 的 validation issues。
+- [x] 增加 `harhub skills upload`：默认扫描本地目录，打开 TUI 选择要上传的 Skill 目录，并自动打包上传。
+- [x] 增加 `--all`/`--json` 非交互上传路径，支持脚本和 CI。
+- [x] 添加 GitHub Release 到 npm 的发布 workflow，使用 `NPM_TOKEN`。
+- [x] 发布 `harhub@0.1.0-beta.0` 到 npm，并设置 `beta` dist-tag。
+- [x] 添加 Postgres-compatible runtime state backend：accounts、sessions、workspaces、memberships 和 asset catalogs 不再必须依赖本地 JSON。
+- [x] 更新本地云原生开发栈：Docker Compose 启动 Postgres + MinIO，`npm run dev:cloud` 使用同一套环境变量形态。
 
 更广义 team-harness 产品的重要缺口：
 
@@ -167,10 +185,11 @@ Distribution action 可以是：
 
 ### 3. Hosted SaaS 持久化
 
-- [ ] 为 SaaS deployments 用 hosted database 替换 local JSON state。
-- [ ] 保留 local JSON 作为 self-host/dev adapter。
-- [ ] 在数据库中存储 accounts、sessions、workspaces、memberships、asset runtime records、validation issues、usage counters 和 events。
-- [ ] 添加 migrations 和 seed data。
+- [x] 为 SaaS deployments 用 Postgres-compatible hosted database 替换 local JSON state。
+- [x] 保留 local JSON 作为 self-host/dev adapter。
+- [x] 在数据库中存储 accounts、sessions、workspaces、memberships、asset runtime records 和 validation issues。
+- [ ] 将 usage counters 和 events 从 catalog JSONB 中拆出为可查询的 normalized tables。
+- [ ] 添加 explicit migration runner；当前应用启动时会创建所需 runtime tables。
 - [ ] 添加 workspace metadata 的 backups 或 export path。
 
 ### 4. 上传校验与存储安全
@@ -203,12 +222,15 @@ Distribution action 可以是：
 ### 7. 开源发布准备
 
 - [ ] 添加 license file 并确认预期 OSS license。
-- [ ] 添加 `.env.example`，包含 local API、S3/R2/MinIO、max upload bytes 和 state adapter。
+- [x] 添加 `.env.example`，包含 local API、Postgres、S3/R2/MinIO、max upload bytes 和 state adapter。
 - [ ] 添加 self-hosting 的 Docker 或 Docker Compose 路径。
 - [ ] 将 README 拆分为 quickstart、self-hosting、hosted SaaS、CLI 和 development sections。
 - [ ] 添加 `CONTRIBUTING.md`，包含 local setup、checks 和 skill-standard expectations。
 - [ ] 添加 `SECURITY.md`，用于 vulnerability reports 和 secret-handling expectations。
 - [ ] 添加用于 demos 和 tests 的 example Skill zip fixtures。
+- [x] 添加 npm 发布 workflow：GitHub Release 发布时运行 check、build、pack dry-run 和 npm publish。
+- [x] 为 npm package 添加 repository、homepage、bugs、files whitelist 和 public publish config。
+- [x] 发布首个 beta 包 `harhub@0.1.0-beta.0`。
 
 ## P1 TODO
 
@@ -293,6 +315,7 @@ Distribution action 可以是：
 - [ ] 本地 self-host quickstart 能从 clean checkout 跑通。
 - [ ] 示例 Skills 只展示 agentskills.io 官方 `SKILL.md` 标准。
 - [ ] GitHub issue templates 能收集 bug reports 和 feature requests。
+- [x] npm beta 版本可以通过 GitHub Release 自动发布。
 
 ## MVP 验收标准
 

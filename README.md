@@ -55,6 +55,12 @@ npm run dev
 - API: `http://127.0.0.1:3310`
 - Web: `http://127.0.0.1:5176/skills`
 
+For the cloud-native local stack with Postgres and MinIO:
+
+```bash
+npm run dev:cloud
+```
+
 ### S3 Storage
 
 Skill uploads require S3-compatible object storage. Configure these environment variables before starting the API:
@@ -69,7 +75,21 @@ export HARHUB_S3_PREFIX=dev
 export HARHUB_S3_PUBLIC_BASE_URL=https://assets.example.com
 ```
 
-The uploaded zip must contain a `SKILL.md` file. Harhub reads that file for the standard Agent Skills fields, stores the zip in S3, and records runtime asset state locally. Local JSON files under `.harhub/` are runtime indexes only; they are not the Skill storage backend.
+The uploaded zip must contain a `SKILL.md` file. Harhub reads that file for the standard Agent Skills fields, stores the zip in S3, and records runtime asset state in Postgres when `HARHUB_DATABASE_URL` is configured. Local JSON files under `.harhub/` remain the development fallback only.
+
+### Cloud Persistence
+
+Hosted deployments should configure a Postgres-compatible database:
+
+```bash
+export HARHUB_DATABASE_URL=postgres://user:password@host:5432/harhub
+# Optional for managed databases that require TLS:
+export HARHUB_DATABASE_SSL=true
+```
+
+With `HARHUB_DATABASE_URL` set, Harhub stores accounts, sessions, workspaces,
+memberships, and workspace asset catalogs in Postgres. Without it, Harhub falls
+back to local `.harhub` JSON files for self-hosted demos and offline development.
 
 ## Stack
 
@@ -81,15 +101,16 @@ The uploaded zip must contain a `SKILL.md` file. Harhub reads that file for the 
 
 ## SaaS Model
 
-The current SaaS MVP is local-first but tenant-aware:
+The current SaaS MVP is stateless at the API layer when configured with managed
+Postgres and S3-compatible object storage:
 
 - Accounts sign in with bearer-token sessions.
 - Workspaces represent tenants.
 - Memberships attach accounts to workspaces with roles.
 - Each workspace has its own asset index, members, roles, and Skill upload namespace.
-- Workspace asset indexes are stored under `.harhub/workspaces/<workspace-id>/assets.json`; Skill zip bytes live in S3.
-
-The local state file is `.harhub/state.json`, which is ignored by Git.
+- Accounts, sessions, workspace metadata, memberships, and asset indexes live in Postgres.
+- Skill zip bytes live in S3-compatible object storage.
+- Local `.harhub` JSON files are only the fallback when `HARHUB_DATABASE_URL` is absent.
 
 ## Product Direction
 
@@ -207,7 +228,7 @@ Current boundary:
 
 - Skill zip upload to S3/S3-compatible object storage.
 - Standard `SKILL.md` field extraction from uploaded zips.
-- Workspace-local JSON asset index for Harhub runtime state.
+- Postgres-backed SaaS runtime state with local JSON fallback.
 - Recursive `SKILL.md` discovery by scan for development imports.
 - Standard field extraction from `SKILL.md` frontmatter.
 - Validation for the official agentskills.io fields and name constraints.

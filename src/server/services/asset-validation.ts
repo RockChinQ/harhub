@@ -1,11 +1,13 @@
 import {
   createUploadedSkillAsset,
   findAsset,
-  upsertAsset,
-  writeAssetCatalog
+  upsertAsset
 } from "../../features/assets/index.js";
 import type { AssetCatalog, AssetRecord, WorkspaceRecord } from "../../shared/types.js";
-import { getWorkspaceAssetCatalogPath } from "../../state/index.js";
+import {
+  describeWorkspaceCatalogStorage,
+  writeWorkspaceAssetCatalog
+} from "../../state/index.js";
 import { readStoredObject } from "../../storage/index.js";
 import { assetListPayload } from "./asset-responses.js";
 import {
@@ -17,7 +19,7 @@ export async function validateWorkspaceAssets(
   workspace: WorkspaceRecord,
   roots: string[]
 ) {
-  const scanned = scanAndPersistWorkspace(workspace, roots);
+  const scanned = await scanAndPersistWorkspace(workspace, roots);
   let catalog: AssetCatalog = scanned.assetCatalog;
 
   for (const asset of catalog.assets) {
@@ -26,10 +28,10 @@ export async function validateWorkspaceAssets(
     catalog = upsertAsset(catalog, refreshed);
   }
 
-  writeAssetCatalog(getWorkspaceAssetCatalogPath(workspace.id), catalog);
+  await writeWorkspaceAssetCatalog(workspace.id, catalog);
   return {
     ...assetListPayload(workspace, catalog.generatedAt, catalog.assets),
-    assetCatalogPath: getWorkspaceAssetCatalogPath(workspace.id)
+    assetCatalogStorage: describeWorkspaceCatalogStorage(workspace.id)
   };
 }
 
@@ -37,21 +39,21 @@ export async function validateWorkspaceAsset(
   workspace: WorkspaceRecord,
   query: string
 ) {
-  const catalog = loadOrCreateWorkspaceAssetCatalog(workspace);
+  const catalog = await loadOrCreateWorkspaceAssetCatalog(workspace);
   const asset = findAsset(catalog, query);
   if (!asset) {
     throw new Error("Asset not found.");
   }
 
   if (!asset.storage) {
-    const refreshed = scanAndPersistWorkspace(workspace, [
+    const refreshed = await scanAndPersistWorkspace(workspace, [
       workspace.skillRoot,
       ...workspace.defaultScanPaths
     ]);
     const validated = findAsset(refreshed.assetCatalog, query);
     return {
       ...assetListPayload(workspace, refreshed.assetCatalog.generatedAt, refreshed.assetCatalog.assets),
-      assetCatalogPath: getWorkspaceAssetCatalogPath(workspace.id),
+      assetCatalogStorage: describeWorkspaceCatalogStorage(workspace.id),
       validated,
       validatedIssues: validated?.validationIssues ?? []
     };
@@ -59,10 +61,10 @@ export async function validateWorkspaceAsset(
 
   const nextAsset = await validateStoredAsset(workspace, asset);
   const nextCatalog = upsertAsset(catalog, nextAsset);
-  writeAssetCatalog(getWorkspaceAssetCatalogPath(workspace.id), nextCatalog);
+  await writeWorkspaceAssetCatalog(workspace.id, nextCatalog);
   return {
     ...assetListPayload(workspace, nextCatalog.generatedAt, nextCatalog.assets),
-    assetCatalogPath: getWorkspaceAssetCatalogPath(workspace.id),
+    assetCatalogStorage: describeWorkspaceCatalogStorage(workspace.id),
     validated: nextAsset,
     validatedIssues: nextAsset.validationIssues ?? []
   };

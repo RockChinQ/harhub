@@ -16,18 +16,18 @@ import {
 } from "../utils/http.js";
 
 export function registerWorkspaceRoutes(app: Express): void {
-  app.get("/api/workspaces", (req, res) => {
-    const context = requireAuth(req, res);
+  app.get("/api/workspaces", async (req, res) => {
+    const context = await requireAuth(req, res);
     if (!context) return;
-    res.json(listAccountWorkspaces(context.account.id));
+    res.json(await listAccountWorkspaces(context.account.id));
   });
 
-  app.post("/api/workspaces", (req, res) => {
-    const context = requireAuth(req, res);
+  app.post("/api/workspaces", async (req, res) => {
+    const context = await requireAuth(req, res);
     if (!context) return;
 
     try {
-      const workspace = createWorkspaceForAccount(context.account.id, {
+      const workspace = await createWorkspaceForAccount(context.account.id, {
         name: String(req.body?.name ?? ""),
         defaultScanPaths: readOptionalPathList(req.body?.defaultScanPaths),
         skillRoot:
@@ -35,19 +35,19 @@ export function registerWorkspaceRoutes(app: Express): void {
       });
       res.status(201).json({
         workspace,
-        ...listAccountWorkspaces(context.account.id)
+        ...(await listAccountWorkspaces(context.account.id))
       });
     } catch (error) {
       sendError(res, error, 400);
     }
   });
 
-  app.patch("/api/workspaces/:workspaceId", (req, res) => {
-    const context = requireAuth(req, res);
+  app.patch("/api/workspaces/:workspaceId", async (req, res) => {
+    const context = await requireAuth(req, res);
     if (!context) return;
 
     try {
-      const workspace = updateWorkspaceForAccount(context.account.id, req.params.workspaceId, {
+      const workspace = await updateWorkspaceForAccount(context.account.id, req.params.workspaceId, {
         name: typeof req.body?.name === "string" ? req.body.name : undefined,
         defaultScanPaths: readOptionalPathList(req.body?.defaultScanPaths),
         skillRoot:
@@ -55,7 +55,7 @@ export function registerWorkspaceRoutes(app: Express): void {
       });
       res.json({
         workspace,
-        ...listAccountWorkspaces(context.account.id)
+        ...(await listAccountWorkspaces(context.account.id))
       });
     } catch (error) {
       sendError(res, error, 403);
@@ -66,45 +66,45 @@ export function registerWorkspaceRoutes(app: Express): void {
 }
 
 function registerMemberRoutes(app: Express): void {
-  app.get("/api/workspaces/:workspaceId/members", (req, res) => {
-    const context = requireWorkspaceAccess(req, res);
+  app.get("/api/workspaces/:workspaceId/members", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
 
     try {
       res.json({
         workspace: context.workspace,
-        members: listWorkspaceMembers(context.account.id, context.workspace.id)
+        members: await listWorkspaceMembers(context.account.id, context.workspace.id)
       });
     } catch (error) {
       sendError(res, error, 403);
     }
   });
 
-  app.post("/api/workspaces/:workspaceId/members", (req, res) => {
-    const context = requireWorkspaceAccess(req, res);
+  app.post("/api/workspaces/:workspaceId/members", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
 
     try {
-      const member = addWorkspaceMember(context.account.id, context.workspace.id, {
+      const member = await addWorkspaceMember(context.account.id, context.workspace.id, {
         email: String(req.body?.email ?? ""),
         role: readWorkspaceRole(req.body?.role)
       });
       res.status(201).json({
         workspace: context.workspace,
         member,
-        members: listWorkspaceMembers(context.account.id, context.workspace.id)
+        members: await listWorkspaceMembers(context.account.id, context.workspace.id)
       });
     } catch (error) {
       sendError(res, error, 400);
     }
   });
 
-  app.patch("/api/workspaces/:workspaceId/members/:membershipId", (req, res) => {
-    const context = requireWorkspaceAccess(req, res);
+  app.patch("/api/workspaces/:workspaceId/members/:membershipId", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
 
     try {
-      const member = updateWorkspaceMemberRole(
+      const member = await updateWorkspaceMemberRole(
         context.account.id,
         context.workspace.id,
         req.params.membershipId,
@@ -113,19 +113,19 @@ function registerMemberRoutes(app: Express): void {
       res.json({
         workspace: context.workspace,
         member,
-        members: listWorkspaceMembers(context.account.id, context.workspace.id)
+        members: await listWorkspaceMembers(context.account.id, context.workspace.id)
       });
     } catch (error) {
       sendError(res, error, 400);
     }
   });
 
-  app.delete("/api/workspaces/:workspaceId/members/:membershipId", (req, res) => {
-    const context = requireWorkspaceAccess(req, res);
+  app.delete("/api/workspaces/:workspaceId/members/:membershipId", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
 
     try {
-      removeWorkspaceMember(context.account.id, context.workspace.id, req.params.membershipId);
+      await removeWorkspaceMember(context.account.id, context.workspace.id, req.params.membershipId);
       res.status(204).send();
     } catch (error) {
       sendError(res, error, 400);

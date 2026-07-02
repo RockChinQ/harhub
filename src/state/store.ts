@@ -3,14 +3,28 @@ import path from "node:path";
 import { createMembership } from "./records.js";
 import { getStatePath } from "./paths.js";
 import { hashPassword } from "./passwords.js";
+import {
+  isDatabaseStateEnabled,
+  readDatabaseState,
+  writeDatabaseState
+} from "./database.js";
 import type { AccountRecord, AppState } from "./types.js";
 import type { WorkspaceRecord } from "../shared/types.js";
 
-export function loadState(): AppState {
+export async function loadState(): Promise<AppState> {
+  if (isDatabaseStateEnabled()) {
+    const state = await readDatabaseState();
+    if (state) return normalizeState(state);
+
+    const seeded = createSeedState();
+    await saveState(seeded);
+    return seeded;
+  }
+
   const statePath = getStatePath();
   if (!existsSync(statePath)) {
     const seeded = createSeedState();
-    saveState(seeded);
+    await saveState(seeded);
     return seeded;
   }
 
@@ -18,7 +32,12 @@ export function loadState(): AppState {
   return normalizeState(parsed);
 }
 
-export function saveState(state: AppState): void {
+export async function saveState(state: AppState): Promise<void> {
+  if (isDatabaseStateEnabled()) {
+    await writeDatabaseState(state);
+    return;
+  }
+
   const statePath = getStatePath();
   mkdirSync(path.dirname(statePath), { recursive: true });
   writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`);

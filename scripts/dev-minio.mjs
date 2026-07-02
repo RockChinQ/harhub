@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 
 const s3Env = {
+  HARHUB_DATABASE_URL: "postgres://harhub:harhub@127.0.0.1:15432/harhub",
   HARHUB_S3_BUCKET: "harhub-assets",
   HARHUB_S3_REGION: "us-east-1",
   HARHUB_S3_ENDPOINT: "http://127.0.0.1:9000",
@@ -11,7 +12,7 @@ const s3Env = {
   AWS_SECRET_ACCESS_KEY: "minioadmin"
 };
 
-run("docker", ["compose", "up", "-d", "minio", "createbuckets"]);
+run("docker", ["compose", "up", "-d", "postgres", "minio", "createbuckets"]);
 
 const devCommand =
   process.platform === "win32"

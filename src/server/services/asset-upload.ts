@@ -3,22 +3,19 @@ import type { Request, Response } from "express";
 import {
   createUploadedSkillAsset,
   upsertAsset,
-  validateUploadedSkillZip,
-  writeAssetCatalog
+  validateUploadedSkillZip
 } from "../../features/assets/index.js";
 import { contentHash } from "../../shared/markdown.js";
 import type { AssetRecord } from "../../shared/types.js";
-import { getWorkspaceAssetCatalogPath } from "../../state/index.js";
+import { writeWorkspaceAssetCatalog } from "../../state/index.js";
 import {
   deleteStoredObject,
   uploadSkillZipObject
 } from "../../storage/index.js";
-import type { requireWorkspaceAccess } from "../auth.js";
 import { sendError } from "../utils/http.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
 import { assetListPayload } from "./asset-responses.js";
-
-type WorkspaceContext = NonNullable<ReturnType<typeof requireWorkspaceAccess>>;
+import type { WorkspaceContext } from "../../state/types.js";
 
 export async function handleAssetUpload(
   req: Request,
@@ -58,8 +55,8 @@ export async function handleAssetUpload(
       storage: uploaded,
       name: requestedName
     });
-    const catalog = upsertAsset(loadOrCreateWorkspaceAssetCatalog(context.workspace), asset);
-    writeAssetCatalog(getWorkspaceAssetCatalogPath(context.workspace.id), catalog);
+    const catalog = upsertAsset(await loadOrCreateWorkspaceAssetCatalog(context.workspace), asset);
+    await writeWorkspaceAssetCatalog(context.workspace.id, catalog);
 
     res.status(201).json({
       ...assetListPayload(context.workspace, catalog.generatedAt, catalog.assets),

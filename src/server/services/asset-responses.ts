@@ -1,5 +1,5 @@
 import {
-  getWorkspaceAssetCatalogPath
+  describeWorkspaceCatalogStorage
 } from "../../state/index.js";
 import { getStorageStatus } from "../../storage/index.js";
 import type { AssetRecord, SkillRecord, WorkspaceRecord } from "../../shared/types.js";
@@ -14,7 +14,7 @@ export function assetListPayload(
 
   return {
     workspace,
-    catalogPath: getWorkspaceAssetCatalogPath(workspace.id),
+    catalogStorage: describeWorkspaceCatalogStorage(workspace.id),
     generatedAt,
     storage: getStorageStatus(),
     issues,

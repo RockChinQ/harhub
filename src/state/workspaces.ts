@@ -16,11 +16,11 @@ import type {
 } from "../shared/types.js";
 import type { WorkspaceContext } from "./types.js";
 
-export function requireWorkspace(
+export async function requireWorkspace(
   accountId: string,
   workspaceId: string
-): WorkspaceContext | undefined {
-  const state = loadState();
+): Promise<WorkspaceContext | undefined> {
+  const state = await loadState();
   const account = state.accounts.find((item) => item.id === accountId);
   const workspace = state.workspaces.find((item) => item.id === workspaceId);
   const membership = state.memberships.find(
@@ -37,11 +37,11 @@ export function requireWorkspace(
   };
 }
 
-export function createWorkspaceForAccount(
+export async function createWorkspaceForAccount(
   accountId: string,
   input: { name: string; defaultScanPaths?: string[]; skillRoot?: string }
-): WorkspaceRecord {
-  const state = loadState();
+): Promise<WorkspaceRecord> {
+  const state = await loadState();
   const account = state.accounts.find((item) => item.id === accountId);
   if (!account) throw new Error("Account not found.");
 
@@ -52,17 +52,17 @@ export function createWorkspaceForAccount(
 
   state.workspaces.push(workspace);
   state.memberships.push(createMembership(accountId, workspace.id, "owner"));
-  saveState(state);
+  await saveState(state);
 
   return workspace;
 }
 
-export function updateWorkspaceForAccount(
+export async function updateWorkspaceForAccount(
   accountId: string,
   workspaceId: string,
   input: { name?: string; defaultScanPaths?: string[]; skillRoot?: string }
-): WorkspaceRecord {
-  const state = loadState();
+): Promise<WorkspaceRecord> {
+  const state = await loadState();
   const membership = state.memberships.find(
     (item) => item.accountId === accountId && item.workspaceId === workspaceId
   );
@@ -88,15 +88,15 @@ export function updateWorkspaceForAccount(
   }
 
   workspace.updatedAt = new Date().toISOString();
-  saveState(state);
+  await saveState(state);
   return workspace;
 }
 
-export function listWorkspaceMembers(
+export async function listWorkspaceMembers(
   accountId: string,
   workspaceId: string
-): WorkspaceMember[] {
-  const state = loadState();
+): Promise<WorkspaceMember[]> {
+  const state = await loadState();
   requireWorkspaceMembership(state, accountId, workspaceId);
 
   return state.memberships
@@ -113,12 +113,12 @@ export function listWorkspaceMembers(
     .sort((a, b) => a.account.email.localeCompare(b.account.email));
 }
 
-export function addWorkspaceMember(
+export async function addWorkspaceMember(
   actorAccountId: string,
   workspaceId: string,
   input: { email: string; role: WorkspaceRole }
-): WorkspaceMember {
-  const state = loadState();
+): Promise<WorkspaceMember> {
+  const state = await loadState();
   requireWorkspaceAdmin(state, actorAccountId, workspaceId);
 
   const email = input.email.trim().toLowerCase();
@@ -138,7 +138,7 @@ export function addWorkspaceMember(
 
   const membership = createMembership(account.id, workspaceId, input.role);
   state.memberships.push(membership);
-  saveState(state);
+  await saveState(state);
 
   return {
     account: toPublicAccount(account),
@@ -146,13 +146,13 @@ export function addWorkspaceMember(
   };
 }
 
-export function updateWorkspaceMemberRole(
+export async function updateWorkspaceMemberRole(
   actorAccountId: string,
   workspaceId: string,
   membershipId: string,
   role: WorkspaceRole
-): WorkspaceMember {
-  const state = loadState();
+): Promise<WorkspaceMember> {
+  const state = await loadState();
   requireWorkspaceAdmin(state, actorAccountId, workspaceId);
   const membership = state.memberships.find(
     (item) => item.id === membershipId && item.workspaceId === workspaceId
@@ -167,7 +167,7 @@ export function updateWorkspaceMemberRole(
     workspaceId,
     previousRole === "owner" && role !== "owner" ? membership.id : undefined
   );
-  saveState(state);
+  await saveState(state);
 
   const account = state.accounts.find((item) => item.id === membership.accountId);
   if (!account) throw new Error("Account not found.");
@@ -177,12 +177,12 @@ export function updateWorkspaceMemberRole(
   };
 }
 
-export function removeWorkspaceMember(
+export async function removeWorkspaceMember(
   actorAccountId: string,
   workspaceId: string,
   membershipId: string
-): void {
-  const state = loadState();
+): Promise<void> {
+  const state = await loadState();
   requireWorkspaceAdmin(state, actorAccountId, workspaceId);
   const membership = state.memberships.find(
     (item) => item.id === membershipId && item.workspaceId === workspaceId
@@ -195,5 +195,5 @@ export function removeWorkspaceMember(
     membership.role === "owner" ? membership.id : undefined
   );
   state.memberships = state.memberships.filter((item) => item.id !== membershipId);
-  saveState(state);
+  await saveState(state);
 }

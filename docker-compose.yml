@@ -1,4 +1,21 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: harhub-postgres
+    environment:
+      POSTGRES_DB: harhub
+      POSTGRES_USER: harhub
+      POSTGRES_PASSWORD: harhub
+    ports:
+      - "15432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U harhub -d harhub"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   minio:
     image: minio/minio:latest
     container_name: harhub-minio
@@ -24,4 +41,5 @@ services:
       "
 
 volumes:
+  postgres-data:
   minio-data:

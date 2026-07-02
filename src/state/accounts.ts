@@ -9,27 +9,27 @@ import type {
 } from "../shared/types.js";
 import type { AccountRecord, AuthContext } from "./types.js";
 
-export function createSession(accountId: string): string {
-  const state = loadState();
+export async function createSession(accountId: string): Promise<string> {
+  const state = await loadState();
   const token = randomBytes(32).toString("hex");
   state.sessions.push({
     token,
     accountId,
     createdAt: new Date().toISOString()
   });
-  saveState(state);
+  await saveState(state);
   return token;
 }
 
-export function deleteSession(token: string): void {
-  const state = loadState();
+export async function deleteSession(token: string): Promise<void> {
+  const state = await loadState();
   state.sessions = state.sessions.filter((session) => session.token !== token);
-  saveState(state);
+  await saveState(state);
 }
 
-export function authenticate(token: string | undefined): AuthContext | undefined {
+export async function authenticate(token: string | undefined): Promise<AuthContext | undefined> {
   if (!token) return undefined;
-  const state = loadState();
+  const state = await loadState();
   const session = state.sessions.find((item) => item.token === token);
   if (!session) return undefined;
 
@@ -42,12 +42,12 @@ export function authenticate(token: string | undefined): AuthContext | undefined
   };
 }
 
-export function listAccountWorkspaces(accountId: string): {
+export async function listAccountWorkspaces(accountId: string): Promise<{
   account: AccountProfile;
   workspaces: WorkspaceRecord[];
   memberships: WorkspaceMembership[];
-} {
-  const state = loadState();
+}> {
+  const state = await loadState();
   const account = state.accounts.find((item) => item.id === accountId);
   if (!account) {
     throw new Error("Account not found.");
@@ -63,8 +63,8 @@ export function listAccountWorkspaces(accountId: string): {
   };
 }
 
-export function loginAccount(email: string, password: string): AccountProfile {
-  const state = loadState();
+export async function loginAccount(email: string, password: string): Promise<AccountProfile> {
+  const state = await loadState();
   const account = state.accounts.find(
     (item) => item.email.toLowerCase() === email.trim().toLowerCase()
   );
@@ -76,13 +76,13 @@ export function loginAccount(email: string, password: string): AccountProfile {
   return toPublicAccount(account);
 }
 
-export function signUpAccount(input: {
+export async function signUpAccount(input: {
   email: string;
   name: string;
   password: string;
   workspaceName?: string;
-}): AccountProfile {
-  const state = loadState();
+}): Promise<AccountProfile> {
+  const state = await loadState();
   const email = input.email.trim().toLowerCase();
 
   if (!email.includes("@")) {
@@ -114,16 +114,16 @@ export function signUpAccount(input: {
   state.accounts.push(account);
   state.workspaces.push(workspace);
   state.memberships.push(createMembership(account.id, workspace.id, "owner"));
-  saveState(state);
+  await saveState(state);
 
   return toPublicAccount(account);
 }
 
-export function updateAccountProfile(
+export async function updateAccountProfile(
   accountId: string,
   input: { name?: string; email?: string }
-): AccountProfile {
-  const state = loadState();
+): Promise<AccountProfile> {
+  const state = await loadState();
   const account = state.accounts.find((item) => item.id === accountId);
   if (!account) throw new Error("Account not found.");
 
@@ -149,15 +149,15 @@ export function updateAccountProfile(
   }
 
   account.updatedAt = new Date().toISOString();
-  saveState(state);
+  await saveState(state);
   return toPublicAccount(account);
 }
 
-export function changeAccountPassword(
+export async function changeAccountPassword(
   accountId: string,
   input: { currentPassword: string; newPassword: string }
-): void {
-  const state = loadState();
+): Promise<void> {
+  const state = await loadState();
   const account = state.accounts.find((item) => item.id === accountId);
   if (!account) throw new Error("Account not found.");
 
@@ -172,5 +172,5 @@ export function changeAccountPassword(
   account.passwordHash = hashPassword(input.newPassword);
   account.updatedAt = new Date().toISOString();
   state.sessions = state.sessions.filter((session) => session.accountId !== accountId);
-  saveState(state);
+  await saveState(state);
 }

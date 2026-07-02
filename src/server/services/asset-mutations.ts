@@ -1,16 +1,14 @@
 import type { Request, Response } from "express";
 import {
   findAsset,
-  removeCatalogAsset,
-  writeAssetCatalog
+  removeCatalogAsset
 } from "../../features/assets/index.js";
 import {
   deleteSkill,
   updateSkillFrontmatter
 } from "../../features/skills/index.js";
-import { getWorkspaceAssetCatalogPath } from "../../state/index.js";
+import { writeWorkspaceAssetCatalog } from "../../state/index.js";
 import { deleteStoredObject } from "../../storage/index.js";
-import type { requireWorkspaceAccess } from "../auth.js";
 import { sendError, unique } from "../utils/http.js";
 import { assetListPayload } from "./asset-responses.js";
 import {
@@ -18,16 +16,15 @@ import {
   scanAndPersistWorkspace
 } from "./workspace-catalogs.js";
 import type { AssetCatalog, SkillRecord } from "../../shared/types.js";
+import type { WorkspaceContext } from "../../state/types.js";
 
-type WorkspaceContext = NonNullable<ReturnType<typeof requireWorkspaceAccess>>;
-
-export function patchAsset(
+export async function patchAsset(
   req: Request,
   res: Response,
   context: WorkspaceContext
-): void {
+): Promise<void> {
   try {
-    const catalog = loadOrCreateWorkspaceAssetCatalog(context.workspace);
+    const catalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
     const asset = findAsset(catalog, req.params.query);
     if (!asset) {
       res.status(404).json({ error: "Asset not found" });
@@ -43,7 +40,7 @@ export function patchAsset(
     }
 
     updateSkillFrontmatter(skill, readSkillFrontmatterBody(req.body));
-    res.json(rescanWorkspaceAssets(context));
+    res.json(await rescanWorkspaceAssets(context));
   } catch (error) {
     sendError(res, error, 400);
   }
@@ -55,7 +52,7 @@ export async function deleteAsset(
   context: WorkspaceContext
 ): Promise<void> {
   try {
-    const catalog = loadOrCreateWorkspaceAssetCatalog(context.workspace);
+    const catalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
     const asset = findAsset(catalog, req.params.query);
     if (!asset) {
       res.status(404).json({ error: "Asset not found" });
@@ -65,7 +62,7 @@ export async function deleteAsset(
     if (asset.storage) {
       await deleteStoredObject(asset.storage);
       const nextCatalog = removeCatalogAsset(catalog, asset.id);
-      writeAssetCatalog(getWorkspaceAssetCatalogPath(context.workspace.id), nextCatalog);
+      await writeWorkspaceAssetCatalog(context.workspace.id, nextCatalog);
       res.json({
         ...assetListPayload(context.workspace, nextCatalog.generatedAt, nextCatalog.assets),
         issues: []
@@ -80,7 +77,7 @@ export async function deleteAsset(
     }
 
     deleteSkill(skill);
-    res.json(rescanWorkspaceAssets(context));
+    res.json(await rescanWorkspaceAssets(context));
   } catch (error) {
     sendError(res, error, 400);
   }
