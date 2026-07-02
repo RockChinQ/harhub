@@ -1,79 +1,79 @@
-# Market Positioning
+# 市场定位
 
-## Category
+## 品类
 
-Harhub should be positioned as **team AI harness management**.
+Harhub 应定位为 **团队 AI harness 管理**。
 
-An AI harness is the operational layer around coding agents: Skills, MCP servers, tool permissions, Cursor rules, Codex `AGENTS.md`, GitHub Copilot instructions, prompt files, review rubrics, workflow playbooks, validation checks, and policy metadata.
+AI harness 是 coding agents 周围的运行层：Skills、MCP servers、工具权限、Cursor rules、Codex `AGENTS.md`、GitHub Copilot instructions、prompt 文件、评审准则、工作流 playbook、校验检查和策略元数据。
 
-The product should not be positioned as only a Skill marketplace or asset library. That category is too small and too likely to be absorbed by individual agent vendors.
+产品不应被定位成单纯的 Skill marketplace 或 asset library。这个品类过窄，也太容易被单个 agent 厂商吸收。
 
-## Market Thesis
+## 市场论点
 
-Engineering teams are adopting multiple agent surfaces at once: Cursor, Claude Code, Codex, GitHub Copilot, ChatGPT, CI agents, internal CLIs, and MCP-backed workflows. Each surface has its own configuration model, but the underlying organizational problem is shared:
+工程团队正在同时采用多个 agent 入口：Cursor、Claude Code、Codex、GitHub Copilot、ChatGPT、CI agents、内部 CLI 和基于 MCP 的工作流。每个入口都有自己的配置模型，但底层组织问题是相同的：
 
-- What instructions and tools should agents use?
-- Who owns them?
-- Which versions are approved?
-- Which repositories consume them?
-- Which MCP tools are risky?
-- What changed between versions?
-- Can a team roll out, audit, and roll back a harness update?
+- Agents 应该使用哪些指令和工具？
+- 谁负责维护它们？
+- 哪些版本已被批准？
+- 哪些仓库正在消费它们？
+- 哪些 MCP 工具有风险？
+- 版本之间发生了什么变化？
+- 团队能否发布、审计并回滚一次 harness 更新？
 
-Harhub should own the cross-tool management layer rather than competing with any single agent runtime.
+Harhub 应该负责跨工具管理层，而不是与某一个 agent runtime 竞争。
 
-## Buyer Pain
+## 买方痛点
 
-The strongest pain is not storage. It is operational control:
+最强的痛点不是存储，而是运营控制：
 
-- Platform teams need consistent agent behavior across repositories.
-- Security teams need visibility into MCP access, tool scopes, secrets, and risky automation.
-- Engineering managers need ownership, lifecycle state, and adoption signals.
-- Developers need a trusted catalog instead of copying stale rules from random repos.
-- AI champions need a way to distribute good harness patterns without manually opening dozens of pull requests.
+- 平台团队需要跨仓库的一致 agent 行为。
+- 安全团队需要看清 MCP access、工具 scope、secrets 和高风险自动化。
+- 工程经理需要所有权、生命周期状态和采用信号。
+- 开发者需要可信 catalog，而不是从随机仓库复制过期规则。
+- AI 推广者需要分发优秀 harness pattern 的方式，而不是手动打开几十个 pull requests。
 
-## Product Boundary
+## 产品边界
 
-Harhub should manage harness assets that other tools consume. It should not become a general-purpose agent runtime.
+Harhub 应管理被其他工具消费的 harness assets。它不应变成通用 agent runtime。
 
-In scope:
+范围内：
 
-- Registry and catalog.
-- Validation and policy checks.
-- Ownership, lifecycle, and review state.
-- Versioning, releases, and rollback.
-- Target-specific distribution.
-- Usage and adoption analytics.
+- Registry 和 catalog。
+- 校验和策略检查。
+- 所有权、生命周期和评审状态。
+- 版本、发布和回滚。
+- 面向目标环境的分发。
+- 使用和采用分析。
 
-Out of scope for the near term:
+近期范围外：
 
-- Running arbitrary long-lived MCP servers.
-- Replacing IDE agent products.
-- Replacing Git as the source of truth.
-- Automatically rewriting every repository without review.
+- 运行任意长期存在的 MCP servers。
+- 替代 IDE agent 产品。
+- 替代 Git 成为事实源。
+- 在无评审的情况下自动重写所有仓库。
 
-## MVP Wedge
+## MVP 切入点
 
-The current MVP should remain Skills-first:
+当前 MVP 应继续保持 Skills-first：
 
-- Skills have a concrete package shape.
-- Skills can be uploaded, parsed, validated, previewed, and installed.
-- Skills create a measurable activation loop.
-- Skills are easier to explain than full harness composition.
+- Skills 有具体的包结构。
+- Skills 可以被上传、解析、校验、预览和安装。
+- Skills 能形成可衡量的激活闭环。
+- Skills 比完整 harness composition 更容易解释。
 
-The product copy should still make clear that Skills are the first asset type, not the final product category.
+产品文案仍应明确：Skills 是第一个资产类型，不是最终产品品类。
 
-## Expansion Path
+## 扩展路径
 
-After the Skills loop is proven, expand in this order:
+当 Skills 闭环被验证后，按以下顺序扩展：
 
-1. **Read-only harness inventory**: discover `.cursor/rules`, `AGENTS.md`, Copilot instructions, prompt files, and MCP config files across repos.
-2. **Governance metadata**: owner, lifecycle, compatibility, risk, review status, and approval history for all asset types.
-3. **MCP governance**: server registry, tool scopes, required env vars, risk labels, and policy checks.
-4. **Cross-tool distribution**: render approved harness packages into Codex, Claude Code, Cursor, Copilot, CI, and repository targets.
-5. **Composition and lockfiles**: resolve org baseline, team pack, repo pack, and workflow-specific pack with explicit precedence.
-6. **Evaluation loop**: validate harness changes against representative tasks before broad rollout.
+1. **只读 harness inventory**：发现仓库中的 `.cursor/rules`、`AGENTS.md`、Copilot instructions、prompt 文件和 MCP 配置文件。
+2. **治理元数据**：为所有资产类型补充 owner、lifecycle、compatibility、risk、review status 和 approval history。
+3. **MCP governance**：server registry、tool scopes、required env vars、risk labels 和 policy checks。
+4. **跨工具分发**：将已批准的 harness packages 渲染到 Codex、Claude Code、Cursor、Copilot、CI 和仓库目标。
+5. **组合与 lockfiles**：解析 org baseline、team pack、repo pack 和 workflow-specific pack，并显式处理优先级。
+6. **评估闭环**：在大范围发布前，用代表性任务校验 harness 变更。
 
-## Positioning Statement
+## 定位声明
 
-Harhub is a control plane for team-managed AI harnesses. It helps engineering organizations discover, validate, govern, version, and distribute the Skills, MCP servers, rules, and instructions that make agents reliable across tools and repositories.
+Harhub 是面向团队管理 AI harness 的控制平面。它帮助工程组织发现、校验、治理、版本化并分发 Skills、MCP servers、规则和指令，让 agents 能在不同工具和仓库中可靠运行。

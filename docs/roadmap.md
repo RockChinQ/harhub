@@ -1,155 +1,154 @@
-# Roadmap
+# 路线图
 
-## MVP Principle
+## MVP 原则
 
-The MVP should prove that Harhub can turn scattered harness files into managed, reusable, validated bundles without requiring a full organizational migration.
+MVP 应证明 Harhub 能把散落的 harness files 转化为可管理、可复用、可校验的 bundles，而不要求组织整体迁移。
 
-The first release should prioritize:
+第一版应优先：
 
-- Discovery.
-- Cataloging.
-- Basic package manifests.
-- Versioned releases.
-- Simple composition.
-- Local CLI validation.
-- Git-friendly distribution.
+- 发现。
+- 建立 catalog。
+- 基础 package manifests。
+- 版本化 releases。
+- 简单组合。
+- 本地 CLI 校验。
+- Git-friendly 分发。
 
-## Phase 0: Foundation
+## Phase 0：基础
 
-Purpose: establish the product model and repository foundation.
+目的：建立产品模型和仓库基础。
 
-Deliverables:
+交付物：
 
-- Design docs.
-- Initial manifest schema.
-- Example harness package.
-- CLI command skeleton.
-- Test fixtures for common harness files.
+- 设计文档。
+- 初始 manifest schema。
+- 示例 harness package。
+- CLI command skeleton。
+- 常见 harness files 的 test fixtures。
 
-Exit criteria:
+退出标准：
 
-- A contributor can understand what Harhub is and what the first implementation should build.
+- 贡献者能理解 Harhub 是什么，以及第一版应构建什么。
 
-## Phase 1: Inventory And Catalog
+## Phase 1：盘点与目录（Inventory And Catalog）
 
-Purpose: make existing harness material visible.
+目的：让已有 harness material 可见。
 
-Deliverables:
+交付物：
 
-- Repository scanner for local paths and one Git provider.
-- Discovery patterns for common harness files.
-- Normalized artifact model.
-- Package registration flow.
-- Searchable catalog API.
-- Basic web or CLI catalog view.
+- 面向本地路径和一个 Git provider 的 repository scanner。
+- 常见 harness files 的 discovery patterns。
+- 规范化 artifact model。
+- Package registration flow。
+- Searchable catalog API。
+- 基础 Web 或 CLI catalog view。
 
-Exit criteria:
+退出标准：
 
-- Harhub can scan a group of repositories and answer "what harness assets do we have?"
+- Harhub 能扫描一组仓库，并回答“我们有哪些 harness assets？”
 
-## Phase 2: Package Versioning And Validation
+## Phase 2：包版本化与校验（Package Versioning And Validation）
 
-Purpose: make harnesses publishable and trustworthy.
+目的：让 harnesses 可发布且可信。
 
-Deliverables:
+交付物：
 
-- `harhub.yaml` manifest support.
-- Package validation.
-- Immutable package versions.
-- Ownership and lifecycle metadata.
-- Changelog and diff support.
-- Initial policy checks for MCP definitions and forbidden secrets.
+- `harhub.yaml` manifest support。
+- Package validation。
+- Immutable package versions。
+- Ownership 和 lifecycle metadata。
+- Changelog 和 diff support。
+- 面向 MCP definitions 和 forbidden secrets 的初始 policy checks。
 
-Exit criteria:
+退出标准：
 
-- A team can publish a stable harness package with a validation report.
+- 团队能发布一个带 validation report 的 stable harness package。
 
-## Phase 3: Composition And Lockfiles
+## Phase 3：组合与锁文件（Composition And Lockfiles）
 
-Purpose: make harnesses reusable across repositories.
+目的：让 harnesses 能跨仓库复用。
 
-Deliverables:
+交付物：
 
-- Bundle definitions.
-- Layered package resolution.
-- Basic merge strategies for rules, skills, and MCP definitions.
-- Conflict and duplicate findings.
-- `harhub.lock` generation.
-- Bundle diff command.
+- Bundle definitions。
+- Layered package resolution。
+- 面向 rules、Skills 和 MCP definitions 的基础 merge strategies。
+- Conflict 和 duplicate findings。
+- `harhub.lock` generation。
+- Bundle diff command。
 
-Exit criteria:
+退出标准：
 
-- A repository can resolve org, team, and repo packages into a reproducible bundle.
+- 仓库能将 org、team 和 repo packages 解析为可复现的 bundle。
 
-## Phase 4: Distribution And Repo Adoption
+## Phase 4：分发与仓库采用（Distribution And Repo Adoption）
 
-Purpose: move from management to practical usage.
+目的：从管理走向实际使用。
 
-Deliverables:
+交付物：
 
-- Materialized file generation.
-- Pull request generation for harness adoption and upgrades.
-- Drift detection.
-- CI check integration.
-- Adoption dashboard.
+- Materialized file generation。
+- 面向 harness adoption 和 upgrades 的 pull request generation。
+- Drift detection。
+- CI check integration。
+- Adoption dashboard。
 
-Exit criteria:
+退出标准：
 
-- Teams can adopt a bundle through a pull request and keep it current.
+- 团队能通过 pull request 采用 bundle，并保持更新。
 
-## Phase 5: Governance And Evaluations
+## Phase 5：治理与评估（Governance And Evaluations）
 
-Purpose: make harness changes safer at scale.
+目的：让大规模 harness 变更更安全。
 
-Deliverables:
+交付物：
 
-- Review workflows.
-- Risk classification for MCP and skills.
-- Policy exceptions with expiry.
-- Agent behavior evaluation runner.
-- Impact analysis before package rollout.
+- Review workflows。
+- MCP 和 Skills risk classification。
+- 带 expiry 的 policy exceptions。
+- Agent behavior evaluation runner。
+- Package rollout 前的 impact analysis。
 
-Exit criteria:
+退出标准：
 
-- Risky harness changes are reviewed, tested, and auditable before broad rollout.
+- 高风险 harness 变更能在广泛发布前被评审、测试并审计。
 
-## MVP Boundary
+## MVP 边界
 
-Recommended first implementation:
+推荐第一版实现：
 
-- Local CLI.
-- File-based or lightweight database catalog.
-- Git repository scanner.
-- Manifest validation.
-- Package diffing.
-- Bundle resolution for Markdown rules and simple MCP definitions.
-- Lockfile output.
+- 本地 CLI。
+- 文件型或轻量数据库 catalog。
+- Git repository scanner。
+- Manifest validation。
+- Package diffing。
+- 面向 Markdown rules 和简单 MCP definitions 的 bundle resolution。
+- Lockfile output。
 
-Defer until after the MVP:
+MVP 后再延后：
 
-- Full web UI.
-- Advanced semantic deduplication.
-- Multi-tenant enterprise RBAC.
-- Hosted runtime API.
-- Automated org-wide rollout.
-- Large-scale evaluation infrastructure.
+- 完整 Web UI。
+- 高级语义去重。
+- 多租户企业 RBAC。
+- Hosted runtime API。
+- 自动组织级发布。
+- 大规模 evaluation infrastructure。
 
-## Open Questions
+## 开放问题
 
-- Should Harhub own package releases directly, or should releases always map to Git tags?
-- Which agent runtimes should be supported first?
-- Should generated `AGENTS.md` files be fully materialized, or should they include references to Harhub-managed sections?
-- How strict should org baseline enforcement be during early adoption?
-- What is the minimum useful evaluation format for harness quality?
-- Which MCP risk taxonomy should be used initially?
-- Should package dependencies allow version ranges, or should organizations require exact pins?
-- How should Harhub represent instructions that are intentionally different across teams?
+- Harhub 应直接拥有 package releases，还是 releases 应始终映射到 Git tags？
+- 应优先支持哪些 agent runtimes？
+- 生成的 `AGENTS.md` 应完全 materialized，还是包含指向 Harhub-managed sections 的引用？
+- 早期采用阶段，org baseline enforcement 应该多严格？
+- 最小可用 harness quality evaluation format 是什么？
+- 初始应采用哪套 MCP risk taxonomy？
+- Package dependencies 是否允许 version ranges，还是组织应要求 exact pins？
+- Harhub 应如何表示团队之间有意不同的 instructions？
 
-## Suggested Next Decisions
+## 建议的下一步决策
 
-1. Pick the first consumer path: CLI-only, GitHub PR workflow, or runtime API.
-2. Define the first `harhub.yaml` schema.
-3. Create two example packages: an org baseline and a repo-specific pack.
-4. Implement local scan and validate commands.
-5. Use real team repositories as fixtures to refine the model.
-
+1. 选择第一个消费路径：CLI-only、GitHub PR workflow 或 runtime API。
+2. 定义第一版 `harhub.yaml` schema。
+3. 创建两个示例 packages：org baseline 和 repo-specific pack。
+4. 实现本地 scan 和 validate commands。
+5. 用真实团队仓库作为 fixtures 来打磨模型。

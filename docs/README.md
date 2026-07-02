@@ -1,32 +1,32 @@
-# Harhub Design Docs
+# Harhub 设计文档
 
-Harhub is a team control plane for agent harnesses: the skills, MCP servers, rules, project instructions, design guidance, architecture guidance, validation checks, and policy metadata that make agents useful and safe inside a real engineering organization.
+Harhub 是面向团队的 agent harness 控制平面。这里的 harness 指让 agent 在真实工程组织中变得有用且安全的一整层资产：Skills、MCP servers、规则、项目指令、设计指导、架构指导、校验检查和策略元数据。
 
-Most teams already have this harness material, but it is spread across repositories and maintained by different people with different conventions. Harhub's purpose is to make that harness layer discoverable, reusable, versioned, validated, and governable without forcing every team to abandon the repositories where their knowledge already lives.
+多数团队其实已经有这些 harness 材料，但它们分散在不同仓库里，由不同人用不同约定维护。Harhub 的目标是在不强迫团队放弃既有知识所在仓库的前提下，让这一层 harness 资产变得可发现、可复用、可版本化、可校验、可治理。
 
-## Document Map
+## 文档地图
 
-- [Problem and Gap Analysis](./problem-and-gap-analysis.md): why this category is needed and what pain it addresses.
-- [Requirements](./requirements.md): product requirements, users, use cases, and non-functional needs.
-- [Product Design](./product-design.md): main workflows, information architecture, and operating model.
-- [Architecture](./architecture.md): system design, core services, data model, composition model, and integration strategy.
-- [Roadmap](./roadmap.md): phased delivery plan, MVP boundary, and open questions.
-- [MVP Metrics and TODO](./mvp-todo.md): open-source plus SaaS MVP metrics, free-plan limits, launch checklist, and implementation backlog.
-- [Market Positioning](./market-positioning.md): why team AI harness management is the target category and why Skills are only the first wedge.
-- [Agent Skills Standard](./skill-standard.md): the external Skill format Harhub supports in the MVP.
-- [SaaS MVP](./saas-mvp.md): account, session, and workspace tenant model for the local-first app.
+- [问题与缺口分析](./problem-and-gap-analysis.md)：说明为什么需要这个品类，以及它解决什么痛点。
+- [需求文档](./requirements.md)：产品需求、用户、用例和非功能需求。
+- [产品设计](./product-design.md)：核心流程、信息架构和运营模型。
+- [架构设计](./architecture.md)：系统设计、核心服务、数据模型、组合模型和集成策略。
+- [路线图](./roadmap.md)：分阶段交付计划、MVP 边界和开放问题。
+- [MVP 指标与 TODO](./mvp-todo.md)：开源加 SaaS MVP 指标、免费版限制、发布清单和实现 backlog。
+- [市场定位](./market-positioning.md)：为什么目标品类是团队 AI harness 管理，以及为什么 Skills 只是第一个切入点。
+- [Agent Skills 标准](./skill-standard.md)：Harhub 在 MVP 中支持的外部 Skill 格式。
+- [SaaS MVP](./saas-mvp.md)：本地优先应用中的账号、会话和 workspace 租户模型。
 
-## Working Definition
+## 工作定义
 
-An **agent harness** is the full set of instructions, capabilities, tools, and constraints that surround an AI agent for a team, project, or workflow.
+**Agent harness** 是围绕 AI agent 的一整套指令、能力、工具和约束，用于某个团队、项目或工作流。
 
-It can include:
+它可以包括：
 
-- Agent skills and reusable task procedures.
-- MCP servers, connectors, tool permissions, and runtime configuration.
-- Rules and instruction documents such as `AGENTS.md`, `DESIGN.md`, `ARCHITECTURE.md`, review guides, runbooks, and coding standards.
-- Prompt fragments, role definitions, templates, and workflow playbooks.
-- Validation checks, examples, evaluations, and smoke tests.
-- Ownership, provenance, compatibility, security, and rollout metadata.
+- Agent Skills 和可复用任务流程。
+- MCP servers、连接器、工具权限和运行时配置。
+- 规则和指令文档，例如 `AGENTS.md`、`DESIGN.md`、`ARCHITECTURE.md`、评审指南、runbook 和编码标准。
+- Prompt 片段、角色定义、模板和工作流 playbook。
+- 校验检查、示例、评估和 smoke tests。
+- 所有权、来源、兼容性、安全性和发布元数据。
 
-Harhub treats these as first-class managed assets rather than scattered repository files.
+Harhub 将这些内容视为一等管理资产，而不是散落在仓库里的普通文件。

@@ -1,184 +1,183 @@
-# Requirements
+# 需求
 
-## Goals
+## 目标
 
-Harhub should help teams manage agent harnesses across repositories and workflows.
+Harhub 应帮助团队跨仓库和工作流管理 agent harnesses。
 
-Primary goals:
+主要目标：
 
-- Discover existing harness artifacts across repositories.
-- Normalize inconsistent files into a common model.
-- Catalog harnesses by purpose, owner, maturity, compatibility, and adoption.
-- Compose multiple harness packages into a resolved bundle.
-- Detect duplication, drift, policy violations, and instruction conflicts.
-- Version harness packages and support safe upgrades.
-- Distribute harness bundles to repositories, agents, CLIs, IDEs, and CI systems.
-- Validate harness changes before they affect teams.
+- 发现仓库中已有的 harness artifacts。
+- 将不一致的文件规范化成通用模型。
+- 按用途、owner、maturity、compatibility 和 adoption 对 harnesses 建立 catalog。
+- 将多个 harness packages 组合成 resolved bundle。
+- 检测重复、drift、策略违规和指令冲突。
+- 对 harness packages 做版本管理并支持安全升级。
+- 将 harness bundles 分发到仓库、agents、CLI、IDE 和 CI 系统。
+- 在 harness 变更影响团队前完成校验。
 
-## Non-Goals For The First Version
+## 第一版非目标
 
-The first version should not try to be a full agent runtime. It should manage harnesses that other agents and tools consume.
+第一版不应试图成为完整 agent runtime。它应管理被其他 agents 和工具消费的 harnesses。
 
-Initial non-goals:
+初始非目标：
 
-- Replacing Git as the source of truth for every artifact.
-- Hosting arbitrary long-running MCP servers.
-- Building a general prompt IDE.
-- Running production agents on behalf of all teams.
-- Automatically rewriting every repository's rules without review.
-- Solving all organization knowledge management problems.
+- 替代 Git 成为所有 artifact 的事实源。
+- 托管任意长期运行的 MCP servers。
+- 构建通用 prompt IDE。
+- 代表所有团队运行 production agents。
+- 在无评审的情况下自动重写每个仓库的 rules。
+- 解决所有组织知识管理问题。
 
-## Users
+## 用户
 
-### Platform Owner
+### 平台负责人（Platform Owner）
 
-Owns the organization-wide agent platform and wants consistent defaults, visibility, governance, and adoption tracking.
+负责组织级 agent platform，希望获得一致默认值、可见性、治理和采用追踪。
 
-Needs:
+需要：
 
-- Org baseline harnesses.
-- Policy and permission management.
-- Impact analysis before changes.
-- Adoption and drift dashboards.
+- Org baseline harnesses。
+- 策略和权限管理。
+- 变更前影响分析。
+- Adoption 和 drift dashboards。
 
-### Team Lead
+### 团队负责人（Team Lead）
 
-Owns a group of repositories and wants reusable team standards without manually copying files.
+负责一组仓库，希望复用团队标准，而不是手动复制文件。
 
-Needs:
+需要：
 
-- Team-level harness packages.
-- Repo assignment and override controls.
-- Upgrade recommendations.
-- Conflict reports.
+- 团队级 harness packages。
+- Repo assignment 和 override controls。
+- 升级建议。
+- 冲突报告。
 
-### Agent Harness Author
+### Agent Harness 作者
 
-Creates skills, MCP integration guides, rules, and workflow playbooks.
+创建 Skills、MCP 集成指南、rules 和 workflow playbooks。
 
-Needs:
+需要：
 
-- Clear package structure.
-- Preview and validation.
-- Versioning and publishing.
-- Usage metrics and feedback.
+- 清晰的包结构。
+- 预览和校验。
+- 版本和发布。
+- 使用指标和反馈。
 
-### Repository Maintainer
+### 仓库维护者（Repository Maintainer）
 
-Wants agents to behave correctly inside a specific repository.
+希望 agents 在特定仓库内表现正确。
 
-Needs:
+需要：
 
-- Repo-specific composition.
-- Generated or linked harness files.
-- Local override support.
-- CI checks that catch drift or broken harness updates.
+- Repo-specific composition。
+- 生成或链接的 harness files。
+- 本地 override 支持。
+- 能捕获 drift 或破损 harness updates 的 CI checks。
 
-### Reviewer, Security, Or Compliance Owner
+### 评审、安全或合规负责人
 
-Reviews risky harness changes, especially MCP access, secrets handling, and agent autonomy.
+评审高风险 harness 变更，尤其是 MCP access、secrets handling 和 agent autonomy。
 
-Needs:
+需要：
 
-- Review workflows.
-- Permission diffs.
-- Audit logs.
-- Policy rules and exceptions.
+- 评审工作流。
+- 权限 diff。
+- 审计日志。
+- 策略规则和 exceptions。
 
-## Harness Artifact Types
+## Harness Artifact 类型
 
-Harhub should support these artifact types:
+Harhub 应支持这些 artifact 类型：
 
-- **Rules**: natural language instructions, coding standards, design guidelines, architecture guidance, review practices, and operational constraints.
-- **Skills**: reusable task procedures with instructions, references, scripts, examples, and allowed tools.
-- **MCP definitions**: server metadata, installation instructions, tool descriptions, scopes, environment requirements, and risk classification.
-- **Templates**: prompt fragments, PR descriptions, review rubrics, changelog formats, issue triage flows, and generated doc structures.
-- **Validation assets**: examples, task fixtures, tests, golden outputs, lint rules, and evaluation scenarios.
-- **Metadata**: owner, team, maturity, tags, compatibility, dependencies, provenance, and lifecycle state.
+- **Rules**：自然语言指令、编码标准、设计指南、架构指导、评审实践和运行约束。
+- **Skills**：可复用任务流程，包含指令、references、scripts、examples 和 allowed tools。
+- **MCP definitions**：server metadata、安装说明、工具描述、scopes、环境要求和风险分类。
+- **Templates**：prompt fragments、PR descriptions、review rubrics、changelog formats、issue triage flows 和生成文档结构。
+- **Validation assets**：examples、task fixtures、tests、golden outputs、lint rules 和 evaluation scenarios。
+- **Metadata**：owner、team、maturity、tags、compatibility、dependencies、provenance 和 lifecycle state。
 
-## Functional Requirements
+## 功能需求
 
-### Discovery And Ingestion
+### 发现与摄入
 
-- Scan configured repositories for harness files and manifests.
-- Detect common filenames such as `AGENTS.md`, `DESIGN.md`, `ARCHITECTURE.md`, `ARCHITECHTURE.md`, `.cursor/rules`, `.codex/skills`, `.mcp.json`, and project-specific harness directories.
-- Allow manual registration of a harness package.
-- Preserve source provenance: repository, branch, commit, path, author, and review status.
-- Normalize discovered artifacts into a common internal model.
+- 扫描配置的仓库，寻找 harness files 和 manifests。
+- 检测常见文件名，例如 `AGENTS.md`、`DESIGN.md`、`ARCHITECTURE.md`、`ARCHITECHTURE.md`、`.cursor/rules`、`.codex/skills`、`.mcp.json` 和项目专属 harness 目录。
+- 允许手动注册 harness package。
+- 保留 source provenance：repository、branch、commit、path、author 和 review status。
+- 将发现的 artifacts 规范化为通用内部模型。
 
-### Catalog And Search
+### Catalog 与搜索
 
-- Provide a searchable catalog of harness packages and artifacts.
-- Filter by team, domain, language, framework, MCP server, maturity, owner, compatibility, and adoption.
-- Show package README, changelog, dependency graph, validation status, and usage.
-- Surface duplicate or similar rules and skills.
+- 提供可搜索的 harness packages 和 artifacts catalog。
+- 支持按 team、domain、language、framework、MCP server、maturity、owner、compatibility 和 adoption 过滤。
+- 展示 package README、changelog、dependency graph、validation status 和 usage。
+- 暴露重复或相似的 rules 和 Skills。
 
-### Versioning And Releases
+### 版本与发布
 
-- Support semantic versions for harness packages.
-- Store immutable released package versions.
-- Support prerelease, deprecated, archived, and experimental states.
-- Generate diffs between versions.
-- Track consumers pinned to each version.
-- Support lockfiles for reproducible harness resolution.
+- 支持 harness packages 的 semantic versions。
+- 存储不可变 released package versions。
+- 支持 prerelease、deprecated、archived 和 experimental 状态。
+- 生成版本间 diff。
+- 追踪 pinned 到每个版本的 consumers。
+- 支持 lockfiles，以便可复现地解析 harness。
 
-### Composition
+### 组合
 
-- Compose multiple packages into a resolved harness bundle for a repo, team, workflow, or agent profile.
-- Support layering, for example org baseline plus domain pack plus repo pack.
-- Detect duplicate, conflicting, stale, or missing artifacts.
-- Apply explicit precedence rules.
-- Emit a resolved manifest and materialized files when needed.
+- 将多个 packages 组合成面向 repo、team、workflow 或 agent profile 的 resolved harness bundle。
+- 支持分层，例如 org baseline 加 domain pack 加 repo pack。
+- 检测重复、冲突、过期或缺失的 artifacts。
+- 应用显式优先级规则。
+- 必要时输出 resolved manifest 和 materialized files。
 
-### Distribution And Sync
+### 分发与同步
 
-- Provide a CLI for pulling, validating, and materializing harness bundles.
-- Support CI checks for drift, policy violations, and invalid lockfiles.
-- Support pull request generation for harness upgrades.
-- Support runtime retrieval through an API.
-- Allow repos to choose reference mode, materialized mode, or hybrid mode.
+- 提供 CLI，用于拉取、校验和 materialize harness bundles。
+- 支持 CI checks，用于 drift、policy violations 和 invalid lockfiles。
+- 支持为 harness upgrades 生成 pull requests。
+- 支持通过 API 做 runtime retrieval。
+- 允许仓库选择 reference mode、materialized mode 或 hybrid mode。
 
-### Governance And Policy
+### 治理与策略
 
-- Support ownership and review requirements per package and artifact type.
-- Classify MCP tools and skills by risk.
-- Require approvals for risky permissions or organization-wide rollout.
-- Prevent secrets from being stored in harness packages.
-- Log changes, approvals, policy exceptions, and distribution events.
+- 支持按 package 和 artifact type 配置 ownership 和 review requirements。
+- 按风险对 MCP tools 和 Skills 分类。
+- 对高风险权限或组织级发布要求 approvals。
+- 防止 secrets 被存储在 harness packages 中。
+- 记录变更、approvals、policy exceptions 和 distribution events。
 
-### Validation
+### 校验
 
-- Run structural validation on manifests and package files.
-- Run policy validation on MCP permissions, tool access, and rule requirements.
-- Run composition validation to catch conflicts and unresolved dependencies.
-- Run optional agent behavior evaluations against representative tasks.
-- Publish validation reports as release gates and CI feedback.
+- 对 manifests 和 package files 做结构校验。
+- 对 MCP permissions、tool access 和 rule requirements 做策略校验。
+- 对 composition 做校验，捕获冲突和未解析依赖。
+- 可选地用代表性任务运行 agent behavior evaluations。
+- 将 validation reports 作为 release gates 和 CI feedback 发布。
 
-### Observability
+### 可观测性
 
-- Track package adoption, version drift, validation failures, and policy exceptions.
-- Show which repos would be affected by a package update.
-- Expose audit trails for compliance and incident review.
+- 追踪 package adoption、version drift、validation failures 和 policy exceptions。
+- 展示 package update 会影响哪些 repos。
+- 为 compliance 和 incident review 暴露 audit trails。
 
-## Non-Functional Requirements
+## 非功能需求
 
-- **Incremental adoption**: teams can start by indexing existing files before changing workflows.
-- **Git-friendly**: source content remains reviewable in Git.
-- **Reproducible**: resolved bundles are pinned by version and commit.
-- **Secure by default**: no secrets in packages, explicit MCP permissions, audit logs.
-- **Low-friction authoring**: plain Markdown and simple manifests should be enough for most use cases.
-- **Extensible**: support new agent runtimes, IDEs, and artifact types over time.
-- **Enterprise-ready**: RBAC, SSO-ready identity model, audit logs, retention controls, and policy hooks.
-- **Fast feedback**: common validation should complete quickly enough for normal pull request workflows.
+- **渐进采用**：团队可以先索引已有文件，再改变工作流。
+- **Git-friendly**：源内容仍可在 Git 中评审。
+- **可复现**：resolved bundles 按 version 和 commit pin 住。
+- **默认安全**：packages 不含 secrets，MCP permissions 显式声明，有 audit logs。
+- **低摩擦创作**：大多数用例只需要普通 Markdown 和简单 manifests。
+- **可扩展**：随着时间支持新的 agent runtimes、IDE 和 artifact types。
+- **企业可用**：RBAC、SSO-ready identity model、audit logs、retention controls 和 policy hooks。
+- **快速反馈**：常见校验应足够快，适合普通 pull request workflow。
 
-## Success Metrics
+## 成功指标
 
-- Percent of repositories indexed by Harhub.
-- Percent of repositories using a resolved harness bundle.
-- Duplicate rule and skill reduction over time.
-- Number of policy violations prevented before merge.
-- Mean time to roll out an org baseline update.
-- Number of harness upgrades completed through generated pull requests.
-- Validation pass rate for released harness packages.
-- User-reported agent task success before and after harness adoption.
-
+- 被 Harhub 索引的仓库比例。
+- 使用 resolved harness bundle 的仓库比例。
+- 重复 rules 和 Skills 随时间减少的数量。
+- Merge 前被阻止的 policy violations 数量。
+- 推出 org baseline update 的平均时间。
+- 通过生成 pull requests 完成的 harness upgrades 数量。
+- Released harness packages 的 validation pass rate。
+- 采用 harness 前后，用户报告的 agent task success。

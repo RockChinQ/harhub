@@ -1,87 +1,87 @@
-# Problem and Gap Analysis
+# 问题与缺口分析
 
-## Summary
+## 摘要
 
-Teams are rapidly creating agent harness material across many repositories: `AGENTS.md` files, local coding rules, MCP setup notes, prompt snippets, skills, design docs, architecture guides, review rubrics, and workflow-specific instructions. These assets are often valuable, but they are usually maintained as local repo knowledge instead of shared organizational infrastructure.
+团队正在许多仓库中快速创建 agent harness 材料：`AGENTS.md` 文件、本地编码规则、MCP 设置说明、prompt 片段、Skills、设计文档、架构指南、评审准则和特定工作流指令。这些资产通常很有价值，但大多作为本地仓库知识维护，而不是作为共享组织基础设施来管理。
 
-The result is fragmentation. Two repositories may solve the same harness problem differently. A high-quality skill may exist but remain invisible. An unsafe MCP permission pattern may be copied between projects. A team may improve its agent rules, but other teams do not know, cannot compare, and cannot upgrade safely.
+结果就是碎片化。两个仓库可能用不同方式解决同一个 harness 问题。一个高质量 Skill 可能已经存在却不可见。一个不安全的 MCP 权限模式可能在项目之间被复制。一个团队改进了 agent rules，但其他团队不知道、无法比较，也不能安全升级。
 
-Harhub fills this gap by becoming a registry, governance layer, validation layer, composition engine, and distribution system for agent harnesses.
+Harhub 通过成为 agent harness 的 registry、治理层、校验层、组合引擎和分发系统来填补这个缺口。
 
-The market should not be framed as "a place to upload Skills." That is too narrow and easy for individual agent vendors to subsume. The stronger category is **team AI harness management**: a cross-tool control plane for the context, tools, rules, and policies that engineering teams want agents to follow.
+市场不应被描述为“上传 Skills 的地方”。这个说法太窄，也很容易被单个 agent 厂商吸收。更强的品类是 **团队 AI harness 管理**：一个跨工具控制平面，用于管理工程团队希望 agents 遵循的上下文、工具、规则和策略。
 
-## Current Gap
+## 当前缺口
 
-Agent harnesses are currently managed as files, conventions, or tribal knowledge. That creates several problems:
+Agent harness 目前被当作文件、约定或部落知识来管理。这会带来几个问题：
 
-- **No inventory**: teams do not know what skills, MCP tools, and rules already exist.
-- **No quality signal**: it is hard to distinguish battle-tested harnesses from experiments.
-- **No ownership model**: important instructions may have no clear maintainer, reviewer, or lifecycle.
-- **No versioning contract**: harness changes can silently alter agent behavior across time.
-- **No dependency graph**: teams cannot see which repos use which rules, skills, MCP servers, or prompt fragments.
-- **No redundancy control**: similar rules are repeatedly written in slightly different forms.
-- **No conflict detection**: one rule may say to prefer a framework or workflow while another forbids it.
-- **No policy boundary**: MCP servers and agent capabilities may be enabled without consistent review.
-- **No rollout mechanism**: there is no clean path to publish a recommended org baseline to many repositories.
-- **No validation loop**: harness changes are rarely tested against real tasks before adoption.
+- **没有 inventory**：团队不知道已经有哪些 Skills、MCP tools 和 rules。
+- **没有质量信号**：很难区分经过实战验证的 harness 和实验性内容。
+- **没有所有权模型**：重要指令可能没有清晰的 maintainer、reviewer 或 lifecycle。
+- **没有版本契约**：harness 变更可能随着时间悄悄改变 agent 行为。
+- **没有依赖图**：团队看不到哪些仓库使用了哪些 rules、Skills、MCP servers 或 prompt fragments。
+- **没有冗余控制**：相似规则会被反复写成略有不同的版本。
+- **没有冲突检测**：一个规则可能要求偏好某个框架或流程，而另一个规则禁止它。
+- **没有策略边界**：MCP servers 和 agent capabilities 可能在缺少一致评审的情况下被启用。
+- **没有发布机制**：缺少将推荐 org baseline 发布到多个仓库的清晰路径。
+- **没有校验闭环**：harness 变更在采用前很少用真实任务测试。
 
-## Why Existing Tools Are Not Enough
+## 为什么现有工具不够
 
-Git repositories are good sources of truth, but they are poor cross-repo discovery systems. Package registries are good at distributing code, but they usually do not understand rule precedence, prompt composition, MCP permissions, or agent behavior validation. Documentation portals are good at human reading, but they do not produce executable harness bundles.
+Git 仓库适合作为事实源，但不是好的跨仓库发现系统。Package registries 擅长分发代码，但通常不了解规则优先级、prompt 组合、MCP 权限或 agent 行为校验。文档门户适合人阅读，但不会产出可执行的 harness bundles。
 
-Harhub should complement those systems:
+Harhub 应补充这些系统：
 
-- Keep source material in Git where teams already review and maintain it.
-- Index, normalize, and understand harness artifacts across repositories.
-- Provide a curated catalog and dependency graph.
-- Compose harnesses into resolved bundles for specific teams, repos, and workflows.
-- Validate harnesses with tests, policy checks, and agent behavior evaluations.
-- Distribute bundles back into repos, CLIs, IDEs, CI systems, and agent runtimes.
+- 将源材料保留在团队已经用来评审和维护的 Git 中。
+- 跨仓库索引、规范化并理解 harness artifacts。
+- 提供 curated catalog 和 dependency graph。
+- 将 harnesses 组合成面向特定团队、仓库和工作流的 resolved bundles。
+- 用测试、策略检查和 agent 行为评估校验 harnesses。
+- 将 bundles 分发回仓库、CLI、IDE、CI 系统和 agent runtimes。
 
-It should also complement vendor-specific AI admin panels. Cursor, GitHub Copilot, Claude, Codex, and ChatGPT can each manage parts of their own ecosystem, but teams using multiple tools still need a neutral layer that can:
+它也应补充厂商专属 AI admin panels。Cursor、GitHub Copilot、Claude、Codex 和 ChatGPT 都能管理自己生态的一部分，但使用多个工具的团队仍需要一个中立层来：
 
-- Inventory harness assets across competing agent surfaces.
-- Normalize ownership, lifecycle, risk, and approval metadata.
-- Translate approved assets into target-specific formats.
-- Keep source-of-truth files in Git while providing SaaS governance and auditability.
-- Detect drift between approved harness packages and what repositories actually run.
+- 跨竞争性的 agent surfaces 盘点 harness assets。
+- 规范化 ownership、lifecycle、risk 和 approval metadata。
+- 将已批准资产翻译成目标专属格式。
+- 在 Git 中保留 source-of-truth 文件，同时提供 SaaS governance 和 auditability。
+- 检测已批准 harness packages 与仓库实际运行内容之间的 drift。
 
-## Core Opportunity
+## 核心机会
 
-The opportunity is to create a shared harness layer between raw repository files and agent execution.
+机会在于在原始仓库文件和 agent execution 之间创建共享 harness 层。
 
-That layer should answer questions such as:
+这一层应回答以下问题：
 
-- What harnesses exist in our organization?
-- Which harnesses are canonical for frontend, backend, infra, security, data, or design work?
-- Which repos use this rule or MCP server?
-- Which skills are redundant, stale, unsafe, or high quality?
-- What changes when we upgrade from harness version `1.4.0` to `1.5.0`?
-- Can this repo safely adopt the org baseline plus its domain-specific pack?
-- Which instructions conflict, and which one wins?
-- Did this harness update improve or degrade agent performance on representative tasks?
+- 我们组织中有哪些 harnesses？
+- 哪些 harnesses 是 frontend、backend、infra、security、data 或 design work 的 canonical 版本？
+- 哪些仓库使用了这个 rule 或 MCP server？
+- 哪些 Skills 是重复的、过期的、不安全的或高质量的？
+- 从 harness version `1.4.0` 升级到 `1.5.0` 时会发生什么变化？
+- 这个仓库能否安全采用 org baseline 加 domain-specific pack？
+- 哪些指令冲突，哪一个优先？
+- 这次 harness update 在代表性任务上提升还是降低了 agent performance？
 
-## Initial Wedge
+## 初始切入点
 
-The first implementation should stay Skills-first because Skills have a clearer package boundary than generic rules:
+第一版应保持 Skills-first，因为 Skills 比通用 rules 有更清晰的包边界：
 
-- A Skill can be uploaded as a directory or zip.
-- A Skill has standard metadata in `SKILL.md`.
-- A Skill can be validated for structure, links, naming, duplicate content, and secret-like patterns.
-- A Skill can be previewed, installed, downloaded, and reused.
+- Skill 可以作为目录或 zip 上传。
+- Skill 在 `SKILL.md` 中有标准 metadata。
+- Skill 可以针对结构、链接、命名、重复内容和类似 secret 的模式进行校验。
+- Skill 可以被预览、安装、下载和复用。
 
-This wedge is useful only if it proves the broader control-plane loop:
+只有当这个切入点证明更大的控制平面闭环时，它才有价值：
 
-1. Teams bring harness assets into Harhub.
-2. Harhub validates and classifies them.
-3. Owners improve metadata and trust signals.
-4. Other users discover and reuse them.
-5. Admins gain enough visibility to justify governance and distribution workflows.
+1. 团队将 harness assets 带入 Harhub。
+2. Harhub 校验并分类它们。
+3. Owners 改进 metadata 和 trust signals。
+4. 其他用户发现并复用它们。
+5. Admins 获得足够可见性，从而有理由推进治理和分发工作流。
 
-If users mostly ask for Cursor rules, MCP registry, Copilot instructions, or `AGENTS.md` synchronization instead of Skill storage, that is not a failure. It is a signal to widen the managed asset types while keeping the same control-plane thesis.
+如果用户主要要求 Cursor rules、MCP registry、Copilot instructions 或 `AGENTS.md` 同步，而不是 Skill storage，这不是失败。这说明应扩大被管理的资产类型，同时保持同一个控制平面论点。
 
-## Product Thesis
+## 产品论点
 
-Agent harnesses will become shared organizational infrastructure. The winning system will manage them like a mix of package registry, policy engine, docs catalog, configuration compiler, and evaluation platform.
+Agent harnesses 会成为共享组织基础设施。最终胜出的系统会像 package registry、policy engine、docs catalog、configuration compiler 和 evaluation platform 的混合体一样管理它们。
 
-Harhub should be that system.
+Harhub 应成为这个系统。

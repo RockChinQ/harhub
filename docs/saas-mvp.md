@@ -1,17 +1,17 @@
 # SaaS MVP
 
-Harhub's SaaS MVP keeps the implementation local-first while shaping the product around accounts and workspace tenants.
+Harhub 的 SaaS MVP 保持本地优先实现，同时围绕账号和 workspace 租户塑造产品。
 
-## Objects
+## 对象
 
-- **Account**: a signed-in user with email, display name, password hash, and sessions.
-- **Workspace**: a tenant boundary with default scan paths, a skill root, and a workspace-scoped catalog.
-- **Membership**: the role link between an account and a workspace.
-- **Session**: a bearer token issued after login or signup.
+- **Account**：已登录用户，包含邮箱、显示名、密码哈希和 sessions。
+- **Workspace**：租户边界，包含默认扫描路径、Skill root 和 workspace 级 catalog。
+- **Membership**：账号与 workspace 之间的角色关系。
+- **Session**：登录或注册后签发的 bearer token。
 
-## Local Storage
+## 本地存储
 
-Runtime state is stored in `.harhub/state.json` and ignored by Git. Workspace catalogs are stored separately:
+运行态状态存储在 `.harhub/state.json`，并被 Git 忽略。Workspace catalog 单独存储：
 
 ```text
 .harhub/
@@ -21,11 +21,11 @@ Runtime state is stored in `.harhub/state.json` and ignored by Git. Workspace ca
       skills.json
 ```
 
-This is not a production database, but it gives the app real tenant boundaries before adding Postgres, SSO, billing, or hosted deployment.
+这不是生产数据库，但它在引入 Postgres、SSO、billing 或 hosted deployment 前，让应用拥有真实租户边界。
 
-## Default Seed
+## 默认种子数据
 
-When no state file exists, Harhub creates:
+当状态文件不存在时，Harhub 会创建：
 
 ```text
 account: admin@harhub.local
@@ -33,11 +33,11 @@ password: harhub
 workspace: Engineering Platform
 ```
 
-The seeded workspace scans `examples` and writes its catalog to `.harhub/workspaces/ws_demo/skills.json`.
+种子 workspace 会扫描 `examples`，并将 catalog 写入 `.harhub/workspaces/ws_demo/skills.json`。
 
-## API Shape
+## API 形态
 
-SaaS routes are workspace-scoped:
+SaaS routes 按 workspace 作用域组织：
 
 ```text
 POST /api/auth/login
@@ -50,4 +50,4 @@ POST /api/workspaces/:workspaceId/skills/scan
 POST /api/workspaces/:workspaceId/skills
 ```
 
-Legacy `/api/skills` routes remain as a demo-workspace compatibility layer.
+Legacy `/api/skills` routes 仍作为 demo workspace 的兼容层保留。

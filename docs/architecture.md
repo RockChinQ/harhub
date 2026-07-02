@@ -1,16 +1,16 @@
-# Architecture
+# 架构
 
-## Overview
+## 概览
 
-Harhub is a control plane for agent harnesses. It indexes source artifacts from Git, normalizes them into a common model, versions them as packages, composes packages into bundles, validates the result, and distributes bundles to repositories and agent runtimes.
+Harhub 是 agent harnesses 的控制平面。它从 Git 索引 source artifacts，将它们规范化为通用模型，以 packages 形式版本化，把 packages 组合为 bundles，校验结果，并将 bundles 分发到仓库和 agent runtimes。
 
-The system should separate source ownership from harness distribution:
+系统应将 source ownership 与 harness distribution 分离：
 
-- **Source of truth**: Git repositories, package manifests, and reviewed changes.
-- **Control plane**: catalog, dependency graph, policy, validation, composition, and rollout.
-- **Consumers**: repositories, agents, CLIs, IDEs, CI systems, and platform dashboards.
+- **Source of truth**：Git repositories、package manifests 和 reviewed changes。
+- **Control plane**：catalog、dependency graph、policy、validation、composition 和 rollout。
+- **Consumers**：repositories、agents、CLI、IDE、CI 系统和 platform dashboards。
 
-## High-Level Architecture
+## 高层架构
 
 ```mermaid
 flowchart LR
@@ -31,125 +31,125 @@ flowchart LR
   Catalog --> CLI["Harhub CLI"]
 ```
 
-## Core Services
+## 核心服务
 
-### Repository Scanner
+### 仓库扫描器（Repository Scanner）
 
-Responsibilities:
+职责：
 
-- Connect to Git providers or local repositories.
-- Find known harness files and package manifests.
-- Track commit, branch, path, author, and review provenance.
-- Detect file moves, deletions, and drift.
+- 连接 Git providers 或 local repositories。
+- 查找已知 harness files 和 package manifests。
+- 追踪 commit、branch、path、author 和 review provenance。
+- 检测文件移动、删除和 drift。
 
-Scanner inputs:
+Scanner inputs：
 
-- Repository allowlists.
-- File discovery patterns.
-- Branch policies.
-- Manifest locations.
+- Repository allowlists。
+- File discovery patterns。
+- Branch policies。
+- Manifest locations。
 
-Scanner outputs:
+Scanner outputs：
 
-- Raw artifact records.
-- Candidate package suggestions.
-- Drift findings.
+- Raw artifact records。
+- Candidate package suggestions。
+- Drift findings。
 
-### Artifact Normalizer
+### Artifact 规范化器（Artifact Normalizer）
 
-Responsibilities:
+职责：
 
-- Convert heterogeneous files into a typed internal model.
-- Extract metadata from manifests, front matter, headings, and file paths.
-- Classify artifacts as rules, skills, MCP definitions, templates, or validation assets.
-- Compute content fingerprints and semantic similarity signals.
+- 将异构文件转换成 typed internal model。
+- 从 manifests、front matter、headings 和 file paths 中提取 metadata。
+- 将 artifacts 分类为 rules、Skills、MCP definitions、templates 或 validation assets。
+- 计算 content fingerprints 和 semantic similarity signals。
 
-The normalizer should preserve original content and avoid lossy transformations. Normalized data supports search, comparison, and composition, but the source file remains authoritative.
+Normalizer 应保留原始内容，并避免有损转换。Normalized data 支持搜索、比较和组合，但 source file 仍是权威来源。
 
 ### Package Registry
 
-Responsibilities:
+职责：
 
-- Store package metadata and immutable released versions.
-- Store artifact metadata and references to source content.
-- Track lifecycle states: experimental, stable, deprecated, archived.
-- Track owners, reviewers, consumers, and compatibility.
+- 存储 package metadata 和不可变 released versions。
+- 存储 artifact metadata 以及 source content references。
+- 追踪 lifecycle states：experimental、stable、deprecated、archived。
+- 追踪 owners、reviewers、consumers 和 compatibility。
 
-The registry is not just blob storage. It understands harness-specific package metadata and release state.
+Registry 不只是 blob storage。它理解 harness-specific package metadata 和 release state。
 
 ### Catalog API
 
-Responsibilities:
+职责：
 
-- Search packages and artifacts.
-- Serve package details, docs, dependencies, validation reports, and usage.
-- Provide recommendations based on repo characteristics and org policy.
-- Expose data to UI, CLI, and automation.
+- 搜索 packages 和 artifacts。
+- 提供 package details、docs、dependencies、validation reports 和 usage。
+- 基于 repo characteristics 和 org policy 提供 recommendations。
+- 向 UI、CLI 和 automation 暴露数据。
 
-### Dependency Graph
+### 依赖图（Dependency Graph）
 
-Responsibilities:
+职责：
 
-- Model package dependencies and consumers.
-- Show which repos, teams, bundles, and profiles depend on each package version.
-- Support impact analysis before upgrades or deprecations.
-- Detect cycles and incompatible version constraints.
+- 建模 package dependencies 和 consumers。
+- 展示哪些 repos、teams、bundles 和 profiles 依赖每个 package version。
+- 在 upgrades 或 deprecations 前支持 impact analysis。
+- 检测 cycles 和 incompatible version constraints。
 
-### Composition Engine
+### 组合引擎（Composition Engine）
 
-Responsibilities:
+职责：
 
-- Resolve package version constraints.
-- Apply package layers and precedence.
-- Merge compatible artifacts.
-- Detect conflicts, duplicates, missing dependencies, and policy violations.
-- Emit resolved bundles and lockfiles.
+- 解析 package version constraints。
+- 应用 package layers 和 precedence。
+- 合并兼容 artifacts。
+- 检测 conflicts、duplicates、missing dependencies 和 policy violations。
+- 输出 resolved bundles 和 lockfiles。
 
-Composition should produce an explanation trace so users can see why each artifact appears in the final bundle.
+Composition 应生成 explanation trace，让用户看到每个 artifact 为什么出现在最终 bundle 中。
 
-### Policy Engine
+### 策略引擎（Policy Engine）
 
-Responsibilities:
+职责：
 
-- Enforce review requirements.
-- Classify MCP servers and skills by risk.
-- Enforce allowed and denied tool scopes.
-- Manage exceptions with expiry and owner.
-- Prevent forbidden content such as secrets.
+- 执行 review requirements。
+- 按风险对 MCP servers 和 Skills 分类。
+- 执行允许和禁止的 tool scopes。
+- 管理带 expiry 和 owner 的 exceptions。
+- 防止 secrets 等 forbidden content。
 
-The policy engine should run at package publish time, composition time, and distribution time.
+Policy engine 应在 package publish time、composition time 和 distribution time 运行。
 
-### Validation Runner
+### 校验执行器（Validation Runner）
 
-Responsibilities:
+职责：
 
-- Validate package structure and manifests.
-- Validate MCP definitions and required environment variables.
-- Run static policy checks.
-- Run composition checks.
-- Run optional agent behavior evaluations.
+- 校验 package structure 和 manifests。
+- 校验 MCP definitions 和 required environment variables。
+- 运行 static policy checks。
+- 运行 composition checks。
+- 运行可选 agent behavior evaluations。
 
-Validation reports should be stored with package versions and bundle resolutions.
+Validation reports 应与 package versions 和 bundle resolutions 一起存储。
 
-### Distribution Service
+### 分发服务（Distribution Service）
 
-Responsibilities:
+职责：
 
-- Materialize generated files into repositories.
-- Open pull requests for harness upgrades.
-- Serve runtime bundle API requests.
-- Publish lockfiles.
-- Report distribution status and errors.
+- 将 generated files materialize 到 repositories。
+- 为 harness upgrades 打开 pull requests。
+- 响应 runtime bundle API requests。
+- 发布 lockfiles。
+- 汇报 distribution status 和 errors。
 
-Distribution should support reference mode, materialized mode, and hybrid mode.
+Distribution 应支持 reference mode、materialized mode 和 hybrid mode。
 
-## Data Model
+## 数据模型
 
-### HarnessPackage
+### HarnessPackage（Harness 包）
 
-A named, owned, versioned unit of reusable harness content.
+可复用 harness 内容的命名、归属、版本化单元。
 
-Fields:
+字段：
 
 - `id`
 - `name`
@@ -160,11 +160,11 @@ Fields:
 - `createdAt`
 - `updatedAt`
 
-### PackageVersion
+### PackageVersion（包版本）
 
-An immutable released version of a package.
+Package 的不可变 released version。
 
-Fields:
+字段：
 
 - `id`
 - `packageId`
@@ -176,11 +176,11 @@ Fields:
 - `validationStatus`
 - `createdAt`
 
-### Artifact
+### Artifact（资产项）
 
-A typed item inside a package version.
+Package version 内部的 typed item。
 
-Fields:
+字段：
 
 - `id`
 - `packageVersionId`
@@ -192,7 +192,7 @@ Fields:
 - `risk`
 - `metadata`
 
-Artifact types:
+Artifact types：
 
 - `rule`
 - `skill`
@@ -201,11 +201,11 @@ Artifact types:
 - `validation`
 - `runtime-config`
 
-### Bundle
+### Bundle（组合目标）
 
-A resolved composition target.
+已解析的 composition target。
 
-Fields:
+字段：
 
 - `id`
 - `targetType`
@@ -214,7 +214,7 @@ Fields:
 - `createdBy`
 - `createdAt`
 
-Target types:
+目标类型：
 
 - `organization`
 - `team`
@@ -222,11 +222,11 @@ Target types:
 - `workflow`
 - `agent`
 
-### BundleResolution
+### BundleResolution（组合结果）
 
-An immutable resolved bundle output.
+不可变的 resolved bundle output。
 
-Fields:
+字段：
 
 - `id`
 - `bundleId`
@@ -238,11 +238,11 @@ Fields:
 - `validationStatus`
 - `createdAt`
 
-### Assignment
+### Assignment（分配关系）
 
-Connects a bundle to a consumer.
+将 bundle 连接到 consumer。
 
-Fields:
+字段：
 
 - `id`
 - `bundleId`
@@ -252,11 +252,11 @@ Fields:
 - `status`
 - `lastSyncedAt`
 
-### Finding
+### Finding（发现项）
 
-A detected issue or recommendation.
+检测到的问题或建议。
 
-Fields:
+字段：
 
 - `id`
 - `kind`
@@ -268,7 +268,7 @@ Fields:
 - `status`
 - `createdAt`
 
-Finding kinds:
+Finding 类型：
 
 - `duplicate`
 - `conflict`
@@ -278,48 +278,48 @@ Finding kinds:
 - `validation-failure`
 - `missing-owner`
 
-## Composition Algorithm
+## 组合算法
 
-Default composition flow:
+默认 composition flow：
 
-1. Load target profile and assigned packages.
-2. Resolve version constraints into exact package versions.
-3. Expand dependencies.
-4. Sort packages by layer and precedence.
-5. Normalize artifacts into merge groups.
-6. Detect duplicates and semantic similarity.
-7. Apply merge strategies.
-8. Detect conflicts and unresolved decisions.
-9. Run policy checks.
-10. Emit resolved bundle and lockfile.
-11. Run validation.
+1. 加载 target profile 和 assigned packages。
+2. 将 version constraints 解析为精确 package versions。
+3. 展开 dependencies。
+4. 按 layer 和 precedence 排序 packages。
+5. 将 artifacts 规范化为 merge groups。
+6. 检测 duplicates 和 semantic similarity。
+7. 应用 merge strategies。
+8. 检测 conflicts 和 unresolved decisions。
+9. 运行 policy checks。
+10. 输出 resolved bundle 和 lockfile。
+11. 运行 validation。
 
-Merge strategies should be artifact-type aware.
+Merge strategies 应感知 artifact type。
 
-Rule merge strategies:
+Rule merge strategies：
 
-- `append-section`: append content under package-labelled sections.
-- `replace-section`: replace a named section from a lower-precedence package.
-- `require-explicit-choice`: fail composition until a maintainer chooses.
-- `non-mergeable`: only one artifact can win.
+- `append-section`：在带 package 标签的 sections 下追加内容。
+- `replace-section`：替换较低优先级 package 中的命名 section。
+- `require-explicit-choice`：composition 失败，直到 maintainer 做出选择。
+- `non-mergeable`：只能有一个 artifact 获胜。
 
-Skill merge strategies:
+Skill merge strategies：
 
-- `include`: include skill as independent capability.
-- `alias`: mark as equivalent to another skill.
-- `supersede`: replace a lower-precedence skill.
+- `include`：将 Skill 作为独立 capability 包含进来。
+- `alias`：标记为等价于另一个 Skill。
+- `supersede`：替换较低优先级 Skill。
 
-MCP merge strategies:
+MCP merge strategies：
 
-- `union-tools`: combine allowed tools where policy permits.
-- `restrictive-intersection`: keep only tools allowed by all applicable policies.
-- `non-mergeable`: require explicit approval.
+- `union-tools`：在 policy 允许时合并 allowed tools。
+- `restrictive-intersection`：只保留所有适用 policies 都允许的 tools。
+- `non-mergeable`：需要显式 approval。
 
-## Lockfile
+## Lockfile（锁文件）
 
-A resolved bundle should produce a lockfile so consumers can reproduce the exact harness.
+Resolved bundle 应生成 lockfile，让 consumers 能复现精确 harness。
 
-Example:
+示例：
 
 ```yaml
 apiVersion: harhub.io/v1
@@ -346,22 +346,22 @@ spec:
     exceptions: []
 ```
 
-## Storage
+## 存储
 
-Recommended initial storage:
+推荐初始存储：
 
-- Relational database for packages, versions, assignments, findings, audit events, and policy state.
-- Object storage or Git-backed blob references for artifact content snapshots.
-- Search index for catalog queries and semantic artifact discovery.
-- Graph representation for dependencies and consumers. This can begin in the relational database and later move to a graph-optimized store if needed.
+- Relational database，用于 packages、versions、assignments、findings、audit events 和 policy state。
+- Object storage 或 Git-backed blob references，用于 artifact content snapshots。
+- Search index，用于 catalog queries 和 semantic artifact discovery。
+- Graph representation，用于 dependencies 和 consumers。初期可放在 relational database 中，必要时再迁移到 graph-optimized store。
 
-## API Surfaces
+## API 表面
 
 ### Web API
 
-Used by the UI and integrations.
+供 UI 和 integrations 使用。
 
-Core resources:
+核心资源：
 
 - `/packages`
 - `/packages/{name}/versions`
@@ -374,7 +374,7 @@ Core resources:
 
 ### CLI
 
-Expected commands:
+预期命令：
 
 ```text
 harhub scan
@@ -388,46 +388,45 @@ harhub findings
 
 ### Runtime API
 
-Used by agents or local wrappers.
+供 agents 或 local wrappers 使用。
 
-Capabilities:
+能力：
 
-- Fetch resolved bundle by repo, profile, or lock hash.
-- Fetch materialized files.
-- Fetch allowed MCP tool config.
-- Report harness usage and validation outcomes.
+- 按 repo、profile 或 lock hash 获取 resolved bundle。
+- 获取 materialized files。
+- 获取 allowed MCP tool config。
+- 上报 harness usage 和 validation outcomes。
 
-## Security Architecture
+## 安全架构
 
-Security requirements:
+安全需求：
 
-- Harness packages must not contain secrets.
-- MCP definitions must declare required environment variables without storing values.
-- MCP tools should have risk labels and allowed scopes.
-- High-risk permissions require review.
-- Every release, approval, assignment, and distribution event should be auditable.
-- Runtime bundle retrieval should be authorized by org, team, repo, and agent identity.
-- Policy exceptions should have owner, reason, and expiry.
+- Harness packages 不得包含 secrets。
+- MCP definitions 必须声明 required environment variables，但不能存储值。
+- MCP tools 应带 risk labels 和 allowed scopes。
+- 高风险权限需要 review。
+- 每个 release、approval、assignment 和 distribution event 都应可审计。
+- Runtime bundle retrieval 应按 org、team、repo 和 agent identity 授权。
+- Policy exceptions 应包含 owner、reason 和 expiry。
 
-## Deployment Model
+## 部署模型
 
-MVP deployment can be a single service with background workers:
+MVP deployment 可以是带 background workers 的单体服务：
 
-- Web/API service.
-- Worker process for scanning, validation, composition, and distribution.
-- Database.
-- Object store or content snapshot store.
-- Search index.
+- Web/API service。
+- 用于 scanning、validation、composition 和 distribution 的 worker process。
+- Database。
+- Object store 或 content snapshot store。
+- Search index。
 
-This can later split into independent services if scale requires it.
+如果规模需要，后续可以拆分为独立服务。
 
-## Integration Points
+## 集成点
 
-Initial integrations:
+初始集成：
 
-- GitHub or Git provider API for scanning, commits, and pull requests.
-- CI systems for validation checks.
-- Agent CLIs and IDE extensions through lockfiles and runtime API.
-- MCP server catalogs and internal security tooling.
-- SSO/RBAC provider for enterprise deployments.
-
+- GitHub 或 Git provider API，用于 scanning、commits 和 pull requests。
+- CI systems，用于 validation checks。
+- 通过 lockfiles 和 runtime API 集成 Agent CLIs 与 IDE extensions。
+- MCP server catalogs 和内部 security tooling。
+- 企业部署中的 SSO/RBAC provider。

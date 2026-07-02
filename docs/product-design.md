@@ -1,132 +1,132 @@
-# Product Design
+# 产品设计
 
-## Product Shape
+## 产品形态
 
-Harhub should feel like a harness registry and control plane, not a generic document manager.
+Harhub 应该像一个 harness registry 和控制平面，而不是通用文档管理器。
 
-The central objects are:
+核心对象是：
 
-- **Packages**: versioned units of reusable harness content.
-- **Artifacts**: files or structured definitions inside packages.
-- **Profiles**: target contexts such as frontend repo, backend service, infra repo, security review, design implementation, or incident response.
-- **Bundles**: resolved compositions of packages for a target profile.
-- **Assignments**: links between bundles and repos, teams, agents, or workflows.
-- **Findings**: duplication, conflicts, policy violations, validation failures, and drift.
+- **Packages**：可复用 harness 内容的版本化单元。
+- **Artifacts**：packages 内部的文件或结构化定义。
+- **Profiles**：目标上下文，例如 frontend repo、backend service、infra repo、security review、design implementation 或 incident response。
+- **Bundles**：为某个 target profile 解析出的 package 组合。
+- **Assignments**：bundles 与 repos、teams、agents 或 workflows 之间的链接。
+- **Findings**：重复、冲突、策略违规、校验失败和 drift。
 
-## Information Architecture
+## 信息架构
 
-### Catalog
+### 目录（Catalog）
 
-The catalog lists harness packages with:
+Catalog 列出 harness packages，并展示：
 
-- Name and description.
-- Owner and maintainer team.
-- Type: rules, skill pack, MCP pack, workflow pack, baseline, composite.
-- Tags: language, framework, domain, runtime, agent, risk.
-- Version and lifecycle state.
-- Validation status.
-- Adoption count.
+- 名称和描述。
+- Owner 和 maintainer team。
+- 类型：rules、skill pack、MCP pack、workflow pack、baseline、composite。
+- Tags：language、framework、domain、runtime、agent、risk。
+- Version 和 lifecycle state。
+- Validation status。
+- Adoption count。
 
-### Package Detail
+### Package 详情
 
-Each package page should show:
+每个 package 页面应展示：
 
-- Overview and intended use.
-- Included artifacts.
-- Compatibility metadata.
-- Dependencies.
-- Version history.
-- Validation reports.
-- Consumers.
-- Open findings.
-- Ownership and review policy.
+- Overview 和 intended use。
+- Included artifacts。
+- Compatibility metadata。
+- Dependencies。
+- Version history。
+- Validation reports。
+- Consumers。
+- Open findings。
+- Ownership 和 review policy。
 
-### Bundle Detail
+### Bundle 详情
 
-Each bundle page should show:
+每个 bundle 页面应展示：
 
-- Target team, repo, profile, or workflow.
-- Selected packages and pinned versions.
-- Effective artifact list.
-- Conflict decisions and overrides.
-- Generated files.
-- Lockfile.
-- Validation status.
-- Upgrade recommendations.
+- Target team、repo、profile 或 workflow。
+- Selected packages 和 pinned versions。
+- Effective artifact list。
+- Conflict decisions 和 overrides。
+- Generated files。
+- Lockfile。
+- Validation status。
+- Upgrade recommendations。
 
-### Repository View
+### 仓库视图
 
-Each repository view should show:
+每个 repository view 应展示：
 
-- Current harness source files found in the repo.
-- Assigned bundle, if any.
-- Drift from the resolved bundle.
-- Local overrides.
-- MCP permissions required by the repo harness.
-- Recommended upgrades or deduplication actions.
+- 在 repo 中发现的当前 harness source files。
+- Assigned bundle，如果有。
+- 与 resolved bundle 的 drift。
+- Local overrides。
+- Repo harness 所需 MCP permissions。
+- 推荐 upgrades 或 deduplication actions。
 
-## Core Workflows
+## 核心工作流
 
-### 1. Discover Existing Harnesses
+### 1. 发现已有 Harness
 
-1. A platform owner connects Git repositories or points Harhub at a repository group.
-2. Harhub scans for known harness files and manifests.
-3. Harhub groups discovered artifacts into candidate packages.
-4. Owners review the candidates, add metadata, and publish them to the catalog.
+1. Platform owner 连接 Git repositories，或让 Harhub 指向一组 repositories。
+2. Harhub 扫描已知 harness files 和 manifests。
+3. Harhub 将发现的 artifacts 分组为 candidate packages。
+4. Owners 评审候选项，补充 metadata，并发布到 catalog。
 
-Outcome: the organization gets an inventory without demanding immediate migration.
+结果：组织获得 inventory，而不需要立即迁移。
 
-### 2. Publish A Harness Package
+### 2. 发布 Harness Package
 
-1. An author creates or updates a harness package in Git.
-2. The package includes a manifest, docs, artifacts, and optional validation fixtures.
-3. CI runs Harhub validation.
-4. Reviewers approve the package release.
-5. Harhub indexes the immutable version and makes it available for composition.
+1. Author 在 Git 中创建或更新 harness package。
+2. Package 包含 manifest、docs、artifacts 和可选 validation fixtures。
+3. CI 运行 Harhub validation。
+4. Reviewers 批准 package release。
+5. Harhub 索引不可变版本，并让它可用于 composition。
 
-Outcome: reusable harnesses have owners, versions, and validation status.
+结果：可复用 harnesses 拥有 owners、versions 和 validation status。
 
-### 3. Compose A Repo Harness
+### 3. 组合仓库 Harness
 
-1. A maintainer selects a target repo and profile.
-2. Harhub recommends packages based on language, framework, team, existing files, and org policy.
-3. The maintainer chooses packages and versions.
-4. Harhub resolves dependencies, applies precedence, and detects conflicts.
-5. Harhub emits a bundle lockfile and generated files or runtime references.
+1. Maintainer 选择 target repo 和 profile。
+2. Harhub 根据 language、framework、team、existing files 和 org policy 推荐 packages。
+3. Maintainer 选择 packages 和 versions。
+4. Harhub 解析 dependencies，应用 precedence，并检测 conflicts。
+5. Harhub 输出 bundle lockfile 以及 generated files 或 runtime references。
 
-Outcome: the repo gets a coherent harness without manual copy-paste.
+结果：repo 获得一致的 harness，不需要手动 copy-paste。
 
-### 4. Detect And Remove Redundancy
+### 4. 检测并移除冗余
 
-1. Harhub compares rule text, skill purposes, MCP definitions, and metadata.
-2. Similar artifacts are grouped as potential duplicates.
-3. Maintainers choose a canonical artifact or keep variants with documented reasons.
-4. Harhub suggests package consolidation and migration pull requests.
+1. Harhub 比较 rule text、Skill purposes、MCP definitions 和 metadata。
+2. 相似 artifacts 被分组为潜在 duplicates。
+3. Maintainers 选择 canonical artifact，或保留有明确理由的 variants。
+4. Harhub 建议 package consolidation 和 migration pull requests。
 
-Outcome: teams converge on shared harnesses where it makes sense while preserving justified local differences.
+结果：团队在合理场景下收敛到共享 harnesses，同时保留有正当理由的本地差异。
 
-### 5. Roll Out An Org Baseline
+### 5. 发布 Org Baseline
 
-1. A platform owner publishes a baseline package.
-2. Harhub shows affected repos and incompatible packages.
-3. Teams test the baseline against their repo profiles.
-4. Harhub opens upgrade pull requests or updates bundle assignments.
-5. Dashboards track adoption and exceptions.
+1. Platform owner 发布 baseline package。
+2. Harhub 展示 affected repos 和 incompatible packages。
+3. Teams 针对 repo profiles 测试 baseline。
+4. Harhub 打开 upgrade pull requests，或更新 bundle assignments。
+5. Dashboards 追踪 adoption 和 exceptions。
 
-Outcome: org-level agent standards can be rolled out safely and visibly.
+结果：组织级 agent standards 可以安全且可见地发布。
 
-### 6. Review A Risky Harness Change
+### 6. 评审高风险 Harness 变更
 
-1. A package update adds a new MCP server or expands tool permissions.
-2. Harhub classifies the change as risky.
-3. Security reviewers see a permission diff, affected consumers, and validation results.
-4. The change is approved, rejected, or allowed behind a scoped exception.
+1. Package update 增加新的 MCP server 或扩大 tool permissions。
+2. Harhub 将变更分类为 risky。
+3. Security reviewers 查看 permission diff、affected consumers 和 validation results。
+4. 变更被批准、拒绝，或通过带 scope 的 exception 放行。
 
-Outcome: harness capabilities are governed before they reach agents.
+结果：harness capabilities 在进入 agents 前被治理。
 
-## Harness Package Structure
+## Harness Package 结构
 
-Harhub should support plain files, but a structured package should look like this:
+Harhub 应支持普通文件，但结构化 package 应类似：
 
 ```text
 harness/
@@ -147,7 +147,7 @@ harness/
     tasks.yaml
 ```
 
-Example manifest:
+示例 manifest：
 
 ```yaml
 apiVersion: harhub.io/v1
@@ -183,67 +183,66 @@ spec:
     risk: medium
 ```
 
-## Composition Model
+## 组合模型
 
-Harness composition should be explicit and explainable.
+Harness composition 应显式且可解释。
 
-Recommended default layers:
+推荐默认层级：
 
-1. Organization baseline.
-2. Domain or function pack.
-3. Team pack.
-4. Repository pack.
-5. Workflow pack.
-6. Local override, if policy allows it.
+1. Organization baseline。
+2. Domain 或 function pack。
+3. Team pack。
+4. Repository pack。
+5. Workflow pack。
+6. Local override，如果 policy 允许。
 
-Every resolved bundle should include:
+每个 resolved bundle 都应包含：
 
-- Input packages and versions.
-- Effective artifact order.
-- Applied merge strategies.
-- Conflict decisions.
-- Policy exceptions.
-- Output files or runtime references.
-- Validation result.
+- Input packages 和 versions。
+- Effective artifact order。
+- Applied merge strategies。
+- Conflict decisions。
+- Policy exceptions。
+- Output files 或 runtime references。
+- Validation result。
 
-## Distribution Modes
+## 分发模式
 
-### Reference Mode
+### 引用模式（Reference Mode）
 
-The repository stores a small `harhub.lock` or `harhub.yaml` that points to a resolved bundle in Harhub.
+Repository 保存一个很小的 `harhub.lock` 或 `harhub.yaml`，指向 Harhub 中的 resolved bundle。
 
-Best for:
+适合：
 
-- Agent runtimes that can fetch harnesses at startup.
-- Teams that want minimal generated files.
-- Centralized policy enforcement.
+- 能在启动时拉取 harnesses 的 agent runtimes。
+- 希望减少 generated files 的团队。
+- 集中式策略执行。
 
-### Materialized Mode
+### 实体化模式（Materialized Mode）
 
-Harhub writes generated files such as `AGENTS.md`, `DESIGN.md`, `ARCHITECTURE.md`, and MCP config into the repository.
+Harhub 将 `AGENTS.md`、`DESIGN.md`、`ARCHITECTURE.md` 和 MCP config 等 generated files 写入 repository。
 
-Best for:
+适合：
 
-- Tools that only read local files.
-- Teams that want all agent instructions visible in Git.
-- Offline or restricted environments.
+- 只能读取本地文件的工具。
+- 希望所有 agent instructions 在 Git 中可见的团队。
+- 离线或受限环境。
 
-### Hybrid Mode
+### 混合模式（Hybrid Mode）
 
-The repository keeps critical generated files plus a lockfile that records Harhub provenance.
+Repository 保留关键 generated files，并用 lockfile 记录 Harhub provenance。
 
-Best for:
+适合：
 
-- Gradual adoption.
-- Mixed agent tooling.
-- Teams that want local transparency with central management.
+- 渐进采用。
+- 混合 agent tooling。
+- 希望兼顾本地透明性和中心化管理的团队。
 
-## UX Principles
+## 用户体验原则
 
-- Show provenance everywhere.
-- Make the effective harness easy to inspect.
-- Prefer recommendations over forced migration in early adoption.
-- Treat conflicts as reviewable decisions, not hidden implementation details.
-- Make risky capability changes visually obvious.
-- Keep package authoring friendly to Markdown and Git.
-
+- 到处展示 provenance。
+- 让 effective harness 易于检查。
+- 早期采用阶段优先推荐，而不是强制迁移。
+- 将 conflicts 视为可评审决策，而不是隐藏的实现细节。
+- 让高风险 capability changes 在视觉上明显。
+- 保持 package authoring 对 Markdown 和 Git 友好。

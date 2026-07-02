@@ -1,337 +1,337 @@
-# MVP Metrics And TODO
+# MVP 指标与 TODO
 
-Harhub's MVP strategy is **open-source distribution plus a hosted SaaS operation**. The product category should be **team AI harness management**: managing the Skills, MCP servers, rules, project instructions, and governance metadata that teams use to make agents reliable.
+Harhub 的 MVP 策略是 **开源分发加 hosted SaaS 运营**。产品品类应是 **团队 AI harness 管理**：管理团队用来让 agents 可靠运行的 Skills、MCP servers、rules、project instructions 和 governance metadata。
 
-The product should stay narrowly focused on Agent Skills in the first implementation, but this is a wedge rather than the final category. Skills are useful because they have a concrete package shape, can be validated, can be uploaded and previewed, and create a measurable reuse loop. The broader product should expand into rules, MCP governance, bundle composition, PR automation, and cross-tool distribution only after the Skills loop is proven.
+第一版实现应继续聚焦 Agent Skills，但这是切入点，不是最终品类。Skills 有价值，是因为它们有具体包结构、可以校验、可以上传和预览，并能形成可衡量的复用闭环。只有在 Skills 闭环被验证后，更大的产品才应扩展到 rules、MCP governance、bundle composition、PR automation 和 cross-tool distribution。
 
-## Target Shape
+## 目标形态
 
-Harhub should launch as two connected surfaces:
+Harhub 应以两个互相关联的表面发布：
 
-- **Open-source project**: a self-hostable TypeScript app and CLI that validates, catalogs, and manages harness assets without inventing custom formats. The MVP implementation only manages Agent Skills.
-- **Hosted SaaS**: a free cloud workspace for teams that do not want to run storage, auth, catalog, and governance infrastructure themselves.
+- **开源项目**：一个 self-hostable TypeScript app 和 CLI，用于校验、编目并管理 harness assets，同时不发明自定义格式。MVP 实现只管理 Agent Skills。
+- **Hosted SaaS**：面向不想自行运维 storage、auth、catalog 和 governance infrastructure 的团队，提供免费 cloud workspace。
 
-The hosted MVP is free-only at launch. Instead of charging immediately, it should protect operating cost with clear usage limits and use over-limit states as demand signals for a future paid plan.
+Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的使用限制控制运营成本，并将超限状态作为未来 paid plan 的需求信号。
 
-## Current Product Read
+## 当前产品读数
 
-What exists in the code today:
+当前代码中已经存在：
 
-- **Fullstack app**: Express API, Vite/React frontend, shared TypeScript types, and a CLI entry point.
-- **Authentication**: local email/password accounts, bearer-token sessions, profile updates, password changes, and logout.
-- **Tenant model**: workspaces, memberships, workspace roles, default scan paths, and workspace-scoped catalogs.
-- **Skill asset flow**: S3-compatible zip upload, `SKILL.md` extraction, metadata indexing, search/filter, table view, detail view, file tree preview, metadata editing, and deletion.
-- **Validation foundation**: recursive `SKILL.md` scanning, official frontmatter checks, slug validation, description checks, local-link validation, duplicate checks, and obvious secret pattern detection.
-- **CLI foundation**: local scan, validate, list, show, create, asset scan, asset validate, asset create, and API-backed zip upload.
+- **Fullstack app**：Express API、Vite/React frontend、shared TypeScript types 和 CLI entry point。
+- **Authentication**：本地 email/password accounts、bearer-token sessions、profile updates、password changes 和 logout。
+- **Tenant model**：workspaces、memberships、workspace roles、default scan paths 和 workspace-scoped catalogs。
+- **Skill asset flow**：S3-compatible zip upload、`SKILL.md` extraction、metadata indexing、search/filter、table view、detail view、file tree preview、metadata editing 和 deletion。
+- **Validation foundation**：递归 `SKILL.md` scanning、官方 frontmatter checks、slug validation、description checks、local-link validation、duplicate checks 和明显 secret pattern detection。
+- **CLI foundation**：local scan、validate、list、show、create、asset scan、asset validate、asset create 和 API-backed zip upload。
 
-How to interpret the current implementation:
+如何理解当前实现：
 
-- **Current wedge**: Skills asset management.
-- **Target category**: team AI harness management.
-- **Buyer/user pain**: teams need one place to discover, review, validate, publish, and audit the AI context that is otherwise scattered across Cursor rules, Claude/Codex Skills, Copilot instructions, MCP configs, and repo-local `AGENTS.md`.
-- **Defensible value**: cross-tool compatibility, lifecycle governance, policy checks, usage analytics, and distribution workflows that individual AI coding tools are unlikely to solve across competing ecosystems.
+- **Current wedge**：Skills asset management。
+- **Target category**：team AI harness management。
+- **Buyer/user pain**：团队需要一个地方发现、评审、校验、发布并审计 AI context；这些 context 现在散落在 Cursor rules、Claude/Codex Skills、Copilot instructions、MCP configs 和 repo-local `AGENTS.md` 中。
+- **Defensible value**：跨工具兼容性、生命周期治理、策略检查、使用分析和分发工作流。这些通常不是单个 AI coding tool 能跨竞争生态解决的问题。
 
-Important gaps for the target MVP:
+目标 MVP 的重要缺口：
 
-- **Quota is not modeled**: upload size has a process-level cap, but there is no per-user, per-workspace, per-asset, daily upload, or total storage quota.
-- **Uploaded zips need stronger validation**: upload parsing verifies that a zip contains `SKILL.md`, but it should run the same structural/security checks as local scans and persist validation issues.
-- **No activation/distribution event**: the product has preview, but no first-class "download", "copy install command", "copy Codex install path", or usage event to prove reuse.
-- **No SaaS-grade persistence**: accounts, sessions, workspace metadata, and asset indexes are local JSON files, which is good for self-hosting/demo but not enough for hosted operation.
-- **No operations dashboard**: there is no admin view for signups, activated workspaces, asset counts, storage usage, failed uploads, quota hits, or over-limit users.
-- **Role enforcement is incomplete**: many asset actions only require workspace access; hosted SaaS should explicitly gate mutation by role.
-- **No hosted onboarding funnel**: signup does not yet drive users through the exact activation path of uploading/importing three valid skills and installing one.
-- **Open-source launch surface is thin**: the README is usable, but launch still needs deployment docs, environment templates, contributor docs, license clarity, and a SaaS CTA.
+- **Quota 尚未建模**：上传大小有 process-level cap，但没有 per-user、per-workspace、per-asset、daily upload 或 total storage quota。
+- **Uploaded zips 需要更强校验**：上传解析会验证 zip 包含 `SKILL.md`，但应运行与 local scans 相同的结构和安全检查，并持久化 validation issues。
+- **没有 activation/distribution event**：产品有 preview，但没有一等的“download”、“copy install command”、“copy Codex install path”或 usage event 来证明复用。
+- **没有 SaaS-grade persistence**：accounts、sessions、workspace metadata 和 asset indexes 都是本地 JSON 文件，适合 self-hosting/demo，但不够用于 hosted operation。
+- **没有 operations dashboard**：缺少 signups、activated workspaces、asset counts、storage usage、failed uploads、quota hits 或 over-limit users 的 admin view。
+- **Role enforcement 不完整**：很多 asset actions 只要求 workspace access；hosted SaaS 应按角色显式限制 mutation。
+- **没有 hosted onboarding funnel**：signup 还没有引导用户完成上传或导入 3 个有效 Skills 并安装 1 个的激活路径。
+- **开源发布表面较薄**：README 可用，但发布仍需要 deployment docs、environment templates、contributor docs、license clarity 和 SaaS CTA。
 
-Important gaps for the broader team-harness product:
+更广义 team-harness 产品的重要缺口：
 
-- **No multi-artifact inventory**: the current scanner is Skills-first and does not inventory `.cursor/rules`, `AGENTS.md`, Copilot instructions, MCP definitions, prompt files, or workflow docs.
-- **No cross-tool target model**: there is no target abstraction for Codex, Claude Code, Cursor, GitHub Copilot, ChatGPT, CI, or repo materialization.
-- **No governance workflow**: there is no review, approval, audit, rollout, rollback, or policy exception model for harness changes.
-- **No MCP risk model**: MCP servers, tools, scopes, environment requirements, and secret boundaries are not represented yet.
-- **No composition contract**: there is no way to resolve an org baseline plus team-specific and repo-specific harness packs with precedence and conflict handling.
+- **没有 multi-artifact inventory**：当前 scanner 是 Skills-first，不会盘点 `.cursor/rules`、`AGENTS.md`、Copilot instructions、MCP definitions、prompt files 或 workflow docs。
+- **没有 cross-tool target model**：缺少 Codex、Claude Code、Cursor、GitHub Copilot、ChatGPT、CI 或 repo materialization 的 target abstraction。
+- **没有 governance workflow**：缺少 harness changes 的 review、approval、audit、rollout、rollback 或 policy exception model。
+- **没有 MCP risk model**：尚未表示 MCP servers、tools、scopes、environment requirements 和 secret boundaries。
+- **没有 composition contract**：还不能解析 org baseline 加 team-specific 和 repo-specific harness packs，也没有 precedence 与 conflict handling。
 
-## North Star Metric
+## 北极星指标
 
 **Activated Harness Workspace**
 
-A workspace is activated when, within 7 days of creation, it has:
+Workspace 在创建后 7 天内满足以下条件即为 activated：
 
-1. At least **3 valid Skill assets**.
-2. At least **1 distribution action** on any Skill.
-3. At least **1 named owner** for the workspace or uploaded harness assets.
+1. 至少 **3 个有效 Skill assets**。
+2. 任一 Skill 至少发生 **1 次 distribution action**。
+3. Workspace 或已上传 harness assets 至少有 **1 个 named owner**。
 
-A distribution action can be one of:
+Distribution action 可以是：
 
-- Download skill zip.
-- Copy install command.
-- Copy target install path.
-- Copy hosted asset URL, if public sharing is later enabled.
+- Download skill zip。
+- Copy install command。
+- Copy target install path。
+- Copy hosted asset URL，如果后续启用 public sharing。
 
-This metric is sharper than signup count because it proves the core loop: harness supply, validation trust, catalog discovery, ownership, and practical reuse.
+这个指标比 signup count 更准确，因为它证明核心闭环：harness supply、validation trust、catalog discovery、ownership 和 practical reuse。
 
-## Supporting Metrics
+## 支撑指标
 
-### Activation Funnel
+### 激活漏斗
 
-Track conversion through:
+追踪以下转化：
 
-1. Visit SaaS landing page.
-2. Sign up.
-3. Create or enter workspace.
-4. Upload or import first Skill.
-5. Pass validation.
-6. Reach 3 valid Skills.
-7. Preview a Skill.
-8. Perform first distribution action.
+1. Visit SaaS landing page。
+2. Sign up。
+3. Create or enter workspace。
+4. Upload or import first Skill。
+5. Pass validation。
+6. Reach 3 valid Skills。
+7. Preview a Skill。
+8. Perform first distribution action。
 
-### Supply And Quality
+### 供给与质量
 
-- Valid Skill assets per activated workspace.
-- Upload/import success rate.
-- Validation pass rate.
-- Top validation error codes.
-- Secret-risk detection count.
-- Duplicate content hash count.
-- Assets with owner, tags, and lifecycle state filled in.
+- 每个 activated workspace 的 valid Skill assets。
+- Upload/import success rate。
+- Validation pass rate。
+- Top validation error codes。
+- Secret-risk detection count。
+- Duplicate content hash count。
+- 已填写 owner、tags 和 lifecycle state 的 assets。
 
-### Usage And Retention
+### 使用与留存
 
-- Weekly active workspaces.
-- Week-2 activated workspace retention.
-- Skill preview count.
-- Distribution action count.
-- Repeat upload/import count.
-- Workspaces that update or delete assets after first activation.
+- Weekly active workspaces。
+- Week-2 activated workspace retention。
+- Skill preview count。
+- Distribution action count。
+- Repeat upload/import count。
+- 首次 activation 后仍会 update 或 delete assets 的 workspaces。
 
-### OSS Funnel
+### 开源漏斗
 
-- GitHub visitors, stars, forks, and issues.
-- Docs quickstart completions.
-- CLI install/download attempts.
-- Self-host deployment attempts.
-- SaaS signup clicks from README/docs.
+- GitHub visitors、stars、forks 和 issues。
+- Docs quickstart completions。
+- CLI install/download attempts。
+- Self-host deployment attempts。
+- README/docs 到 SaaS signup 的点击。
 
-### Harness Management Demand
+### Harness 管理需求
 
-- Number of non-Skill harness artifacts users try to add manually.
-- Requests for Cursor rules, `AGENTS.md`, Copilot instructions, or MCP config support.
-- Number of teams asking for approval, audit, rollout, rollback, or org-baseline features.
-- Number of workspaces with multiple agent tools in use.
+- 用户尝试手动添加的非 Skill harness artifacts 数量。
+- 对 Cursor rules、`AGENTS.md`、Copilot instructions 或 MCP config support 的请求。
+- 询问 approval、audit、rollout、rollback 或 org-baseline features 的团队数量。
+- 使用多个 agent tools 的 workspaces 数量。
 
-### Cost Guardrails
+### 成本护栏
 
-- Storage bytes per workspace.
-- Asset count per workspace.
-- Average uploaded zip size.
-- Upload attempts per user per day.
-- Failed uploads by reason.
-- Quota hit count.
-- Object storage cost estimate.
+- 每个 workspace 的 storage bytes。
+- 每个 workspace 的 asset count。
+- 平均 uploaded zip size。
+- 每个用户每天的 upload attempts。
+- 按原因统计 failed uploads。
+- Quota hit count。
+- Object storage cost estimate。
 
-## Free Plan Limits
+## 免费版限制
 
-Initial hosted-free limits:
+初始 hosted-free limits：
 
-- **Users**: 1 account can create up to 3 workspaces.
-- **Workspaces**: 1 workspace can store up to 50 assets.
-- **Storage**: 1 workspace can store up to 500 MB total.
-- **Asset size**: 1 uploaded zip can be up to 10 MB.
-- **Upload rate**: 1 account can upload up to 100 files per day.
-- **Members**: 1 workspace can have up to 5 members.
+- **Users**：1 个 account 最多创建 3 个 workspaces。
+- **Workspaces**：1 个 workspace 最多存储 50 个 assets。
+- **Storage**：1 个 workspace 最多存储 500 MB。
+- **Asset size**：单个 uploaded zip 最大 10 MB。
+- **Upload rate**：1 个 account 每天最多上传 100 个文件。
+- **Members**：1 个 workspace 最多 5 个 members。
 
-Over-limit behavior:
+超限行为：
 
-- Block the write action before uploading to object storage when possible.
-- Show the exact limit, current usage, and remediation.
-- Offer "join waitlist" or "contact us" instead of a paid checkout in MVP.
-- Keep reads, preview, download, and delete available while over limit.
+- 尽量在上传到 object storage 前阻止 write action。
+- 展示精确限制、当前用量和修复方式。
+- MVP 中提供 “join waitlist” 或 “contact us”，而不是 paid checkout。
+- 超限时仍允许 reads、preview、download 和 delete。
 
-## P0 Launch TODO
+## P0 发布 TODO
 
-### 1. Product Activation Loop
+### 1. 产品激活闭环
 
-- [ ] Add an onboarding checklist to the Skills page: upload/import 3 Skills, fix validation, preview one, copy install/download once.
-- [ ] Add clear empty states with a sample Skill zip and copyable CLI upload example.
-- [ ] Add a first-class distribution action on Skill detail: download zip and copy install instructions.
-- [ ] Track distribution events so activation can be measured.
-- [ ] Show activation progress at workspace level.
+- [ ] 在 Skills 页面添加 onboarding checklist：upload/import 3 Skills、fix validation、preview one、copy install/download once。
+- [ ] 添加清晰 empty states，包含 sample Skill zip 和可复制 CLI upload 示例。
+- [ ] 在 Skill detail 上添加一等 distribution action：download zip 和 copy install instructions。
+- [ ] 追踪 distribution events，让 activation 可衡量。
+- [ ] 在 workspace 级展示 activation progress。
 
-### 2. Quota And Usage Enforcement
+### 2. Quota 与用量执行
 
-- [ ] Add usage fields for workspace storage bytes, asset count, member count, and daily upload count.
-- [ ] Enforce the free limits before creating workspaces, adding members, or accepting uploads.
-- [ ] Lower hosted upload cap to 10 MB while keeping self-host override via environment variable.
-- [ ] Recalculate usage after upload and delete.
-- [ ] Add visible quota meters to workspace settings and upload UI.
-- [ ] Add quota-specific API errors with machine-readable codes.
+- [ ] 添加 workspace storage bytes、asset count、member count 和 daily upload count 的 usage fields。
+- [ ] 在创建 workspaces、添加 members 或接受 uploads 前执行免费限制。
+- [ ] 将 hosted upload cap 降到 10 MB，同时保留 self-host 环境变量 override。
+- [ ] 上传和删除后重新计算 usage。
+- [ ] 在 workspace settings 和 upload UI 中添加可见 quota meters。
+- [ ] 添加带 machine-readable codes 的 quota-specific API errors。
 
-### 3. Hosted SaaS Persistence
+### 3. Hosted SaaS 持久化
 
-- [ ] Replace local JSON state with a hosted database for SaaS deployments.
-- [ ] Keep local JSON as a self-host/dev adapter.
-- [ ] Store accounts, sessions, workspaces, memberships, asset metadata, validation issues, usage counters, and events in the database.
-- [ ] Add migrations and seed data.
-- [ ] Add backups or export path for workspace metadata.
+- [ ] 为 SaaS deployments 用 hosted database 替换 local JSON state。
+- [ ] 保留 local JSON 作为 self-host/dev adapter。
+- [ ] 在数据库中存储 accounts、sessions、workspaces、memberships、asset metadata、validation issues、usage counters 和 events。
+- [ ] 添加 migrations 和 seed data。
+- [ ] 添加 workspace metadata 的 backups 或 export path。
 
-### 4. Upload Validation And Storage Safety
+### 4. 上传校验与存储安全
 
-- [ ] Run uploaded zips through the same skill validation rules as local scanned skills.
-- [ ] Persist validation issues on uploaded assets.
-- [ ] Mark uploaded assets as `error`, `warning`, or `valid` from real validation results.
-- [ ] Reject zips with path traversal entries or suspicious absolute paths.
-- [ ] Add zip-entry count and uncompressed-size limits to reduce zip-bomb risk.
-- [ ] Keep stored objects private by default and serve downloads through authorized API routes.
-- [ ] Make delete idempotent when the S3 object is already missing.
+- [ ] 让 uploaded zips 运行与 local scanned Skills 相同的 Skill validation rules。
+- [ ] 在 uploaded assets 上持久化 validation issues。
+- [ ] 根据真实 validation results 将 uploaded assets 标记为 `error`、`warning` 或 `valid`。
+- [ ] 拒绝包含 path traversal entries 或 suspicious absolute paths 的 zips。
+- [ ] 添加 zip-entry count 和 uncompressed-size limits，降低 zip-bomb 风险。
+- [ ] 存储对象默认私有，并通过 authorized API routes 提供 downloads。
+- [ ] 当 S3 object 已经缺失时，使 delete 保持 idempotent。
 
-### 5. Authorization And SaaS Safety
+### 5. 授权与 SaaS 安全
 
-- [ ] Require owner/admin for workspace settings, member changes, asset metadata edits, uploads, and deletes.
-- [ ] Allow member/viewer read-only access according to role.
-- [ ] Add rate limiting for auth and upload endpoints.
-- [ ] Add email verification or an explicit MVP invite-code gate before broad public signup.
-- [ ] Add password reset or document that auth is temporary if using an external auth provider soon.
-- [ ] Add request logging with workspace/account IDs and no secrets.
+- [ ] Workspace settings、member changes、asset metadata edits、uploads 和 deletes 均要求 owner/admin 权限。
+- [ ] 按角色允许 member/viewer read-only access。
+- [ ] 为 auth 和 upload endpoints 添加 rate limiting。
+- [ ] 在 broad public signup 前添加 email verification 或明确的 MVP invite-code gate。
+- [ ] 添加 password reset，或在计划很快使用外部 auth provider 时文档化临时 auth。
+- [ ] 添加 request logging，包含 workspace/account IDs 且不记录 secrets。
 
-### 6. Metrics And Operations
+### 6. 指标与运营
 
-- [ ] Define an event schema for signup, workspace created, upload started, upload failed, upload succeeded, validation failed, preview opened, install copied, zip downloaded, quota hit, and delete.
-- [ ] Add an internal admin page or script for activation, storage, quota, and failed-upload reports.
-- [ ] Add weekly metric export for activated workspaces, valid assets, distribution actions, and W2 retention.
-- [ ] Alert on upload failure spikes and storage growth.
-- [ ] Track GitHub-to-SaaS funnel links with UTM parameters.
+- [ ] 定义 event schema：signup、workspace created、upload started、upload failed、upload succeeded、validation failed、preview opened、install copied、zip downloaded、quota hit 和 delete。
+- [ ] 添加 internal admin page 或 script，用于 activation、storage、quota 和 failed-upload reports。
+- [ ] 添加 weekly metric export：activated workspaces、valid assets、distribution actions 和 W2 retention。
+- [ ] 对 upload failure spikes 和 storage growth 做 alert。
+- [ ] 用 UTM parameters 追踪 GitHub-to-SaaS funnel links。
 
-### 7. Open-Source Launch Readiness
+### 7. 开源发布准备
 
-- [ ] Add license file and confirm intended OSS license.
-- [ ] Add `.env.example` for local API, S3/R2/MinIO, max upload bytes, and state adapter.
-- [ ] Add Docker or Docker Compose path for self-hosting.
-- [ ] Split README into quickstart, self-hosting, hosted SaaS, CLI, and development sections.
-- [ ] Add `CONTRIBUTING.md` with local setup, checks, and skill-standard expectations.
-- [ ] Add `SECURITY.md` for vulnerability reports and secret-handling expectations.
-- [ ] Add example Skill zip fixtures for demos and tests.
+- [ ] 添加 license file 并确认预期 OSS license。
+- [ ] 添加 `.env.example`，包含 local API、S3/R2/MinIO、max upload bytes 和 state adapter。
+- [ ] 添加 self-hosting 的 Docker 或 Docker Compose 路径。
+- [ ] 将 README 拆分为 quickstart、self-hosting、hosted SaaS、CLI 和 development sections。
+- [ ] 添加 `CONTRIBUTING.md`，包含 local setup、checks 和 skill-standard expectations。
+- [ ] 添加 `SECURITY.md`，用于 vulnerability reports 和 secret-handling expectations。
+- [ ] 添加用于 demos 和 tests 的 example Skill zip fixtures。
 
 ## P1 TODO
 
-### 1. Harness Inventory Beyond Skills
+### 1. Skills 之外的 Harness 盘点
 
-- [ ] Scan configured repositories for `.cursor/rules`, `AGENTS.md`, `.github/copilot-instructions.md`, prompt files, MCP config files, and known harness directories.
-- [ ] Classify discovered files by artifact type, owner, source repo, and compatibility target.
-- [ ] Add read-only catalog views for rules, instructions, and MCP definitions before adding mutation workflows.
-- [ ] Detect duplicate or near-duplicate rules and instructions.
-- [ ] Track demand for each artifact type before implementing full composition.
+- [ ] 扫描配置仓库中的 `.cursor/rules`、`AGENTS.md`、`.github/copilot-instructions.md`、prompt files、MCP config files 和 known harness directories。
+- [ ] 按 artifact type、owner、source repo 和 compatibility target 对发现的文件分类。
+- [ ] 在添加 mutation workflows 前，为 rules、instructions 和 MCP definitions 添加 read-only catalog views。
+- [ ] 检测 duplicate 或 near-duplicate rules 和 instructions。
+- [ ] 在实现完整 composition 前追踪每种 artifact type 的需求。
 
-### 2. Import Sources
+### 2. 导入来源
 
-- [ ] Import a Skill from a GitHub repository path.
-- [ ] Import from a zip URL with server-side fetch and validation.
-- [ ] Scan a connected repository for candidate `SKILL.md` files.
-- [ ] Preserve source repo, branch, commit, and path on imported assets.
+- [ ] 从 GitHub repository path 导入 Skill。
+- [ ] 从 zip URL 通过 server-side fetch 和 validation 导入。
+- [ ] 扫描 connected repository，寻找 candidate `SKILL.md` files。
+- [ ] 在 imported assets 上保留 source repo、branch、commit 和 path。
 
-### 3. Versioning And Releases
+### 3. 版本化与发布
 
-- [ ] Add asset version records instead of overwriting the same logical asset.
-- [ ] Add release notes and changelog fields.
-- [ ] Show diff between versions.
-- [ ] Track consumers pinned to a version after distribution actions exist.
+- [ ] 添加 asset version records，而不是覆盖同一个 logical asset。
+- [ ] 添加 release notes 和 changelog fields。
+- [ ] 展示 versions 之间的 diff。
+- [ ] 当 distribution actions 存在后，追踪 pinned 到某个 version 的 consumers。
 
-### 4. Review Workflow
+### 4. 评审工作流
 
-- [ ] Add draft/reviewed/approved lifecycle for uploaded Skills.
-- [ ] Require owner/admin approval before a Skill becomes stable.
-- [ ] Add validation report history.
-- [ ] Add comments or review notes only after the core activation loop works.
+- [ ] 为 uploaded Skills 添加 draft/reviewed/approved lifecycle。
+- [ ] 在 Skill 变为 stable 前要求 owner/admin approval。
+- [ ] 添加 validation report history。
+- [ ] 只在核心 activation loop 完成后添加 comments 或 review notes。
 
-### 5. Better Distribution
+### 5. 更好的分发
 
-- [ ] Add a CLI command to install a hosted Skill into a local Codex skills directory.
-- [ ] Add signed short-lived download URLs or API-token based download.
-- [ ] Add copy snippets for Codex and Claude-compatible installation paths.
-- [ ] Add workspace API tokens for CI or automation.
+- [ ] 添加 CLI command，将 hosted Skill 安装到本地 Codex skills directory。
+- [ ] 添加 signed short-lived download URLs 或基于 API-token 的 download。
+- [ ] 添加 Codex 和 Claude-compatible installation paths 的 copy snippets。
+- [ ] 添加用于 CI 或 automation 的 workspace API tokens。
 
-### 6. MCP And Rules Governance
+### 6. MCP 与 Rules 治理
 
-- [ ] Model MCP server metadata, tool scopes, required environment variables, install targets, and risk labels.
-- [ ] Add policy checks for forbidden tools, secret-like values, missing env var declarations, and unaudited high-risk MCP access.
-- [ ] Add rules package metadata for Cursor, Codex `AGENTS.md`, Copilot instructions, and generic Markdown instructions.
-- [ ] Define target-specific rendering rules for each supported agent surface.
+- [ ] 建模 MCP server metadata、tool scopes、required environment variables、install targets 和 risk labels。
+- [ ] 添加 forbidden tools、secret-like values、missing env var declarations 和 unaudited high-risk MCP access 的 policy checks。
+- [ ] 添加 Cursor、Codex `AGENTS.md`、Copilot instructions 和 generic Markdown instructions 的 rules package metadata。
+- [ ] 为每个 supported agent surface 定义 target-specific rendering rules。
 
-## Launch Checklist
+## 发布清单
 
-### Product
+### 产品
 
-- [ ] New user can sign up without help.
-- [ ] New user can create a workspace.
-- [ ] New user can upload 3 valid Skills in under 10 minutes.
-- [ ] User can see validation status and fix obvious issues.
-- [ ] User can preview `SKILL.md` and bundled files.
-- [ ] User can download or copy install instructions for a Skill.
-- [ ] User can understand quota usage before hitting a hard block.
-- [ ] Product copy makes clear that Skills are the first wedge toward broader AI harness management.
+- [ ] 新用户无需帮助即可注册。
+- [ ] 新用户可以创建 workspace。
+- [ ] 新用户能在 10 分钟内上传 3 个有效 Skills。
+- [ ] 用户可以看到 validation status，并修复明显问题。
+- [ ] 用户可以预览 `SKILL.md` 和打包文件。
+- [ ] 用户可以下载 Skill，或复制安装说明。
+- [ ] 用户在遇到硬性拦截前能理解 quota usage。
+- [ ] 产品文案明确说明 Skills 是通向更广义 AI harness management 的第一个切入点。
 
-### Engineering
+### 工程
 
-- [ ] `npm run check` passes.
-- [ ] `npm run build` passes.
-- [ ] Upload tests cover missing `SKILL.md`, invalid frontmatter, secret-like content, too-large zip, path traversal, duplicate hash, quota exceeded, and S3 failure rollback.
-- [ ] Auth tests cover login, signup, logout, role-gated reads, role-gated writes, and session invalidation after password change.
-- [ ] Delete tests cover metadata removal, S3 deletion, and missing-object recovery.
-- [ ] SaaS database migrations are repeatable from an empty database.
+- [ ] `npm run check` passes。
+- [ ] `npm run build` passes。
+- [ ] 上传测试覆盖缺失 `SKILL.md`、invalid frontmatter、secret-like content、too-large zip、path traversal、duplicate hash、quota exceeded 和 S3 failure rollback。
+- [ ] 认证测试覆盖 login、signup、logout、role-gated reads、role-gated writes，以及 password change 后 session invalidation。
+- [ ] 删除测试覆盖 metadata removal、S3 deletion 和 missing-object recovery。
+- [ ] SaaS 数据库迁移可以从空数据库重复执行。
 
-### Operations
+### 运营
 
-- [ ] Hosted object storage bucket is private.
-- [ ] Production environment variables are documented and checked at boot.
-- [ ] Admin can see workspaces, users, asset count, storage bytes, quota hits, and upload failures.
-- [ ] Error logs include enough context to debug without exposing zip contents or secrets.
-- [ ] Backups or exports exist for metadata.
-- [ ] Terms/privacy pages or temporary MVP equivalents exist before public signup.
+- [ ] 托管对象存储 bucket 默认私有。
+- [ ] 生产环境变量有文档，并在启动时检查。
+- [ ] 管理员可以看到 workspaces、users、asset count、storage bytes、quota hits 和 upload failures。
+- [ ] 错误日志包含足够调试上下文，但不暴露 zip contents 或 secrets。
+- [ ] Metadata 有 backups 或 exports。
+- [ ] Public signup 前具备 terms/privacy pages 或临时 MVP 等价物。
 
-### Open Source
+### 开源
 
-- [ ] Repository has license, contribution guide, security policy, and clear roadmap.
-- [ ] README explains the difference between self-hosted OSS and hosted SaaS.
-- [ ] Local self-host quickstart works from a clean checkout.
-- [ ] Example Skills demonstrate the official `SKILL.md` standard plus `harhub.yaml` registry metadata.
-- [ ] GitHub issue templates collect bug reports and feature requests.
+- [ ] 仓库具备 license、contribution guide、security policy 和清晰 roadmap。
+- [ ] README 解释 self-hosted OSS 和 hosted SaaS 的区别。
+- [ ] 本地 self-host quickstart 能从 clean checkout 跑通。
+- [ ] 示例 Skills 展示官方 `SKILL.md` 标准以及 `harhub.yaml` registry metadata。
+- [ ] GitHub issue templates 能收集 bug reports 和 feature requests。
 
-## MVP Acceptance Criteria
+## MVP 验收标准
 
-The MVP is ready for a public free launch when:
+MVP 满足以下条件时，可以公开免费发布：
 
-1. A new external user can create a hosted account, create a workspace, upload 3 valid Skills, preview one, and perform a distribution action in under 10 minutes.
-2. Quotas are enforced for workspace count, asset count, asset size, total storage, members, and daily uploads.
-3. The team can see activated workspaces, storage usage, quota hits, upload failures, and distribution actions.
-4. The open-source repo can be self-hosted from documented steps without private infrastructure.
-5. Uploaded Skill zips are private by default and are only downloaded through authorized routes.
-6. The implemented product stays Skills-only, while the positioning clearly explains the broader team AI harness management category.
-7. At least 5 teams explicitly request support for rules, MCP, `AGENTS.md`, Copilot instructions, or cross-tool distribution after using or reviewing the Skills MVP.
+1. 一个新的外部用户能在 10 分钟内创建 hosted account、创建 workspace、上传 3 个有效 Skills、预览其中一个，并完成一次 distribution action。
+2. 对 workspace count、asset count、asset size、total storage、members 和 daily uploads 执行 quotas。
+3. 团队能看到 activated workspaces、storage usage、quota hits、upload failures 和 distribution actions。
+4. 开源 repo 能根据文档步骤在没有私有基础设施的情况下 self-host。
+5. Uploaded Skill zips 默认私有，并且只能通过 authorized routes 下载。
+6. 已实现产品保持 Skills-only，同时 positioning 清楚解释更大的 team AI harness management 品类。
+7. 在使用或评审 Skills MVP 后，至少 5 个团队明确请求支持 rules、MCP、`AGENTS.md`、Copilot instructions 或 cross-tool distribution。
 
-## First Four-Week Milestone
+## 前四周里程碑
 
-Target:
+目标：
 
-- 10 activated hosted workspaces.
-- At least 3 activated workspaces from non-friend external users.
-- 30+ valid Skill assets.
-- 10+ distribution actions.
-- Less than 10% upload failure rate after excluding intentional invalid-file tests.
+- 10 个 activated hosted workspaces。
+- 至少 3 个来自非熟人外部用户的 activated workspaces。
+- 30+ 个 valid Skill assets。
+- 10+ 次 distribution actions。
+- 排除刻意 invalid-file tests 后，upload failure rate 低于 10%。
 
-If this milestone is missed, inspect the funnel in this order:
+如果没有达到该里程碑，按以下顺序检查 funnel：
 
-1. Do users understand what a Skill is?
-2. Can they find or create 3 Skills worth uploading?
-3. Are validation errors blocking or teaching?
-4. Is installation/download useful enough to count as reuse?
-5. Are quota limits too tight or merely unclear?
-6. Is the problem too narrow because users want rules/MCP/instructions management more urgently than Skills storage?
+1. 用户是否理解 Skill 是什么？
+2. 他们能否找到或创建 3 个值得上传的 Skills？
+3. Validation errors 是在阻塞还是在教学？
+4. Installation/download 是否足够有用，可以被视为 reuse？
+5. Quota limits 是太紧，还是只是表达不清？
+6. 问题是否过窄，因为用户更急需 rules/MCP/instructions management，而不是 Skills storage？
 
-## Decisions Needed
+## 待决策事项
 
-- [ ] Final free-plan limits.
-- [ ] Hosted database choice.
-- [ ] Hosted object storage provider.
-- [ ] Auth provider versus built-in auth for MVP.
-- [ ] OSS license.
-- [ ] Public signup timing: open signup, invite code, or waitlist.
-- [ ] First distribution target: Codex local skills path, Claude-compatible path, or generic zip download.
-- [ ] First non-Skill expansion target: Cursor rules, `AGENTS.md`, Copilot instructions, or MCP registry/governance.
+- [ ] 最终 free-plan limits。
+- [ ] Hosted database 选择。
+- [ ] Hosted object storage provider 选择。
+- [ ] MVP 使用 auth provider 还是 built-in auth。
+- [ ] OSS license。
+- [ ] Public signup 时机：open signup、invite code 或 waitlist。
+- [ ] 第一个 distribution target：Codex local skills path、Claude-compatible path 或 generic zip download。
+- [ ] 第一个 non-Skill expansion target：Cursor rules、`AGENTS.md`、Copilot instructions 或 MCP registry/governance。

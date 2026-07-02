@@ -1,10 +1,10 @@
-# Agent Skills Standard
+# Agent Skills 标准
 
-Harhub manages Agent Skills as an external standard. The MVP should stay compatible with Skill directories consumed by Codex, Claude, and other agents that support the open Agent Skills format.
+Harhub 将 Agent Skills 作为外部标准来管理。MVP 应保持兼容 Codex、Claude 以及其他支持开放 Agent Skills 格式的 agent 所消费的 Skill 目录。
 
-## Skill Directory
+## Skill 目录
 
-A Skill is a directory with a required `SKILL.md` file.
+Skill 是一个包含必需 `SKILL.md` 文件的目录。
 
 ```text
 code-review/
@@ -14,11 +14,11 @@ code-review/
   assets/
 ```
 
-Optional resource folders are loaded progressively. Harhub may index their presence, but it should not inline those resources into catalog metadata.
+可选资源目录会被渐进式加载。Harhub 可以索引这些目录是否存在，但不应把资源内容内联进 catalog metadata。
 
-## SKILL.md Frontmatter
+## `SKILL.md` Frontmatter
 
-`SKILL.md` must start with YAML frontmatter:
+`SKILL.md` 必须以 YAML frontmatter 开头：
 
 ```yaml
 ---
@@ -27,18 +27,18 @@ description: Review code changes for correctness, regressions, and missing valid
 ---
 ```
 
-Rules enforced by Harhub:
+Harhub 强制执行的规则：
 
-- `name` is required.
-- `name` must be a lowercase slug with letters, numbers, and hyphens.
-- `name` must be 64 characters or fewer.
-- `description` is required.
-- `description` must be 1024 characters or fewer.
-- The parent directory should match `name`.
+- `name` 必填。
+- `name` 必须是小写 slug，只包含字母、数字和连字符。
+- `name` 最多 64 个字符。
+- `description` 必填。
+- `description` 最多 1024 个字符。
+- 父目录应与 `name` 匹配。
 
-## Harhub Metadata
+## Harhub 元数据
 
-Harhub-specific registry metadata belongs in `harhub.yaml`.
+Harhub 专属 registry metadata 应放在 `harhub.yaml`。
 
 ```yaml
 apiVersion: harhub.io/v1
@@ -57,4 +57,4 @@ spec:
       tags: [review]
 ```
 
-This keeps `SKILL.md` portable while still letting Harhub manage ownership, lifecycle, tags, compatibility, and catalog state.
+这样可以保持 `SKILL.md` 可移植，同时让 Harhub 管理 ownership、lifecycle、tags、compatibility 和 catalog state。
