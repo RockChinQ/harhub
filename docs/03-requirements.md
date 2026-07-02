@@ -100,7 +100,7 @@ Harhub 应支持这些 artifact 类型：
 
 ### 发现与摄入
 
-- 扫描配置的仓库，寻找 harness files 和 manifests。
+- 扫描配置的仓库，寻找 Agent Skills 和已知外部 harness 配置文件。
 - 检测常见文件名，例如 `AGENTS.md`、`DESIGN.md`、`ARCHITECTURE.md`、`ARCHITECHTURE.md`、`.cursor/rules`、`.codex/skills`、`.mcp.json` 和项目专属 harness 目录。
 - 允许手动注册 harness package。
 - 保留 source provenance：repository、branch、commit、path、author 和 review status。
@@ -115,25 +115,25 @@ Harhub 应支持这些 artifact 类型：
 
 ### 版本与发布
 
-- 支持 harness packages 的 semantic versions。
-- 存储不可变 released package versions。
+- 支持 harness assets 的 semantic versions。
+- 存储不可变 released asset versions。
 - 支持 prerelease、deprecated、archived 和 experimental 状态。
 - 生成版本间 diff。
 - 追踪 pinned 到每个版本的 consumers。
-- 支持 lockfiles，以便可复现地解析 harness。
+- 支持运行态分发记录，以便可复现地解析 harness。
 
 ### 组合
 
-- 将多个 packages 组合成面向 repo、team、workflow 或 agent profile 的 resolved harness bundle。
+- 将多个 assets 组合成面向 repo、team、workflow 或 agent profile 的 resolved harness bundle。
 - 支持分层，例如 org baseline 加 domain pack 加 repo pack。
 - 检测重复、冲突、过期或缺失的 artifacts。
 - 应用显式优先级规则。
-- 必要时输出 resolved manifest 和 materialized files。
+- 必要时输出 resolved assignment record 和 materialized files。
 
 ### 分发与同步
 
 - 提供 CLI，用于拉取、校验和 materialize harness bundles。
-- 支持 CI checks，用于 drift、policy violations 和 invalid lockfiles。
+- 支持 CI checks，用于 drift、policy violations 和 invalid distribution records。
 - 支持为 harness upgrades 生成 pull requests。
 - 支持通过 API 做 runtime retrieval。
 - 允许仓库选择 reference mode、materialized mode 或 hybrid mode。
@@ -148,7 +148,7 @@ Harhub 应支持这些 artifact 类型：
 
 ### 校验
 
-- 对 manifests 和 package files 做结构校验。
+- 对 Agent Skills 以及已知外部配置文件做结构校验。
 - 对 MCP permissions、tool access 和 rule requirements 做策略校验。
 - 对 composition 做校验，捕获冲突和未解析依赖。
 - 可选地用代表性任务运行 agent behavior evaluations。
@@ -166,7 +166,7 @@ Harhub 应支持这些 artifact 类型：
 - **Git-friendly**：源内容仍可在 Git 中评审。
 - **可复现**：resolved bundles 按 version 和 commit pin 住。
 - **默认安全**：packages 不含 secrets，MCP permissions 显式声明，有 audit logs。
-- **低摩擦创作**：大多数用例只需要普通 Markdown 和简单 manifests。
+- **低摩擦创作**：大多数用例只需要普通 Markdown 或既有外部格式。
 - **可扩展**：随着时间支持新的 agent runtimes、IDE 和 artifact types。
 - **企业可用**：RBAC、SSO-ready identity model、audit logs、retention controls 和 policy hooks。
 - **快速反馈**：常见校验应足够快，适合普通 pull request workflow。

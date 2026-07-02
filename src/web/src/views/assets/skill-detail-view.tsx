@@ -7,7 +7,7 @@ import type {
 } from "../../../../shared/types";
 import { Button } from "../../components/ui/button";
 import { SkillFileExplorer } from "./skill-file-explorer";
-import { SkillMetadataPanel } from "./skill-metadata-panel";
+import { SkillOverviewPanel } from "./skill-metadata-panel";
 
 export function SkillDetailView({
   workspace,
@@ -49,7 +49,7 @@ export function SkillDetailView({
         </Button>
       </div>
       <div className="grid min-h-0 min-w-0 flex-1 gap-4 overflow-auto 2xl:grid-cols-[430px_minmax(0,1fr)] 2xl:overflow-hidden">
-        <SkillMetadataPanel
+        <SkillOverviewPanel
           workspace={workspace}
           token={token}
           asset={asset}

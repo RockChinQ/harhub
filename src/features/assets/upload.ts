@@ -56,8 +56,7 @@ export async function createUploadedSkillAsset(input: {
       content: skillMarkdown,
       path: `zip:${skillEntry.name}`,
       assetId,
-      skillDirName: skillEntryDirName(skillEntry.name),
-      linkExists: (link) => zipLinkExists(zip, skillEntry.name, link)
+      skillDirName: skillEntryDirName(skillEntry.name)
     })
   ];
   const errors = validationIssues.filter((issue) => issue.severity === "error").length;
@@ -158,18 +157,6 @@ function skillEntryDirName(entryName: string): string | undefined {
   const dir = path.posix.dirname(entryName);
   if (!dir || dir === ".") return undefined;
   return path.posix.basename(dir);
-}
-
-function zipLinkExists(zip: JSZip, skillEntryName: string, link: string): boolean {
-  const skillDir = path.posix.dirname(skillEntryName);
-  const base = !skillDir || skillDir === "." ? "" : skillDir;
-  const target = path.posix.normalize(path.posix.join(base, link));
-  const normalized = target.replace(/^\.\/+/, "");
-  if (!normalized || normalized.startsWith("../") || normalized === "..") return false;
-
-  return Object.values(zip.files).some(
-    (entry) => entry.name === normalized || entry.name.startsWith(`${normalized.replace(/\/+$/g, "")}/`)
-  );
 }
 
 function uploadValidationError(issues: ValidationIssue[]): string {

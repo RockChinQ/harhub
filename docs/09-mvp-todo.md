@@ -20,8 +20,8 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 - **Fullstack app**：Express API、Vite/React frontend、shared TypeScript types 和 CLI entry point。
 - **Authentication**：本地 email/password accounts、bearer-token sessions、profile updates、password changes 和 logout。
 - **Tenant model**：workspaces、memberships、workspace roles、default scan paths 和 workspace-scoped catalogs。
-- **Skill asset flow**：S3-compatible zip upload、`SKILL.md` extraction、metadata indexing、search/filter、table view、detail view、file tree preview、metadata editing 和 deletion。
-- **Validation foundation**：递归 `SKILL.md` scanning、官方 frontmatter checks、slug validation、description checks、local-link validation、duplicate checks 和明显 secret pattern detection。
+- **Skill asset flow**：S3-compatible zip upload、`SKILL.md` extraction、runtime indexing、search/filter、table view、detail view、file tree preview 和 deletion。
+- **Validation foundation**：递归 `SKILL.md` scanning、官方 frontmatter checks、name validation、description checks，以及官方可选字段 checks。
 - **CLI foundation**：local scan、validate、list、show、create、asset scan、asset validate、asset create 和 API-backed zip upload。
 
 如何理解当前实现：
@@ -58,7 +58,7 @@ Workspace 在创建后 7 天内满足以下条件即为 activated：
 
 1. 至少 **3 个有效 Skill assets**。
 2. 任一 Skill 至少发生 **1 次 distribution action**。
-3. Workspace 或已上传 harness assets 至少有 **1 个 named owner**。
+3. 至少发生 **1 次 preview 或 validation action**。
 
 Distribution action 可以是：
 
@@ -67,7 +67,7 @@ Distribution action 可以是：
 - Copy target install path。
 - Copy hosted asset URL，如果后续启用 public sharing。
 
-这个指标比 signup count 更准确，因为它证明核心闭环：harness supply、validation trust、catalog discovery、ownership 和 practical reuse。
+这个指标比 signup count 更准确，因为它证明核心闭环：harness supply、validation trust、catalog discovery 和 practical reuse。
 
 ## 支撑指标
 
@@ -90,9 +90,9 @@ Distribution action 可以是：
 - Upload/import success rate。
 - Validation pass rate。
 - Top validation error codes。
-- Secret-risk detection count。
-- Duplicate content hash count。
-- 已填写 owner、tags 和 lifecycle state 的 assets。
+- Official validation error count。
+- Uploaded package count。
+- Previewed asset count。
 
 ### 使用与留存
 
@@ -169,7 +169,7 @@ Distribution action 可以是：
 
 - [ ] 为 SaaS deployments 用 hosted database 替换 local JSON state。
 - [ ] 保留 local JSON 作为 self-host/dev adapter。
-- [ ] 在数据库中存储 accounts、sessions、workspaces、memberships、asset metadata、validation issues、usage counters 和 events。
+- [ ] 在数据库中存储 accounts、sessions、workspaces、memberships、asset runtime records、validation issues、usage counters 和 events。
 - [ ] 添加 migrations 和 seed data。
 - [ ] 添加 workspace metadata 的 backups 或 export path。
 
@@ -185,7 +185,7 @@ Distribution action 可以是：
 
 ### 5. 授权与 SaaS 安全
 
-- [ ] Workspace settings、member changes、asset metadata edits、uploads 和 deletes 均要求 owner/admin 权限。
+- [ ] Workspace settings、member changes、uploads 和 deletes 均要求 owner/admin 权限。
 - [ ] 按角色允许 member/viewer read-only access。
 - [ ] 为 auth 和 upload endpoints 添加 rate limiting。
 - [ ] 在 broad public signup 前添加 email verification 或明确的 MVP invite-code gate。
@@ -272,9 +272,9 @@ Distribution action 可以是：
 
 - [ ] `npm run check` passes。
 - [ ] `npm run build` passes。
-- [ ] 上传测试覆盖缺失 `SKILL.md`、invalid frontmatter、secret-like content、too-large zip、path traversal、duplicate hash、quota exceeded 和 S3 failure rollback。
+- [ ] 上传测试覆盖缺失 `SKILL.md`、invalid official frontmatter、too-large zip、path traversal、quota exceeded 和 S3 failure rollback。
 - [ ] 认证测试覆盖 login、signup、logout、role-gated reads、role-gated writes，以及 password change 后 session invalidation。
-- [ ] 删除测试覆盖 metadata removal、S3 deletion 和 missing-object recovery。
+- [ ] 删除测试覆盖 asset index removal、S3 deletion 和 missing-object recovery。
 - [ ] SaaS 数据库迁移可以从空数据库重复执行。
 
 ### 运营
@@ -291,7 +291,7 @@ Distribution action 可以是：
 - [ ] 仓库具备 license、contribution guide、security policy 和清晰 roadmap。
 - [ ] README 解释 self-hosted OSS 和 hosted SaaS 的区别。
 - [ ] 本地 self-host quickstart 能从 clean checkout 跑通。
-- [ ] 示例 Skills 展示官方 `SKILL.md` 标准以及 `harhub.yaml` registry metadata。
+- [ ] 示例 Skills 只展示 agentskills.io 官方 `SKILL.md` 标准。
 - [ ] GitHub issue templates 能收集 bug reports 和 feature requests。
 
 ## MVP 验收标准

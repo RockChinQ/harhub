@@ -70,8 +70,8 @@ Catalog 列出 harness packages，并展示：
 ### 1. 发现已有 Harness
 
 1. Platform owner 连接 Git repositories，或让 Harhub 指向一组 repositories。
-2. Harhub 扫描已知 harness files 和 manifests。
-3. Harhub 将发现的 artifacts 分组为 candidate packages。
+2. Harhub 扫描 Agent Skills 和已知 harness files。
+3. Harhub 将发现的 assets 分组为候选集合。
 4. Owners 评审候选项，补充 metadata，并发布到 catalog。
 
 结果：组织获得 inventory，而不需要立即迁移。
@@ -79,7 +79,7 @@ Catalog 列出 harness packages，并展示：
 ### 2. 发布 Harness Package
 
 1. Author 在 Git 中创建或更新 harness package。
-2. Package 包含 manifest、docs、artifacts 和可选 validation fixtures。
+2. 发布内容引用外部标准文件、docs、artifacts 和可选 validation fixtures。
 3. CI 运行 Harhub validation。
 4. Reviewers 批准 package release。
 5. Harhub 索引不可变版本，并让它可用于 composition。
@@ -92,7 +92,7 @@ Catalog 列出 harness packages，并展示：
 2. Harhub 根据 language、framework、team、existing files 和 org policy 推荐 packages。
 3. Maintainer 选择 packages 和 versions。
 4. Harhub 解析 dependencies，应用 precedence，并检测 conflicts。
-5. Harhub 输出 bundle lockfile 以及 generated files 或 runtime references。
+5. Harhub 输出运行态分发记录以及 generated files 或 runtime references。
 
 结果：repo 获得一致的 harness，不需要手动 copy-paste。
 
@@ -124,64 +124,19 @@ Catalog 列出 harness packages，并展示：
 
 结果：harness capabilities 在进入 agents 前被治理。
 
-## Harness Package 结构
+## Agent Skills 结构
 
-Harhub 应支持普通文件，但结构化 package 应类似：
+Harhub 当前只管理 agentskills.io 定义的 Skill 目录或 zip：
 
 ```text
-harness/
-  harhub.yaml
-  README.md
-  rules/
-    AGENTS.md
-    DESIGN.md
-    ARCHITECTURE.md
-  skills/
-    code-review/
-      SKILL.md
-      references/
-  mcp/
-    github.yaml
-  evals/
-    fixtures/
-    tasks.yaml
+skill-name/
+  SKILL.md
+  scripts/
+  references/
+  assets/
 ```
 
-示例 manifest：
-
-```yaml
-apiVersion: harhub.io/v1
-kind: HarnessPackage
-metadata:
-  name: frontend-react-standard
-  owner: web-platform
-  description: Standard harness for React frontend repositories.
-  tags: [frontend, react, typescript]
-spec:
-  version: 1.0.0
-  maturity: stable
-  compatibility:
-    agents: [codex, claude-code]
-    languages: [typescript]
-    frameworks: [react, nextjs]
-  artifacts:
-    - type: rule
-      path: rules/AGENTS.md
-      mergeStrategy: append-section
-    - type: rule
-      path: rules/DESIGN.md
-      mergeStrategy: append-section
-    - type: skill
-      path: skills/code-review/SKILL.md
-    - type: mcp
-      path: mcp/github.yaml
-  dependencies:
-    - name: org-security-baseline
-      version: ^1.2.0
-  policy:
-    reviewers: [web-platform, security]
-    risk: medium
-```
+Harhub 当前不定义任何新的 Skill 文件格式。仓库中的其他 harness files 可以作为未来资产类型被发现和治理，但不能被包装成新的 Skill 标准。
 
 ## 组合模型
 
@@ -210,7 +165,7 @@ Harness composition 应显式且可解释。
 
 ### 引用模式（Reference Mode）
 
-Repository 保存一个很小的 `harhub.lock` 或 `harhub.yaml`，指向 Harhub 中的 resolved bundle。
+Repository 可以保存普通配置文件来指向 Harhub 中的 resolved bundle，但这些文件不改变 Agent Skills 的格式。
 
 适合：
 
@@ -230,7 +185,7 @@ Harhub 将 `AGENTS.md`、`DESIGN.md`、`ARCHITECTURE.md` 和 MCP config 等 gene
 
 ### 混合模式（Hybrid Mode）
 
-Repository 保留关键 generated files，并用 lockfile 记录 Harhub provenance。
+Repository 保留关键 generated files，并用运行态记录保存 Harhub provenance。
 
 适合：
 

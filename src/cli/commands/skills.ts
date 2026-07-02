@@ -12,7 +12,7 @@ import {
   findSkill,
   readCatalog,
   scanSkills,
-  updateSkillMetadata,
+  updateSkillFrontmatter,
   validateSkills,
   writeCatalog
 } from "../../features/skills/index.js";
@@ -148,7 +148,7 @@ export async function runUpdate(parsed: ParsedArgs): Promise<number> {
     return 1;
   }
 
-  updateSkillMetadata(skill, readSkillUpdateInput(parsed));
+  updateSkillFrontmatter(skill, readSkillUpdateInput(parsed));
   rescanAfterLocalMutation(parsed, [skill.source.root], catalogPath);
 
   if (parsed.options.json) {

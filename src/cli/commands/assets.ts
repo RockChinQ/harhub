@@ -6,12 +6,13 @@ import {
   findAsset,
   readAssetCatalog,
   removeCatalogAsset,
-  updateCatalogAsset,
   writeAssetCatalog
 } from "../../features/assets/index.js";
 import {
   createSkillSkeleton,
+  findSkill,
   scanSkills,
+  updateSkillFrontmatter,
   validateSkills
 } from "../../features/skills/index.js";
 import {
@@ -200,7 +201,19 @@ export async function runAssetsUpdate(parsed: ParsedArgs): Promise<number> {
     return 1;
   }
 
-  const nextCatalog = updateCatalogAsset(catalog, asset.id, input);
+  const skillId = asset.id.replace(/^asset:skill:/, "skill:");
+  const skill = findSkill({ schemaVersion: 1, generatedAt: catalog.generatedAt, skills: catalog.skills }, skillId);
+  if (!skill) {
+    console.error("Uploaded skill packages are immutable. Update SKILL.md and upload a new zip.");
+    return 1;
+  }
+
+  updateSkillFrontmatter(skill, input);
+  const skills = scanSkills({
+    roots: Array.from(new Set(catalog.skills.map((item) => item.source.root)))
+  });
+  const issues = validateSkills(skills);
+  const nextCatalog = createAssetCatalog(skills, issues);
   writeAssetCatalog(catalogPath, nextCatalog);
 
   if (parsed.options.json) {

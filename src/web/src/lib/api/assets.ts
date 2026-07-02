@@ -76,25 +76,6 @@ export async function uploadWorkspaceSkillZip(
   );
 }
 
-export async function updateWorkspaceAsset(
-  token: string,
-  workspaceId: string,
-  assetId: string,
-  input: {
-    description?: string;
-  }
-): Promise<AssetScanResponse> {
-  return request<AssetScanResponse>(
-    `/api/workspaces/${workspaceId}/assets/${encodeURIComponent(assetId)}`,
-    {
-      token,
-      method: "PATCH",
-      headers: JSON_HEADERS,
-      body: JSON.stringify(input)
-    }
-  );
-}
-
 export async function deleteWorkspaceAsset(
   token: string,
   workspaceId: string,

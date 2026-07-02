@@ -5,7 +5,7 @@ import { resolveFromCwd } from "../../shared/fs-utils.js";
 import { slugify, stringValue } from "../../shared/markdown.js";
 import type { SkillRecord } from "../../shared/types.js";
 import { OFFICIAL_SKILL_NAME_PATTERN } from "./constants.js";
-import type { SkillMetadataUpdate } from "./types.js";
+import type { SkillFrontmatterUpdate } from "./types.js";
 import { titleFromSlug } from "./utils.js";
 
 export function createSkillSkeleton(options: {
@@ -34,9 +34,9 @@ export function createSkillSkeleton(options: {
   return skillPath;
 }
 
-export function updateSkillMetadata(
+export function updateSkillFrontmatter(
   skill: SkillRecord,
-  input: SkillMetadataUpdate
+  input: SkillFrontmatterUpdate
 ): void {
   if (typeof input.description === "string") {
     updateSkillDescription(skill, input.description);

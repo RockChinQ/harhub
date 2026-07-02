@@ -70,8 +70,8 @@ Harhub 应管理被其他工具消费的 harness assets。它不应变成通用 
 1. **只读 harness inventory**：发现仓库中的 `.cursor/rules`、`AGENTS.md`、Copilot instructions、prompt 文件和 MCP 配置文件。
 2. **治理元数据**：为所有资产类型补充 owner、lifecycle、compatibility、risk、review status 和 approval history。
 3. **MCP governance**：server registry、tool scopes、required env vars、risk labels 和 policy checks。
-4. **跨工具分发**：将已批准的 harness packages 渲染到 Codex、Claude Code、Cursor、Copilot、CI 和仓库目标。
-5. **组合与 lockfiles**：解析 org baseline、team pack、repo pack 和 workflow-specific pack，并显式处理优先级。
+4. **跨工具分发**：将已批准的 harness assets 渲染到 Codex、Claude Code、Cursor、Copilot、CI 和仓库目标。
+5. **组合与分发记录**：解析 org baseline、team pack、repo pack 和 workflow-specific pack，并用运行态记录显式处理优先级。
 6. **评估闭环**：在大范围发布前，用代表性任务校验 harness 变更。
 
 ## 定位声明

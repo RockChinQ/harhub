@@ -28,7 +28,7 @@ Usage:
 }
 
 export function printSkillsHelp(): void {
-  console.log(`Harhub Skills MVP (compatibility commands)
+  console.log(`Harhub Skills MVP
 
 Usage:
   harhub skills scan [paths...] [--catalog .harhub/skills.json] [--asset-catalog .harhub/assets.json] [--json]

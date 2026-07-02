@@ -94,27 +94,6 @@ export function upsertAsset(catalog: AssetCatalog, asset: AssetRecord): AssetCat
   };
 }
 
-export function updateCatalogAsset(
-  catalog: AssetCatalog,
-  assetId: string,
-  input: {
-    description?: string;
-  }
-): AssetCatalog {
-  const asset = catalog.assets.find((item) => item.id === assetId);
-  if (!asset) throw new Error("Asset not found.");
-
-  const next: AssetRecord = {
-    ...asset,
-    description:
-      typeof input.description === "string" && input.description.trim()
-        ? input.description.trim()
-        : asset.description,
-  };
-
-  return upsertAsset(catalog, next);
-}
-
 export function removeCatalogAsset(catalog: AssetCatalog, assetId: string): AssetCatalog {
   return {
     ...catalog,

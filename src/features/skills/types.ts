@@ -2,6 +2,6 @@ export interface ScanOptions {
   roots: string[];
 }
 
-export interface SkillMetadataUpdate {
+export interface SkillFrontmatterUpdate {
   description?: string;
 }

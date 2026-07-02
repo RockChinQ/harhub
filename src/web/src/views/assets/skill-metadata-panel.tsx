@@ -1,5 +1,5 @@
-import { Loader2, Save, ShieldCheck, Trash2 } from "lucide-react";
-import { type FormEvent, useEffect, useState } from "react";
+import { Loader2, ShieldCheck, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import type {
   AssetRecord,
@@ -20,16 +20,14 @@ import {
 } from "../../components/ui/alert-dialog";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { Input } from "../../components/ui/input";
 import {
   deleteWorkspaceAsset,
-  updateWorkspaceAsset,
   validateWorkspaceAsset
 } from "../../lib/api";
 import { cn } from "../../lib/utils";
 import { ValidationIssuesList } from "./validation-issues-list";
 
-export function SkillMetadataPanel({
+export function SkillOverviewPanel({
   workspace,
   token,
   asset,
@@ -46,15 +44,12 @@ export function SkillMetadataPanel({
   onDeleted?: () => void;
   className?: string;
 }) {
-  const [description, setDescription] = useState("");
   const [message, setMessage] = useState<string | undefined>();
-  const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
-    setDescription(asset?.description ?? "");
     setMessage(undefined);
   }, [asset?.id]);
 
@@ -81,23 +76,6 @@ export function SkillMetadataPanel({
           item.path === issue.path
       ) === index
   );
-
-  async function saveAsset(event: FormEvent) {
-    event.preventDefault();
-    setIsSaving(true);
-    setMessage(undefined);
-    try {
-      await updateWorkspaceAsset(token, workspace.id, selectedAsset.id, {
-        description
-      });
-      setMessage("Saved.");
-      await onChanged();
-    } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setIsSaving(false);
-    }
-  }
 
   async function removeAsset() {
     setIsDeleting(true);
@@ -133,12 +111,11 @@ export function SkillMetadataPanel({
   }
 
   return (
-    <form
+    <div
       className={cn(
         "flex min-h-[520px] min-w-0 flex-col overflow-hidden rounded-lg border bg-card 2xl:min-h-0",
         className
       )}
-      onSubmit={saveAsset}
     >
       <div className="flex shrink-0 flex-col gap-3 border-b bg-card p-4">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -154,16 +131,6 @@ export function SkillMetadataPanel({
 
       <div className="min-h-0 flex-1 overflow-auto p-4">
         <div className="grid gap-5">
-          <div className="grid gap-3">
-            <label className="grid gap-1.5 text-sm font-medium">
-              Description
-              <Input
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-              />
-            </label>
-          </div>
-
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="outline" onClick={validateAsset} disabled={isValidating}>
               {isValidating ? (
@@ -172,14 +139,6 @@ export function SkillMetadataPanel({
                 <ShieldCheck className="h-4 w-4" aria-hidden="true" />
               )}
               Validate
-            </Button>
-            <Button type="submit" disabled={isSaving}>
-              {isSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <Save className="h-4 w-4" aria-hidden="true" />
-              )}
-              Save
             </Button>
             <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
               <AlertDialogTrigger asChild>
@@ -225,6 +184,6 @@ export function SkillMetadataPanel({
           {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
         </div>
       </div>
-    </form>
+    </div>
   );
 }

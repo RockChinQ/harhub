@@ -13,12 +13,14 @@ Do not invent a Harhub-only Skill format. Harhub manages the external Agent
 Skills contract:
 
 - A Skill is a directory or zip package containing `SKILL.md`.
-- `SKILL.md` uses standard YAML frontmatter with `name` and `description`.
-- The MVP catalog keeps only the minimal fields needed to manage Skills:
-  name, description, validation status, storage, and preview data.
+- `SKILL.md` follows the fields and constraints documented by agentskills.io:
+  required `name` and `description`, plus the official optional fields.
+- Harhub must not define competing Skill files or frontmatter conventions.
+- The MVP catalog keeps only runtime state needed to manage standard Skills:
+  validation status, storage, and preview data.
 - Uploaded Skills are zip files stored in S3 or S3-compatible object storage.
-  Local `.harhub` JSON files are metadata indexes only, not the Skill package
-  storage backend.
+  Local `.harhub` JSON files are runtime indexes only, not the Skill package
+  storage backend or a Skill format.
 
 If a task depends on the latest Agent Skills definition, verify the official
 standard before changing validation or package semantics.
@@ -29,7 +31,7 @@ standard before changing validation or package semantics.
 src/
   cli/                 CLI entrypoints, argument parsing, and command handlers.
   features/
-    assets/            Asset catalog, upload, update, delete, and metadata logic.
+    assets/            Asset catalog, upload, update, delete, and runtime indexing logic.
     skills/            Agent Skill discovery, parsing, validation, and creation.
   server/
     routes/            Express route registration by domain.
@@ -111,7 +113,7 @@ The frontend is Vite + React + Tailwind + shadcn.
   account controls belong in footer/menu components, not as primary nav entries.
 - Keep fixed page chrome fixed and scroll only the intended content areas.
 - For tables and dense asset views, prefer responsive columns and compact
-  metadata over forcing the whole page to scroll horizontally.
+  standard fields over forcing the whole page to scroll horizontally.
 - Do not show implementation details such as S3 bucket names or object keys in
   normal user-facing pages unless the user explicitly asks for diagnostics.
 
@@ -126,7 +128,7 @@ picker if browser automation cannot attach files.
 - Upload belongs behind an explicit upload action, not as always-visible bulk
   form chrome.
 - Detail pages should be URL-addressable under `/skills/:slug`.
-- Detail pages should show useful metadata, validation state, and a file tree
+- Detail pages should show useful standard fields, validation state, and a file tree
   with preview support.
 - Validation issues must be scoped to the selected asset or skill; do not leak
   issues from other assets into a detail or preview panel.

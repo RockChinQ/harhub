@@ -2,12 +2,11 @@ import type { Request, Response } from "express";
 import {
   findAsset,
   removeCatalogAsset,
-  updateCatalogAsset,
   writeAssetCatalog
 } from "../../features/assets/index.js";
 import {
   deleteSkill,
-  updateSkillMetadata
+  updateSkillFrontmatter
 } from "../../features/skills/index.js";
 import { getWorkspaceAssetCatalogPath } from "../../state/index.js";
 import { deleteStoredObject } from "../../storage/index.js";
@@ -37,16 +36,13 @@ export function patchAsset(
 
     const skill = findCatalogSkillForAsset(catalog, asset.id);
     if (!skill) {
-      const nextCatalog = updateCatalogAsset(catalog, asset.id, readAssetMetadataBody(req.body));
-      writeAssetCatalog(getWorkspaceAssetCatalogPath(context.workspace.id), nextCatalog);
-      res.json({
-        ...assetListPayload(context.workspace, nextCatalog.generatedAt, nextCatalog.assets),
-        issues: []
+      res.status(400).json({
+        error: "Uploaded skill packages are immutable. Update SKILL.md and upload a new zip."
       });
       return;
     }
 
-    updateSkillMetadata(skill, readAssetMetadataBody(req.body));
+    updateSkillFrontmatter(skill, readSkillFrontmatterBody(req.body));
     res.json(rescanWorkspaceAssets(context));
   } catch (error) {
     sendError(res, error, 400);
@@ -97,7 +93,7 @@ function rescanWorkspaceAssets(context: WorkspaceContext) {
   );
 }
 
-function readAssetMetadataBody(body: unknown) {
+function readSkillFrontmatterBody(body: unknown) {
   const value = body as Record<string, unknown> | undefined;
   return {
     description: typeof value?.description === "string" ? value.description : undefined

@@ -8,7 +8,7 @@ The broader product design lives in [`docs/00-overview.md`](./docs/00-overview.m
 
 ## Skill Standard
 
-Harhub does not define a custom skill format. It manages the open Agent Skills format used by Codex and Claude:
+Harhub does not define a custom skill format. It manages the open Agent Skills format documented at [agentskills.io](https://agentskills.io/specification.md):
 
 ```text
 code-review/
@@ -18,7 +18,7 @@ code-review/
   assets/
 ```
 
-`SKILL.md` must start with YAML frontmatter containing only the standard launch metadata:
+`SKILL.md` must start with YAML frontmatter. `name` and `description` are required; optional fields are the ones defined by the Agent Skills spec (`license`, `compatibility`, `metadata`, and `allowed-tools`).
 
 ```yaml
 ---
@@ -27,7 +27,7 @@ description: Review code changes for correctness, regressions, and missing valid
 ---
 ```
 
-The MVP stores only the fields needed to manage uploaded Skills: name, description, validation status, storage, and preview data.
+Harhub stores only workspace management state around those standard Skills: validation status, object storage references, and preview data.
 
 ## Quick Start
 
@@ -69,12 +69,12 @@ export HARHUB_S3_PREFIX=dev
 export HARHUB_S3_PUBLIC_BASE_URL=https://assets.example.com
 ```
 
-The uploaded zip must contain a `SKILL.md` file. Harhub reads that file for name and description, stores the zip in S3, and records the S3 bucket/key in the asset index. Local JSON files under `.harhub/` are metadata indexes only; they are not the Skill storage backend.
+The uploaded zip must contain a `SKILL.md` file. Harhub reads that file for the standard Agent Skills fields, stores the zip in S3, and records runtime asset state locally. Local JSON files under `.harhub/` are runtime indexes only; they are not the Skill storage backend.
 
 ## Stack
 
 - TypeScript across CLI, API, shared skill logic, and frontend.
-- Express API for account, workspace, Assets, S3-backed Skill zip upload, and Skills compatibility routes.
+- Express API for account, workspace, Assets, S3-backed Skill zip upload, and Skills routes.
 - Vite + React frontend.
 - shadcn-style UI components under `src/web/src/components/ui`.
 - Tailwind CSS with CSS variables and `components.json` for shadcn conventions.
@@ -151,9 +151,9 @@ The production server serves the built Vite app from `dist/web` and the API from
 Current boundary:
 
 - Skill zip upload to S3/S3-compatible object storage.
-- `SKILL.md` metadata extraction from uploaded zips.
-- Workspace-local JSON asset index for MVP metadata.
-- Compatibility `SKILL.md` discovery by recursive scan for development imports.
-- Standard metadata extraction from `SKILL.md` frontmatter.
-- Validation for required `name`/`description`, slug naming, description length, local Markdown links, duplicates, and obvious secret patterns.
+- Standard `SKILL.md` field extraction from uploaded zips.
+- Workspace-local JSON asset index for Harhub runtime state.
+- Recursive `SKILL.md` discovery by scan for development imports.
+- Standard field extraction from `SKILL.md` frontmatter.
+- Validation for the official agentskills.io fields and name constraints.
 - Human-readable and JSON output modes.
