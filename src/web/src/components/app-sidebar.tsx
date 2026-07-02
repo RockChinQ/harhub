@@ -5,6 +5,8 @@ import {
   ChevronsUpDown,
   GalleryVerticalEnd,
   Layers3,
+  ScrollText,
+  Server,
   Settings2,
 } from "lucide-react"
 
@@ -86,6 +88,20 @@ export function AppSidebar({
               icon: Layers3,
               isActive: isSkillsActive,
               onSelect: () => onNavigate({ view: "assets" }),
+            },
+            {
+              title: "MCPs",
+              url: "/mcps",
+              icon: Server,
+              disabled: true,
+              badge: "Soon",
+            },
+            {
+              title: "Rules",
+              url: "/rules",
+              icon: ScrollText,
+              disabled: true,
+              badge: "Soon",
             },
           ]}
         />

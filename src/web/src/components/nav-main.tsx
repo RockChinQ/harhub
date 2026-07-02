@@ -13,6 +13,7 @@ import {
   SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuAction,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
@@ -28,6 +29,8 @@ export function NavMain({
     url: string
     icon: LucideIcon
     isActive?: boolean
+    disabled?: boolean
+    badge?: string
     onSelect?: () => void
     items?: {
       title: string
@@ -47,14 +50,21 @@ export function NavMain({
               <SidebarMenuButton
                 tooltip={item.title}
                 isActive={item.isActive}
-                onClick={item.onSelect}
+                disabled={item.disabled}
+                onClick={item.disabled ? undefined : item.onSelect}
                 aria-current={item.isActive ? "page" : undefined}
+                aria-disabled={item.disabled || undefined}
               >
                 <item.icon />
                 <span className="group-data-[collapsible=icon]:hidden">
                   {item.title}
                 </span>
               </SidebarMenuButton>
+              {item.badge ? (
+                <SidebarMenuBadge className="text-[10px] uppercase tracking-wide text-sidebar-foreground/55">
+                  {item.badge}
+                </SidebarMenuBadge>
+              ) : null}
               {item.items?.length ? (
                 <>
                   <CollapsibleTrigger asChild>
