@@ -14,8 +14,8 @@ Skills contract:
 
 - A Skill is a directory or zip package containing `SKILL.md`.
 - `SKILL.md` uses standard YAML frontmatter with `name` and `description`.
-- Harhub-specific catalog fields belong in `harhub.yaml` or the workspace asset
-  index, not in `SKILL.md` frontmatter.
+- The MVP catalog keeps only the minimal fields needed to manage Skills:
+  name, description, validation status, storage, and preview data.
 - Uploaded Skills are zip files stored in S3 or S3-compatible object storage.
   Local `.harhub` JSON files are metadata indexes only, not the Skill package
   storage backend.

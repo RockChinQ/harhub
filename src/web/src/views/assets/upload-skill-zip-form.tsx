@@ -2,7 +2,7 @@ import { Loader2, Upload } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
 import type { StorageStatus, WorkspaceRecord } from "../../../../shared/types";
-import { splitList, uploadErrorMessage } from "../../app/format";
+import { uploadErrorMessage } from "../../app/format";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { uploadWorkspaceSkillZip } from "../../lib/api";
@@ -19,10 +19,6 @@ export function UploadSkillZipForm({
   onUploaded: () => Promise<void>;
 }) {
   const [file, setFile] = useState<File | undefined>();
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [owner, setOwner] = useState("");
-  const [tags, setTags] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | undefined>();
 
@@ -37,18 +33,10 @@ export function UploadSkillZipForm({
     setMessage(undefined);
     try {
       const result = await uploadWorkspaceSkillZip(token, workspace.id, {
-        file,
-        name,
-        description,
-        owner,
-        tags: splitList(tags)
+        file
       });
       setMessage(`Uploaded ${result.uploaded.storage?.originalName ?? result.uploaded.displayName}.`);
       setFile(undefined);
-      setName("");
-      setDescription("");
-      setOwner("");
-      setTags("");
       await onUploaded();
     } catch (caught) {
       setMessage(uploadErrorMessage(caught));
@@ -73,36 +61,6 @@ export function UploadSkillZipForm({
           required
         />
       </label>
-      <label className="grid gap-1.5 text-sm font-medium">
-        Name override
-        <Input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="code-review"
-        />
-      </label>
-      <label className="grid gap-1.5 text-sm font-medium">
-        Description
-        <Input
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          placeholder="What does this skill do?"
-        />
-      </label>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="grid gap-1.5 text-sm font-medium">
-          Owner
-          <Input value={owner} onChange={(event) => setOwner(event.target.value)} />
-        </label>
-        <label className="grid gap-1.5 text-sm font-medium">
-          Tags
-          <Input
-            value={tags}
-            onChange={(event) => setTags(event.target.value)}
-            placeholder="review, frontend"
-          />
-        </label>
-      </div>
       <Button type="submit" disabled={isSaving || !storage?.configured}>
         {isSaving ? (
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />

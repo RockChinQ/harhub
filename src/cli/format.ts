@@ -24,13 +24,9 @@ export function printIssues(issues: ValidationIssue[]): void {
 export function printSkillTable(skills: SkillRecord[]): void {
   const rows = skills.map((skill) => ({
     skill: skill.displayName,
-    name: skill.name,
-    packageName: skill.packageName ?? "-",
-    owner: skill.owner ?? "-",
-    lifecycle: skill.lifecycleState,
-    tags: skill.tags.join(", ") || "-"
+    name: skill.name
   }));
-  const headers = ["skill", "name", "package", "owner", "lifecycle", "tags"];
+  const headers = ["skill", "name"];
   const widths = tableWidths(headers, rows);
 
   console.log(headers.map((header, index) => pad(header, widths[index])).join("  "));
@@ -38,11 +34,7 @@ export function printSkillTable(skills: SkillRecord[]): void {
   for (const row of rows) {
     console.log([
       pad(row.skill, widths[0]),
-      pad(row.name, widths[1]),
-      pad(row.packageName, widths[2]),
-      pad(row.owner, widths[3]),
-      pad(row.lifecycle, widths[4]),
-      pad(row.tags, widths[5])
+      pad(row.name, widths[1])
     ].join("  "));
   }
 }
@@ -51,13 +43,9 @@ export function printAssetTable(assets: AssetRecord[]): void {
   const rows = assets.map((asset) => ({
     asset: asset.displayName,
     kind: asset.kind,
-    packageName: asset.packageName ?? "-",
-    owner: asset.owner ?? "-",
-    health: asset.health,
-    lifecycle: asset.lifecycleState,
-    tags: asset.tags.join(", ") || "-"
+    health: asset.health
   }));
-  const headers = ["asset", "kind", "package", "owner", "health", "lifecycle", "tags"];
+  const headers = ["asset", "kind", "health"];
   const widths = tableWidths(headers, rows);
 
   console.log(headers.map((header, index) => pad(header, widths[index])).join("  "));
@@ -66,11 +54,7 @@ export function printAssetTable(assets: AssetRecord[]): void {
     console.log([
       pad(row.asset, widths[0]),
       pad(row.kind, widths[1]),
-      pad(row.packageName, widths[2]),
-      pad(row.owner, widths[3]),
-      pad(row.health, widths[4]),
-      pad(row.lifecycle, widths[5]),
-      pad(row.tags, widths[6])
+      pad(row.health, widths[2])
     ].join("  "));
   }
 }
@@ -83,7 +67,7 @@ function tableWidths<T extends Record<string, string>>(
     Math.max(
       header.length,
       ...rows.map((row) =>
-        String(row[header === "package" ? "packageName" : header as keyof T]).length
+        String(row[header as keyof T]).length
       )
     )
   );

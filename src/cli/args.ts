@@ -28,16 +28,7 @@ export function parseArgs(args: string[]): ParsedArgs {
       index += 1;
     }
 
-    if (key === "tag" || key === "agent") {
-      const current = options[key];
-      options[key] = Array.isArray(current)
-        ? [...current, value]
-        : current
-          ? [String(current), value]
-          : [value];
-    } else {
-      options[key] = value;
-    }
+    options[key] = value;
   }
 
   return { positionals, options };
@@ -62,10 +53,4 @@ export function resolveAssetCatalogPath(
 export function optionString(parsed: ParsedArgs, name: string): string | undefined {
   const value = parsed.options[name];
   return typeof value === "string" ? value : undefined;
-}
-
-export function optionArray(parsed: ParsedArgs, name: string): string[] {
-  const value = parsed.options[name];
-  if (!value) return [];
-  return Array.isArray(value) ? value : [String(value)];
 }

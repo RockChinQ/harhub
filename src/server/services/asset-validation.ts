@@ -81,22 +81,13 @@ async function validateStoredAsset(
     buffer,
     storage: asset.storage,
     name: asset.name,
-    description: asset.description,
-    owner: asset.owner,
-    tags: asset.tags,
     rejectInvalid: false
   });
 
   return {
     ...asset,
-    contentHash: refreshed.contentHash,
     health: refreshed.health,
     validation: refreshed.validation,
-    validationIssues: refreshed.validationIssues,
-    metadata: {
-      ...asset.metadata,
-      ...refreshed.metadata
-    },
-    updatedAt: new Date().toISOString()
+    validationIssues: refreshed.validationIssues
   };
 }

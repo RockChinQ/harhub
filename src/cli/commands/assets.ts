@@ -15,7 +15,6 @@ import {
   validateSkills
 } from "../../features/skills/index.js";
 import {
-  optionArray,
   optionString,
   resolveAssetCatalogPath
 } from "../args.js";
@@ -65,10 +64,7 @@ export function runAssetsValidate(parsed: ParsedArgs): number {
 
 export function runAssetsList(parsed: ParsedArgs): number {
   const assets = filterAssets(readAssetCatalog(resolveAssetCatalogPath(parsed)), {
-    kind: optionString(parsed, "kind"),
-    tag: optionString(parsed, "tag"),
-    owner: optionString(parsed, "owner"),
-    packageName: optionString(parsed, "package")
+    kind: optionString(parsed, "kind")
   });
 
   if (parsed.options.json) {
@@ -107,12 +103,7 @@ export function runAssetsShow(parsed: ParsedArgs): number {
   console.log(`  id: ${asset.id}`);
   console.log(`  kind: ${asset.kind}`);
   console.log(`  name: ${asset.name}`);
-  console.log(`  package: ${asset.packageName ?? "-"}`);
-  console.log(`  owner: ${asset.owner ?? "-"}`);
-  console.log(`  lifecycle: ${asset.lifecycleState}`);
   console.log(`  health: ${asset.health}`);
-  console.log(`  tags: ${asset.tags.join(", ") || "-"}`);
-  console.log(`  source: ${asset.source?.path ?? "-"}`);
   console.log("");
   console.log(asset.description || "No description.");
   return 0;
@@ -134,9 +125,7 @@ export function runAssetsCreate(parsed: ParsedArgs): number {
   const skillPath = createSkillSkeleton({
     name,
     dir: optionString(parsed, "dir") ?? "skills",
-    description: optionString(parsed, "description"),
-    owner: optionString(parsed, "owner"),
-    tags: optionArray(parsed, "tag")
+    description: optionString(parsed, "description")
   });
 
   console.log(`Created skill asset ${skillPath}`);
@@ -167,7 +156,6 @@ export async function runAssetsUpload(parsed: ParsedArgs): Promise<number> {
     path.basename(absolutePath)
   );
 
-  setUploadMetadata(form, parsed);
   const response = await fetch(`${api}/api/workspaces/${workspaceId}/assets/upload`, {
     method: "POST",
     headers: {
@@ -195,7 +183,7 @@ export async function runAssetsUpload(parsed: ParsedArgs): Promise<number> {
 export async function runAssetsUpdate(parsed: ParsedArgs): Promise<number> {
   const query = parsed.positionals[0];
   if (!query) {
-    console.error("Usage: harhub assets update <id|name|slug> [--description text] [--owner owner] [--tag value]");
+    console.error("Usage: harhub assets update <id|name|slug> [--description text]");
     return 1;
   }
 
@@ -271,26 +259,9 @@ export async function runAssetsRevalidate(parsed: ParsedArgs): Promise<number> {
   );
 }
 
-function setUploadMetadata(form: FormData, parsed: ParsedArgs): void {
-  const name = optionString(parsed, "name");
-  const description = optionString(parsed, "description");
-  const owner = optionString(parsed, "owner");
-  const tags = optionArray(parsed, "tag");
-  if (name) form.set("name", name);
-  if (description) form.set("description", description);
-  if (owner) form.set("owner", owner);
-  if (tags.length > 0) form.set("tags", tags.join(","));
-}
-
 function readAssetUpdateInput(parsed: ParsedArgs) {
-  const tags = optionArray(parsed, "tag");
-  const agents = optionArray(parsed, "agent");
   return {
-    description: optionString(parsed, "description"),
-    owner: optionString(parsed, "owner"),
-    tags: tags.length > 0 ? tags : undefined,
-    lifecycleState: optionString(parsed, "lifecycle"),
-    agents: agents.length > 0 ? agents : undefined
+    description: optionString(parsed, "description")
   };
 }
 

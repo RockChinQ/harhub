@@ -38,7 +38,6 @@ export function App() {
   const [storageStatus, setStorageStatus] = useState<StorageStatus | undefined>();
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [query, setQuery] = useState("");
-  const [tagFilter, setTagFilter] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
   const view = route.view;
@@ -211,13 +210,11 @@ export function App() {
         storage={storageStatus}
         issues={issues}
         query={query}
-        tagFilter={tagFilter}
         isLoading={isLoading}
         selectedId={selectedId}
         selectedAsset={selectedAsset}
         session={session}
         onQueryChange={setQuery}
-        onTagFilterChange={setTagFilter}
         onSelectAsset={setSelectedId}
         onOpenAssetDetail={(assetId) => {
           const asset = findUiAsset(assets, assetId);

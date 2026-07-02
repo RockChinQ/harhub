@@ -27,7 +27,7 @@ description: Review code changes for correctness, regressions, and missing valid
 ---
 ```
 
-Harhub registry metadata such as owner, tags, lifecycle state, and package membership belongs in `harhub.yaml`, not in `SKILL.md` frontmatter.
+The MVP stores only the fields needed to manage uploaded Skills: name, description, validation status, storage, and preview data.
 
 ## Quick Start
 
@@ -37,7 +37,7 @@ npm run build
 npm run start
 ```
 
-Then open `http://127.0.0.1:3310/skills`.
+Then open `http://127.0.0.1:5176/skills`.
 
 Demo account:
 
@@ -110,7 +110,7 @@ npm run cli -- assets list
 npm run cli -- assets show <id|name|slug>
 npm run cli -- skills scan [paths...]
 npm run cli -- skills validate [paths...]
-npm run cli -- skills list [--tag value] [--owner value] [--package value]
+npm run cli -- skills list
 npm run cli -- skills show <id|name|slug>
 npm run cli -- skills create <name> [--dir skills]
 ```
@@ -146,36 +146,6 @@ POST /api/workspaces/:workspaceId/skills
 
 The production server serves the built Vite app from `dist/web` and the API from the same port.
 
-## Skill Package Shape
-
-A skill package can be plain directories containing `SKILL.md`, or it can include a `harhub.yaml` manifest for package metadata.
-
-```text
-skills/
-  harhub.yaml
-  code-review/
-    SKILL.md
-    references/
-```
-
-Minimal manifest:
-
-```yaml
-apiVersion: harhub.io/v1
-kind: HarnessPackage
-metadata:
-  name: engineering-skills
-  owner: platform
-  tags: [engineering]
-spec:
-  maturity: experimental
-  compatibility:
-    agents: [codex]
-  artifacts:
-    - type: skill
-      path: code-review/SKILL.md
-```
-
 ## MVP Boundary
 
 Current boundary:
@@ -184,6 +154,6 @@ Current boundary:
 - `SKILL.md` metadata extraction from uploaded zips.
 - Workspace-local JSON asset index for MVP metadata.
 - Compatibility `SKILL.md` discovery by recursive scan for development imports.
-- Standard metadata extraction from `SKILL.md` frontmatter plus Harhub registry metadata from optional `harhub.yaml`.
+- Standard metadata extraction from `SKILL.md` frontmatter.
 - Validation for required `name`/`description`, slug naming, description length, local Markdown links, duplicates, and obvious secret patterns.
 - Human-readable and JSON output modes.

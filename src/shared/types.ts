@@ -1,16 +1,8 @@
-export type SkillLifecycleState =
-  | "experimental"
-  | "stable"
-  | "deprecated"
-  | "archived";
-
 export type SkillValidationSeverity = "error" | "warning";
 
 export type WorkspaceRole = "owner" | "admin" | "member" | "viewer";
 
 export type AssetKind = "skill";
-
-export type AssetLifecycleState = SkillLifecycleState;
 
 export type AssetHealth = "valid" | "warning" | "error" | "unknown";
 
@@ -94,20 +86,8 @@ export interface SkillRecord {
   displayName: string;
   slug: string;
   description: string;
-  owner?: string;
-  packageName?: string;
-  lifecycleState: SkillLifecycleState;
-  tags: string[];
-  agents: string[];
-  contentHash: string;
   headings: string[];
-  resources: {
-    scripts: string[];
-    references: string[];
-    assets: string[];
-  };
   source: SkillSource;
-  discoveredAt: string;
 }
 
 export interface SkillCatalog {
@@ -124,23 +104,13 @@ export interface AssetRecord {
   displayName: string;
   slug: string;
   description: string;
-  owner?: string;
-  packageName?: string;
-  lifecycleState: AssetLifecycleState;
   health: AssetHealth;
-  tags: string[];
-  contentHash?: string;
-  source?: SkillSource;
   storage?: StoredObject;
   validation: {
     errors: number;
     warnings: number;
   };
   validationIssues?: ValidationIssue[];
-  metadata: Record<string, string | number | boolean | string[] | undefined>;
-  skill?: SkillRecord;
-  discoveredAt: string;
-  updatedAt: string;
 }
 
 export interface AssetCatalog {
@@ -189,28 +159,4 @@ export interface ValidationIssue {
   path?: string;
   skillId?: string;
   assetId?: string;
-}
-
-export interface SkillPackageManifest {
-  apiVersion?: string;
-  kind?: string;
-  metadata?: {
-    name?: string;
-    owner?: string;
-    description?: string;
-    tags?: string[];
-  };
-  spec?: {
-    version?: string;
-    maturity?: SkillLifecycleState;
-    compatibility?: {
-      agents?: string[];
-    };
-    artifacts?: Array<{
-      type?: string;
-      path?: string;
-      tags?: string[];
-      owner?: string;
-    }>;
-  };
 }

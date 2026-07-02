@@ -18,6 +18,7 @@ import {
   loadOrCreateWorkspaceAssetCatalog,
   scanAndPersistWorkspace
 } from "./workspace-catalogs.js";
+import type { AssetCatalog, SkillRecord } from "../../shared/types.js";
 
 type WorkspaceContext = NonNullable<ReturnType<typeof requireWorkspaceAccess>>;
 
@@ -34,18 +35,18 @@ export function patchAsset(
       return;
     }
 
-    if (!asset.skill) {
+    const skill = findCatalogSkillForAsset(catalog, asset.id);
+    if (!skill) {
       const nextCatalog = updateCatalogAsset(catalog, asset.id, readAssetMetadataBody(req.body));
       writeAssetCatalog(getWorkspaceAssetCatalogPath(context.workspace.id), nextCatalog);
       res.json({
         ...assetListPayload(context.workspace, nextCatalog.generatedAt, nextCatalog.assets),
-        skills: nextCatalog.skills,
         issues: []
       });
       return;
     }
 
-    updateSkillMetadata(asset.skill, readAssetMetadataBody(req.body));
+    updateSkillMetadata(skill, readAssetMetadataBody(req.body));
     res.json(rescanWorkspaceAssets(context));
   } catch (error) {
     sendError(res, error, 400);
@@ -71,18 +72,18 @@ export async function deleteAsset(
       writeAssetCatalog(getWorkspaceAssetCatalogPath(context.workspace.id), nextCatalog);
       res.json({
         ...assetListPayload(context.workspace, nextCatalog.generatedAt, nextCatalog.assets),
-        skills: nextCatalog.skills,
         issues: []
       });
       return;
     }
 
-    if (!asset.skill) {
+    const skill = findCatalogSkillForAsset(catalog, asset.id);
+    if (!skill) {
       res.status(400).json({ error: "Asset has no removable storage object." });
       return;
     }
 
-    deleteSkill(asset.skill);
+    deleteSkill(skill);
     res.json(rescanWorkspaceAssets(context));
   } catch (error) {
     sendError(res, error, 400);
@@ -99,15 +100,11 @@ function rescanWorkspaceAssets(context: WorkspaceContext) {
 function readAssetMetadataBody(body: unknown) {
   const value = body as Record<string, unknown> | undefined;
   return {
-    description: typeof value?.description === "string" ? value.description : undefined,
-    owner: typeof value?.owner === "string" ? value.owner : undefined,
-    tags: Array.isArray(value?.tags)
-      ? value.tags.filter((tag: unknown): tag is string => typeof tag === "string")
-      : undefined,
-    lifecycleState:
-      typeof value?.lifecycleState === "string" ? value.lifecycleState : undefined,
-    agents: Array.isArray(value?.agents)
-      ? value.agents.filter((agent: unknown): agent is string => typeof agent === "string")
-      : undefined
+    description: typeof value?.description === "string" ? value.description : undefined
   };
+}
+
+function findCatalogSkillForAsset(catalog: AssetCatalog, assetId: string): SkillRecord | undefined {
+  const skillId = assetId.replace(/^asset:skill:/, "skill:");
+  return catalog.skills.find((skill) => skill.id === skillId);
 }

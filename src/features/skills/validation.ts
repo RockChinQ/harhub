@@ -154,7 +154,7 @@ function addFrontmatterIssues(
         context,
         "warning",
         "non-standard-frontmatter",
-        `Frontmatter field "${key}" is Harhub-specific or non-standard; prefer harhub.yaml for registry metadata.`
+        `Frontmatter field "${key}" is non-standard for this MVP.`
       ));
     }
   }

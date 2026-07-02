@@ -1,8 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import YAML from "yaml";
-import type { SkillPackageManifest } from "./types.js";
 
 const IGNORED_DIRS = new Set([
   ".git",
@@ -48,38 +46,6 @@ export function findSkillMarkdownFiles(root: string): string[] {
   }
 
   return results.sort();
-}
-
-export function readYamlFile<T>(filePath: string): T | undefined {
-  if (!existsSync(filePath)) return undefined;
-  const content = readFileSync(filePath, "utf8");
-  return YAML.parse(content) as T;
-}
-
-export function findNearestManifest(startDir: string, stopDir: string): {
-  manifest?: SkillPackageManifest;
-  path?: string;
-} {
-  let current = startDir;
-  const stop = path.resolve(stopDir);
-
-  while (current.startsWith(stop)) {
-    for (const fileName of ["harhub.yaml", "harhub.yml"]) {
-      const candidate = path.join(current, fileName);
-      if (existsSync(candidate)) {
-        return {
-          manifest: readYamlFile<SkillPackageManifest>(candidate),
-          path: candidate
-        };
-      }
-    }
-
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-
-  return {};
 }
 
 export interface GitInfo {

@@ -17,7 +17,6 @@ import {
   writeCatalog
 } from "../../features/skills/index.js";
 import {
-  optionArray,
   optionString,
   resolveAssetCatalogPath,
   resolveCatalogPath
@@ -70,11 +69,7 @@ export function runValidate(parsed: ParsedArgs): number {
 
 export function runList(parsed: ParsedArgs): number {
   const catalog = readCatalog(resolveCatalogPath(parsed));
-  const skills = filterCatalog(catalog, {
-    tag: optionString(parsed, "tag"),
-    owner: optionString(parsed, "owner"),
-    packageName: optionString(parsed, "package")
-  });
+  const skills = filterCatalog(catalog);
 
   if (parsed.options.json) {
     console.log(JSON.stringify(skills, null, 2));
@@ -111,13 +106,7 @@ export function runShow(parsed: ParsedArgs): number {
   console.log(`${skill.displayName}`);
   console.log(`  id: ${skill.id}`);
   console.log(`  name: ${skill.name}`);
-  console.log(`  package: ${skill.packageName ?? "-"}`);
-  console.log(`  owner: ${skill.owner ?? "-"}`);
-  console.log(`  lifecycle: ${skill.lifecycleState}`);
-  console.log(`  tags: ${skill.tags.join(", ") || "-"}`);
-  console.log(`  agents: ${skill.agents.join(", ") || "-"}`);
   console.log(`  source: ${skill.source.path}`);
-  console.log(`  hash: ${skill.contentHash.slice(0, 12)}`);
   console.log("");
   console.log(skill.description || "No description.");
   return 0;
@@ -133,9 +122,7 @@ export function runCreate(parsed: ParsedArgs): number {
   const skillPath = createSkillSkeleton({
     name,
     dir: optionString(parsed, "dir") ?? "skills",
-    description: optionString(parsed, "description"),
-    owner: optionString(parsed, "owner"),
-    tags: optionArray(parsed, "tag")
+    description: optionString(parsed, "description")
   });
 
   console.log(`Created ${skillPath}`);
@@ -145,7 +132,7 @@ export function runCreate(parsed: ParsedArgs): number {
 export async function runUpdate(parsed: ParsedArgs): Promise<number> {
   const query = parsed.positionals[0];
   if (!query) {
-    console.error("Usage: harhub skills update <id|name|slug> [--description text] [--owner owner] [--tag value]");
+    console.error("Usage: harhub skills update <id|name|slug> [--description text]");
     return 1;
   }
 
@@ -236,14 +223,8 @@ function rescanAfterLocalMutation(
 }
 
 function readSkillUpdateInput(parsed: ParsedArgs) {
-  const tags = optionArray(parsed, "tag");
-  const agents = optionArray(parsed, "agent");
   return {
-    description: optionString(parsed, "description"),
-    owner: optionString(parsed, "owner"),
-    tags: tags.length > 0 ? tags : undefined,
-    lifecycleState: optionString(parsed, "lifecycle"),
-    agents: agents.length > 0 ? agents : undefined
+    description: optionString(parsed, "description")
   };
 }
 

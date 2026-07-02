@@ -14,7 +14,7 @@ import {
   uploadSkillZipObject
 } from "../../storage/index.js";
 import type { requireWorkspaceAccess } from "../auth.js";
-import { readOptionalStringList, sendError } from "../utils/http.js";
+import { sendError } from "../utils/http.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
 import { assetListPayload } from "./asset-responses.js";
 
@@ -33,7 +33,7 @@ export async function handleAssetUpload(
 
   let uploaded: AssetRecord["storage"] | undefined;
   try {
-    const requestedName = requestedAssetName(file.originalname, req.body?.name);
+    const requestedName = requestedAssetName(file.originalname);
     const checksum = contentHash(file.buffer);
     await validateUploadedSkillZip({
       workspaceId: context.workspace.id,
@@ -56,11 +56,7 @@ export async function handleAssetUpload(
       fileName: file.originalname,
       buffer: file.buffer,
       storage: uploaded,
-      name: requestedName,
-      description:
-        typeof req.body?.description === "string" ? req.body.description : undefined,
-      owner: typeof req.body?.owner === "string" ? req.body.owner : context.account.name,
-      tags: readOptionalStringList(req.body?.tags)
+      name: requestedName
     });
     const catalog = upsertAsset(loadOrCreateWorkspaceAssetCatalog(context.workspace), asset);
     writeAssetCatalog(getWorkspaceAssetCatalogPath(context.workspace.id), catalog);
@@ -68,7 +64,6 @@ export async function handleAssetUpload(
     res.status(201).json({
       ...assetListPayload(context.workspace, catalog.generatedAt, catalog.assets),
       uploaded: asset,
-      skills: catalog.skills,
       issues: []
     });
   } catch (error) {
@@ -77,8 +72,6 @@ export async function handleAssetUpload(
   }
 }
 
-function requestedAssetName(fileName: string, inputName: unknown): string {
-  return typeof inputName === "string" && inputName.trim()
-    ? inputName.trim()
-    : path.basename(fileName, path.extname(fileName));
+function requestedAssetName(fileName: string): string {
+  return path.basename(fileName, path.extname(fileName));
 }

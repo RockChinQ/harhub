@@ -1,24 +1,17 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
-import {
-  findNearestManifest,
-  pathRelativeToRoot,
-  resolveFromCwd
-} from "../../shared/fs-utils.js";
+import { resolveFromCwd } from "../../shared/fs-utils.js";
 import { slugify, stringValue } from "../../shared/markdown.js";
 import type { SkillRecord } from "../../shared/types.js";
 import { OFFICIAL_SKILL_NAME_PATTERN } from "./constants.js";
-import { removeHarhubManifestArtifact, upsertHarhubManifest } from "./manifest.js";
 import type { SkillMetadataUpdate } from "./types.js";
-import { normalizeLifecycle, titleFromSlug, unique } from "./utils.js";
+import { titleFromSlug } from "./utils.js";
 
 export function createSkillSkeleton(options: {
   name: string;
   dir: string;
   description?: string;
-  owner?: string;
-  tags: string[];
 }): string {
   const slug = slugify(options.name);
   if (!OFFICIAL_SKILL_NAME_PATTERN.test(slug)) {
@@ -36,15 +29,7 @@ export function createSkillSkeleton(options: {
   }
 
   mkdirSync(skillDir, { recursive: true });
-  mkdirSync(path.join(skillDir, "references"), { recursive: true });
-  mkdirSync(path.join(skillDir, "scripts"), { recursive: true });
   writeFileSync(skillPath, skillMarkdown(slug, options.description));
-
-  upsertHarhubManifest(skillRoot, {
-    path: `${slug}/SKILL.md`,
-    owner: options.owner,
-    tags: options.tags
-  });
 
   return skillPath;
 }
@@ -56,30 +41,9 @@ export function updateSkillMetadata(
   if (typeof input.description === "string") {
     updateSkillDescription(skill, input.description);
   }
-
-  const skillDir = path.dirname(skill.source.absolutePath);
-  const manifestInfo = findNearestManifest(skillDir, skill.source.root);
-  const manifestRoot = manifestInfo.path
-    ? path.dirname(manifestInfo.path)
-    : path.dirname(skillDir);
-  const artifactPath = pathRelativeToRoot(manifestRoot, skill.source.absolutePath);
-
-  upsertHarhubManifest(manifestRoot, {
-    path: artifactPath,
-    ...(typeof input.owner === "string" ? { owner: input.owner.trim() } : {}),
-    ...(Array.isArray(input.tags) ? { tags: unique(input.tags.map((tag) => tag.trim())) } : {}),
-    ...(normalizeLifecycle(input.lifecycleState)
-      ? { lifecycleState: normalizeLifecycle(input.lifecycleState) }
-      : {}),
-    ...(Array.isArray(input.agents)
-      ? { agents: unique(input.agents.map((agent) => agent.trim())) }
-      : {}),
-    replaceTags: Array.isArray(input.tags)
-  });
 }
 
 export function deleteSkill(skill: SkillRecord): void {
-  removeHarhubManifestArtifact(skill);
   rmSync(path.dirname(skill.source.absolutePath), { recursive: true, force: true });
 }
 

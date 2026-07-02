@@ -36,25 +36,14 @@ Harhub 强制执行的规则：
 - `description` 最多 1024 个字符。
 - 父目录应与 `name` 匹配。
 
-## Harhub 元数据
+## MVP Catalog 字段
 
-Harhub 专属 registry metadata 应放在 `harhub.yaml`。
+当前 MVP 不维护额外的 registry metadata。Harhub 只从 `SKILL.md` 读取标准字段，并在 workspace asset index 中保存管理所需的最小状态：
 
-```yaml
-apiVersion: harhub.io/v1
-kind: HarnessPackage
-metadata:
-  name: engineering-skills
-  owner: platform
-  tags: [engineering]
-spec:
-  maturity: experimental
-  compatibility:
-    agents: [codex]
-  artifacts:
-    - type: skill
-      path: code-review/SKILL.md
-      tags: [review]
-```
+- name
+- description
+- validation status
+- object storage reference
+- file preview data
 
-这样可以保持 `SKILL.md` 可移植，同时让 Harhub 管理 ownership、lifecycle、tags、compatibility 和 catalog state。
+后续如果重新引入 owner、tags、lifecycle 或 compatibility，应作为明确的新产品能力单独设计，不混入当前 MVP 的 Skill contract。

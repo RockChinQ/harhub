@@ -19,9 +19,6 @@ export async function createUploadedSkillAsset(input: {
   buffer: Buffer;
   storage: StoredObject;
   name?: string;
-  description?: string;
-  owner?: string;
-  tags?: string[];
   rejectInvalid?: boolean;
 }): Promise<AssetRecord> {
   if (!input.fileName.toLowerCase().endsWith(".zip")) {
@@ -70,8 +67,6 @@ export async function createUploadedSkillAsset(input: {
     throw new Error(uploadValidationError(validationIssues));
   }
 
-  const now = new Date().toISOString();
-
   return {
     id: assetId,
     kind: "skill",
@@ -79,32 +74,16 @@ export async function createUploadedSkillAsset(input: {
     displayName: parsed.title ?? titleFromSlug(name),
     slug: name,
     description:
-      input.description?.trim() ||
       stringValue(parsed.frontmatter.description) ||
       parsed.description ||
       "Uploaded skill asset.",
-    owner: input.owner?.trim() || undefined,
-    packageName: "uploaded-skills",
-    lifecycleState: "experimental",
     health: errors > 0 ? "error" : warnings > 0 ? "warning" : "valid",
-    tags: unique(input.tags ?? []),
-    contentHash: zipHash,
     storage: input.storage,
     validation: {
       errors,
       warnings
     },
-    validationIssues,
-    metadata: {
-      skillEntry: skillEntry.name,
-      zipEntries: entries.filter((entry) => !entry.dir).length,
-      scripts: countZipEntries(zip, "scripts/"),
-      references: countZipEntries(zip, "references/"),
-      assets: countZipEntries(zip, "assets/"),
-      headings: parsed.headings
-    },
-    discoveredAt: now,
-    updatedAt: now
+    validationIssues
   };
 }
 
@@ -125,12 +104,7 @@ export async function validateUploadedSkillZip(input: {
       uploadedAt: new Date().toISOString(),
       originalName: input.fileName
     },
-    tags: []
   });
-}
-
-function countZipEntries(zip: JSZip, pathPart: string): number {
-  return Object.values(zip.files).filter((entry) => !entry.dir && entry.name.includes(pathPart)).length;
 }
 
 function titleFromSlug(slug: string): string {
@@ -139,10 +113,6 @@ function titleFromSlug(slug: string): string {
     .filter(Boolean)
     .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
     .join(" ");
-}
-
-function unique(values: string[]): string[] {
-  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort();
 }
 
 function validateZipStructure(entries: JSZipObject[]): ValidationIssue[] {

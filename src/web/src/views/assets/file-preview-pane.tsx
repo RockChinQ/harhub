@@ -1,8 +1,4 @@
-import { FileArchive } from "lucide-react";
-
 import type { AssetPreview } from "../../../../shared/types";
-import { formatBytes } from "../../app/format";
-import { Badge } from "../../components/ui/badge";
 
 export function FilePreviewPane({ file }: { file?: AssetPreview["selectedFile"] }) {
   if (!file) {
@@ -15,14 +11,8 @@ export function FilePreviewPane({ file }: { file?: AssetPreview["selectedFile"] 
 
   return (
     <div className="flex min-h-0 min-w-0 flex-col">
-      <div className="flex shrink-0 min-w-0 items-center justify-between gap-3 border-b px-4 py-3">
-        <div className="min-w-0">
-          <div className="truncate font-medium">{file.name}</div>
-          <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
-            {file.path}
-          </div>
-        </div>
-        <Badge variant="outline">{formatBytes(file.size)}</Badge>
+      <div className="shrink-0 border-b px-4 py-3">
+        <div className="truncate font-medium">{file.name}</div>
       </div>
       {file.isText ? (
         <div className="min-h-0 flex-1 overflow-auto bg-zinc-950 p-4 text-zinc-50">
@@ -36,9 +26,8 @@ export function FilePreviewPane({ file }: { file?: AssetPreview["selectedFile"] 
           ) : null}
         </div>
       ) : (
-        <div className="flex min-h-[360px] flex-1 flex-col items-center justify-center gap-2 px-4 text-center text-sm text-muted-foreground lg:min-h-0">
-          <FileArchive className="h-8 w-8" aria-hidden="true" />
-          Binary file preview is not available.
+        <div className="flex min-h-[360px] flex-1 items-center justify-center px-4 text-center text-sm text-muted-foreground lg:min-h-0">
+          Preview is not available.
         </div>
       )}
     </div>

@@ -3,16 +3,10 @@ import type { SkillListResponse, SkillScanResponse } from "./types";
 
 export async function getWorkspaceSkills(
   token: string,
-  workspaceId: string,
-  filters: { tag?: string; owner?: string; package?: string } = {}
+  workspaceId: string
 ): Promise<SkillListResponse> {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(filters)) {
-    if (value) params.set(key, value);
-  }
-
   return request<SkillListResponse>(
-    `/api/workspaces/${workspaceId}/skills?${params.toString()}`,
+    `/api/workspaces/${workspaceId}/skills`,
     { token }
   );
 }
@@ -37,8 +31,6 @@ export async function createWorkspaceSkill(
     name: string;
     dir: string;
     description?: string;
-    owner?: string;
-    tags: string[];
   }
 ): Promise<SkillScanResponse & { path: string }> {
   return request<SkillScanResponse & { path: string }>(

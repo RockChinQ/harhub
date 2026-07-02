@@ -58,9 +58,6 @@ export function SkillFileExplorer({
       <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
         <div>
           <h2 className="font-semibold">Files</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {preview ? `${preview.files.length} file(s)` : "Loading"}
-          </p>
         </div>
         {isLoading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden="true" /> : null}
       </div>
@@ -71,9 +68,6 @@ export function SkillFileExplorer({
       ) : null}
       <div className="grid min-h-0 min-w-0 flex-1 lg:grid-cols-[300px_minmax(0,1fr)]">
         <div className="flex min-h-0 min-w-0 flex-col border-b lg:border-b-0 lg:border-r">
-          <div className="shrink-0 border-b px-3 py-2 text-xs font-medium uppercase text-muted-foreground">
-            Directory
-          </div>
           <div className="min-h-0 flex-1 overflow-auto p-2">
             {preview?.tree.length ? (
               <FileTree nodes={preview.tree} selectedPath={currentPath} onSelect={setSelectedPath} />

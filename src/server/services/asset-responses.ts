@@ -2,12 +2,13 @@ import {
   getWorkspaceAssetCatalogPath
 } from "../../state/index.js";
 import { getStorageStatus } from "../../storage/index.js";
-import type { AssetRecord, WorkspaceRecord } from "../../shared/types.js";
+import type { AssetRecord, SkillRecord, WorkspaceRecord } from "../../shared/types.js";
 
 export function assetListPayload(
   workspace: WorkspaceRecord,
   generatedAt: string,
-  assets: AssetRecord[]
+  assets: AssetRecord[],
+  skills: SkillRecord[] = []
 ) {
   const issues = assets.flatMap((asset) => asset.validationIssues ?? []);
 
@@ -18,8 +19,6 @@ export function assetListPayload(
     storage: getStorageStatus(),
     issues,
     assets,
-    skills: assets
-      .map((asset) => asset.skill)
-      .filter((skill): skill is NonNullable<AssetRecord["skill"]> => Boolean(skill))
+    skills
   };
 }

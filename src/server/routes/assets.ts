@@ -35,10 +35,7 @@ export function registerAssetRoutes(
 
     const catalog = loadOrCreateWorkspaceAssetCatalog(context.workspace);
     const assets = filterAssets(catalog, {
-      kind: stringQuery(req.query.kind),
-      tag: stringQuery(req.query.tag),
-      owner: stringQuery(req.query.owner),
-      packageName: stringQuery(req.query.package)
+      kind: stringQuery(req.query.kind)
     });
 
     res.json(assetListPayload(context.workspace, catalog.generatedAt, assets));
@@ -127,7 +124,7 @@ function registerAssetMutationRoutes(
       return;
     }
 
-    createSkillAsset(req, res, context.workspace, context.account.name);
+    createSkillAsset(req, res, context.workspace);
   });
 
   app.patch("/api/workspaces/:workspaceId/assets/:query", (req, res) => {

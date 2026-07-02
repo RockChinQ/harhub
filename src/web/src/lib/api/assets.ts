@@ -9,7 +9,7 @@ import type {
 export async function getWorkspaceAssets(
   token: string,
   workspaceId: string,
-  filters: { kind?: string; tag?: string; owner?: string; package?: string } = {}
+  filters: { kind?: string } = {}
 ): Promise<AssetListResponse> {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
@@ -43,8 +43,6 @@ export async function createWorkspaceAsset(
     name: string;
     dir: string;
     description?: string;
-    owner?: string;
-    tags: string[];
   }
 ): Promise<AssetScanResponse & { path: string }> {
   return request<AssetScanResponse & { path: string }>(
@@ -63,18 +61,10 @@ export async function uploadWorkspaceSkillZip(
   workspaceId: string,
   input: {
     file: File;
-    name?: string;
-    description?: string;
-    owner?: string;
-    tags: string[];
   }
 ): Promise<AssetUploadResponse> {
   const form = new FormData();
   form.set("file", input.file);
-  if (input.name) form.set("name", input.name);
-  if (input.description) form.set("description", input.description);
-  if (input.owner) form.set("owner", input.owner);
-  if (input.tags.length > 0) form.set("tags", input.tags.join(","));
 
   return request<AssetUploadResponse>(
     `/api/workspaces/${workspaceId}/assets/upload`,
@@ -92,10 +82,6 @@ export async function updateWorkspaceAsset(
   assetId: string,
   input: {
     description?: string;
-    owner?: string;
-    tags?: string[];
-    lifecycleState?: string;
-    agents?: string[];
   }
 ): Promise<AssetScanResponse> {
   return request<AssetScanResponse>(

@@ -59,13 +59,7 @@ export function skillToAsset(
     displayName: skill.displayName,
     slug: skill.slug,
     description: skill.description,
-    owner: skill.owner,
-    packageName: skill.packageName,
-    lifecycleState: skill.lifecycleState,
     health: healthFromIssueCounts(errors, warnings),
-    tags: skill.tags,
-    contentHash: skill.contentHash,
-    source: skill.source,
     validation: {
       errors,
       warnings
@@ -74,28 +68,15 @@ export function skillToAsset(
       ...issue,
       assetId: skill.id.replace(/^skill:/, "asset:skill:")
     })),
-    metadata: {
-      agents: skill.agents,
-      headings: skill.headings,
-      scripts: skill.resources.scripts.length,
-      references: skill.resources.references.length,
-      assets: skill.resources.assets.length
-    },
-    skill,
-    discoveredAt: skill.discoveredAt,
-    updatedAt: new Date().toISOString()
   };
 }
 
 export function filterAssets(
   catalog: AssetCatalog,
-  filters: { kind?: string; tag?: string; owner?: string; packageName?: string }
+  filters: { kind?: string }
 ): AssetRecord[] {
   return catalog.assets.filter((asset) => {
     if (filters.kind && asset.kind !== filters.kind) return false;
-    if (filters.tag && !asset.tags.includes(filters.tag)) return false;
-    if (filters.owner && asset.owner !== filters.owner) return false;
-    if (filters.packageName && asset.packageName !== filters.packageName) return false;
     return true;
   });
 }
@@ -118,10 +99,6 @@ export function updateCatalogAsset(
   assetId: string,
   input: {
     description?: string;
-    owner?: string;
-    tags?: string[];
-    lifecycleState?: string;
-    agents?: string[];
   }
 ): AssetCatalog {
   const asset = catalog.assets.find((item) => item.id === assetId);
@@ -133,17 +110,6 @@ export function updateCatalogAsset(
       typeof input.description === "string" && input.description.trim()
         ? input.description.trim()
         : asset.description,
-    owner:
-      typeof input.owner === "string"
-        ? input.owner.trim() || undefined
-        : asset.owner,
-    tags: input.tags ? unique(input.tags) : asset.tags,
-    lifecycleState: normalizeLifecycle(input.lifecycleState) ?? asset.lifecycleState,
-    metadata: {
-      ...asset.metadata,
-      ...(input.agents ? { agents: unique(input.agents) } : {})
-    },
-    updatedAt: new Date().toISOString()
   };
 
   return upsertAsset(catalog, next);
@@ -168,8 +134,7 @@ export function findAsset(
       asset.id.toLowerCase() === normalized ||
       asset.slug.toLowerCase() === normalized ||
       asset.name.toLowerCase() === normalized ||
-      asset.displayName.toLowerCase() === normalized ||
-      asset.skill?.id.toLowerCase() === normalized
+      asset.displayName.toLowerCase() === normalized
   );
 }
 
@@ -180,18 +145,17 @@ export function assetCatalogToSkillCatalog(catalog: AssetCatalog): SkillCatalog 
     workspaceId: catalog.workspaceId,
     skills: catalog.skills.length > 0
       ? catalog.skills
-      : catalog.assets
-        .map((asset) => asset.skill)
-        .filter((skill): skill is SkillRecord => Boolean(skill))
+      : []
   };
 }
 
 function normalizeAssetCatalog(catalog: AssetCatalog | SkillCatalog): AssetCatalog {
   if ("assets" in catalog && Array.isArray(catalog.assets)) {
-    catalog.skills ??= catalog.assets
-      .map((asset) => asset.skill)
-      .filter((skill): skill is SkillRecord => Boolean(skill));
-    return catalog;
+    return {
+      ...catalog,
+      assets: catalog.assets.map(normalizeAssetRecord),
+      skills: (catalog.skills ?? []).map(normalizeSkillRecord)
+    };
   }
 
   return {
@@ -201,25 +165,35 @@ function normalizeAssetCatalog(catalog: AssetCatalog | SkillCatalog): AssetCatal
   };
 }
 
-function normalizeLifecycle(value: unknown): AssetRecord["lifecycleState"] | undefined {
-  if (
-    value === "experimental" ||
-    value === "stable" ||
-    value === "deprecated" ||
-    value === "archived"
-  ) {
-    return value;
-  }
-
-  return undefined;
-}
-
 function healthFromIssueCounts(errors: number, warnings: number): AssetHealth {
   if (errors > 0) return "error";
   if (warnings > 0) return "warning";
   return "valid";
 }
 
-function unique(values: string[]): string[] {
-  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort();
+function normalizeAssetRecord(asset: AssetRecord): AssetRecord {
+  return {
+    id: asset.id,
+    kind: "skill",
+    name: asset.name,
+    displayName: asset.displayName,
+    slug: asset.slug,
+    description: asset.description,
+    health: asset.health,
+    ...(asset.storage ? { storage: asset.storage } : {}),
+    validation: asset.validation,
+    ...(asset.validationIssues ? { validationIssues: asset.validationIssues } : {})
+  };
+}
+
+function normalizeSkillRecord(skill: SkillRecord): SkillRecord {
+  return {
+    id: skill.id,
+    name: skill.name,
+    displayName: skill.displayName,
+    slug: skill.slug,
+    description: skill.description,
+    headings: skill.headings ?? [],
+    source: skill.source
+  };
 }

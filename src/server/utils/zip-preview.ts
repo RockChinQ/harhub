@@ -21,7 +21,9 @@ export async function buildAssetPreview(
   const entries = Object.values(zip.files)
     .filter((entry) => !entry.dir)
     .sort((a, b) => a.name.localeCompare(b.name));
-  const fallbackPath = metadataString(asset, "skillEntry") || entries[0]?.name;
+  const fallbackPath =
+    entries.find((entry) => entry.name.split("/").pop() === "SKILL.md")?.name ??
+    entries[0]?.name;
   const selectedEntry = entries.find((entry) => entry.name === (requestedPath || fallbackPath));
 
   return {
@@ -30,11 +32,6 @@ export async function buildAssetPreview(
     files: entries.map(zipEntrySummary),
     selectedFile: selectedEntry ? await zipEntryPreview(selectedEntry) : undefined
   };
-}
-
-function metadataString(asset: AssetRecord, key: string): string | undefined {
-  const value = asset.metadata[key];
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function buildZipTree(entries: JSZipObject[]): AssetFileTreeNode[] {

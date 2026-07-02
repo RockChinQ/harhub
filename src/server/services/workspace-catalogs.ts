@@ -34,7 +34,7 @@ export function loadOrCreateWorkspaceCatalog(workspace: WorkspaceRecord): SkillC
     const catalog = readCatalog(catalogPath);
     const needsRefresh =
       catalog.workspaceId !== workspace.id ||
-      catalog.skills.some((skill) => !skill.displayName || !skill.resources);
+      catalog.skills.some((skill) => !skill.displayName || !skill.source);
     if (!needsRefresh) return catalog;
   }
 

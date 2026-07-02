@@ -28,15 +28,9 @@ export function writeCatalog(catalogPath: string, catalog: SkillCatalog): void {
 }
 
 export function filterCatalog(
-  catalog: SkillCatalog,
-  filters: { tag?: string; owner?: string; packageName?: string }
+  catalog: SkillCatalog
 ): SkillRecord[] {
-  return catalog.skills.filter((skill) => {
-    if (filters.tag && !skill.tags.includes(filters.tag)) return false;
-    if (filters.owner && skill.owner !== filters.owner) return false;
-    if (filters.packageName && skill.packageName !== filters.packageName) return false;
-    return true;
-  });
+  return catalog.skills;
 }
 
 export function findSkill(catalog: SkillCatalog, query: string): SkillRecord | undefined {

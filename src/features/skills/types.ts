@@ -4,8 +4,4 @@ export interface ScanOptions {
 
 export interface SkillMetadataUpdate {
   description?: string;
-  owner?: string;
-  tags?: string[];
-  lifecycleState?: string;
-  agents?: string[];
 }

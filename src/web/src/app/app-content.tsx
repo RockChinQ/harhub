@@ -20,13 +20,11 @@ export function AppContent({
   storage,
   issues,
   query,
-  tagFilter,
   isLoading,
   selectedId,
   selectedAsset,
   session,
   onQueryChange,
-  onTagFilterChange,
   onSelectAsset,
   onOpenAssetDetail,
   onRefreshAssets,
@@ -43,13 +41,11 @@ export function AppContent({
   storage?: StorageStatus;
   issues: ValidationIssue[];
   query: string;
-  tagFilter: string;
   isLoading: boolean;
   selectedId?: string;
   selectedAsset?: AssetRecord;
   session: SessionResponse;
   onQueryChange: (value: string) => void;
-  onTagFilterChange: (value: string) => void;
   onSelectAsset: (id: string) => void;
   onOpenAssetDetail: (id: string) => void;
   onRefreshAssets: () => Promise<void>;
@@ -71,13 +67,10 @@ export function AppContent({
           token={token}
           assets={assets}
           storage={storage}
-          issues={issues}
           query={query}
-          tagFilter={tagFilter}
           isLoading={isLoading}
           selectedId={selectedId}
           onQueryChange={onQueryChange}
-          onTagFilterChange={onTagFilterChange}
           onSelect={onSelectAsset}
           onOpenDetail={onOpenAssetDetail}
           onRefresh={onRefreshAssets}

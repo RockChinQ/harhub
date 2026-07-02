@@ -7,8 +7,7 @@ import { sendError, unique } from "../utils/http.js";
 export function createSkillAsset(
   req: Request,
   res: Response,
-  workspace: WorkspaceRecord,
-  defaultOwner: string
+  workspace: WorkspaceRecord
 ): void {
   try {
     if (!String(req.body?.name ?? "").trim()) {
@@ -19,14 +18,7 @@ export function createSkillAsset(
       name: String(req.body.name),
       dir: String(req.body?.dir ?? workspace.skillRoot),
       description:
-        typeof req.body?.description === "string" ? req.body.description : undefined,
-      owner:
-        typeof req.body?.owner === "string" && req.body.owner.trim()
-          ? req.body.owner
-          : defaultOwner,
-      tags: Array.isArray(req.body?.tags)
-        ? req.body.tags.filter((tag: unknown): tag is string => typeof tag === "string")
-        : []
+        typeof req.body?.description === "string" ? req.body.description : undefined
     });
 
     const response = scanAndPersistWorkspace(

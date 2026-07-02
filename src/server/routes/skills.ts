@@ -14,7 +14,7 @@ import {
   loadOrCreateWorkspaceCatalog,
   scanAndPersistWorkspace
 } from "../services/workspace-catalogs.js";
-import { hasErrors, readPathList, sendError, stringQuery } from "../utils/http.js";
+import { hasErrors, readPathList, sendError } from "../utils/http.js";
 
 export function registerSkillRoutes(app: Express): void {
   app.get("/api/workspaces/:workspaceId/skills", (req, res) => {
@@ -23,10 +23,7 @@ export function registerSkillRoutes(app: Express): void {
 
     const catalog = loadOrCreateWorkspaceAssetCatalog(context.workspace);
     const assets = filterAssets(catalog, {
-      kind: "skill",
-      tag: stringQuery(req.query.tag),
-      owner: stringQuery(req.query.owner),
-      packageName: stringQuery(req.query.package)
+      kind: "skill"
     });
 
     res.json(assetListPayload(context.workspace, catalog.generatedAt, assets));
@@ -78,7 +75,7 @@ export function registerSkillRoutes(app: Express): void {
   app.post("/api/workspaces/:workspaceId/skills", (req, res) => {
     const context = requireWorkspaceAccess(req, res);
     if (!context) return;
-    createSkillAsset(req, res, context.workspace, context.account.name);
+    createSkillAsset(req, res, context.workspace);
   });
 
   app.patch("/api/workspaces/:workspaceId/skills/:query", (req, res) => {

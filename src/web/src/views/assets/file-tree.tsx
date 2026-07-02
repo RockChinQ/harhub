@@ -1,7 +1,6 @@
 import { FileText, Folder, FolderOpen } from "lucide-react";
 
 import type { AssetFileTreeNode } from "../../../../shared/types";
-import { formatBytes } from "../../app/format";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
 
@@ -45,11 +44,6 @@ export function FileTree({
                 <Folder className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               )}
               <span className="min-w-0 flex-1 truncate">{node.name}</span>
-              {isFile ? (
-                <span className="shrink-0 text-[11px] text-muted-foreground">
-                  {formatBytes(node.size ?? 0)}
-                </span>
-              ) : null}
             </Button>
             {node.children?.length ? (
               <FileTree
