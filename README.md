@@ -173,7 +173,7 @@ git push origin main --tags
 ```
 
 Then create and publish a GitHub Release for that tag. Stable releases publish
-to the npm `latest` tag; GitHub prereleases publish to `next`.
+to the npm `latest` tag; GitHub prereleases publish to `beta`.
 
 The publish workflow requires a GitHub Actions secret named `NPM_TOKEN`.
 
