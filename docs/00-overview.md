@@ -6,15 +6,16 @@ Harhub 是面向团队的 agent harness 控制平面。这里的 harness 指让 
 
 ## 文档地图
 
-- [问题与缺口分析](./problem-and-gap-analysis.md)：说明为什么需要这个品类，以及它解决什么痛点。
-- [需求文档](./requirements.md)：产品需求、用户、用例和非功能需求。
-- [产品设计](./product-design.md)：核心流程、信息架构和运营模型。
-- [架构设计](./architecture.md)：系统设计、核心服务、数据模型、组合模型和集成策略。
-- [路线图](./roadmap.md)：分阶段交付计划、MVP 边界和开放问题。
-- [MVP 指标与 TODO](./mvp-todo.md)：开源加 SaaS MVP 指标、免费版限制、发布清单和实现 backlog。
-- [市场定位](./market-positioning.md)：为什么目标品类是团队 AI harness 管理，以及为什么 Skills 只是第一个切入点。
-- [Agent Skills 标准](./skill-standard.md)：Harhub 在 MVP 中支持的外部 Skill 格式。
-- [SaaS MVP](./saas-mvp.md)：本地优先应用中的账号、会话和 workspace 租户模型。
+- [00. 概览](./00-overview.md)：阅读入口、文档地图和 agent harness 工作定义。
+- [01. 问题与缺口分析](./01-problem-and-gap-analysis.md)：说明为什么需要这个品类，以及它解决什么痛点。
+- [02. 市场定位](./02-market-positioning.md)：为什么目标品类是团队 AI harness 管理，以及为什么 Skills 只是第一个切入点。
+- [03. 需求文档](./03-requirements.md)：产品需求、用户、用例和非功能需求。
+- [04. 产品设计](./04-product-design.md)：核心流程、信息架构和运营模型。
+- [05. 架构设计](./05-architecture.md)：系统设计、核心服务、数据模型、组合模型和集成策略。
+- [06. Agent Skills 标准](./06-skill-standard.md)：Harhub 在 MVP 中支持的外部 Skill 格式。
+- [07. SaaS MVP](./07-saas-mvp.md)：本地优先应用中的账号、会话和 workspace 租户模型。
+- [08. 路线图](./08-roadmap.md)：分阶段交付计划、MVP 边界和开放问题。
+- [09. MVP 指标与 TODO](./09-mvp-todo.md)：开源加 SaaS MVP 指标、免费版限制、发布清单和实现 backlog。
 
 ## 工作定义
 

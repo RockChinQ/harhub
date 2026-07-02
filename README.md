@@ -4,7 +4,7 @@ Harhub is a tenant-aware control plane for **team AI harness management**: the S
 
 The implemented MVP uses **Agent Skills** as the first managed Asset kind: zip uploads are stored in S3/S3-compatible object storage, then indexed for workspace management. This keeps the first product slice narrow while validating the broader opportunity: a cross-tool registry, policy layer, and distribution workflow for team-managed AI harnesses.
 
-The broader product design lives in [`docs/`](./docs/README.md). Rule composition, MCP governance, bundle composition, and PR automation remain outside the current implementation, but they are now explicit expansion paths rather than separate products.
+The broader product design lives in [`docs/00-overview.md`](./docs/00-overview.md). Rule composition, MCP governance, bundle composition, and PR automation remain outside the current implementation, but they are now explicit expansion paths rather than separate products.
 
 ## Skill Standard
 
