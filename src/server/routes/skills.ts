@@ -14,7 +14,7 @@ import {
   loadOrCreateWorkspaceCatalog,
   scanAndPersistWorkspace
 } from "../services/workspace-catalogs.js";
-import { hasErrors, readPathList, sendError } from "../utils/http.js";
+import { readPathList, sendError } from "../utils/http.js";
 
 export function registerSkillRoutes(app: Express): void {
   app.get("/api/workspaces/:workspaceId/skills", (req, res) => {
@@ -54,7 +54,7 @@ export function registerSkillRoutes(app: Express): void {
 
     const roots = readPathList(req.body?.paths, context.workspace.defaultScanPaths);
     const response = scanAndPersistWorkspace(context.workspace, roots);
-    res.status(hasErrors(response.issues) ? 422 : 200).json(response);
+    res.json(response);
   });
 
   app.post("/api/workspaces/:workspaceId/skills/validate", (req, res) => {
@@ -65,7 +65,7 @@ export function registerSkillRoutes(app: Express): void {
       try {
         const roots = readPathList(req.body?.paths, context.workspace.defaultScanPaths);
         const response = await validateWorkspaceAssets(context.workspace, roots);
-        res.status(hasErrors(response.issues) ? 422 : 200).json(response);
+        res.json(response);
       } catch (error) {
         sendError(res, error, 400);
       }
@@ -91,7 +91,7 @@ export function registerSkillRoutes(app: Express): void {
     void (async () => {
       try {
         const response = await validateWorkspaceAsset(context.workspace, req.params.query);
-        res.status(hasErrors(response.validatedIssues ?? []) ? 422 : 200).json(response);
+        res.json(response);
       } catch (error) {
         sendError(res, error, 400);
       }

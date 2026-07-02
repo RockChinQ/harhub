@@ -19,7 +19,6 @@ import {
 } from "../services/workspace-catalogs.js";
 import { buildAssetPreview } from "../utils/zip-preview.js";
 import {
-  hasErrors,
   readPathList,
   sendError,
   stringQuery
@@ -91,7 +90,7 @@ function registerAssetMutationRoutes(
 
     const roots = readPathList(req.body?.paths, context.workspace.defaultScanPaths);
     const response = scanAndPersistWorkspace(context.workspace, roots);
-    res.status(hasErrors(response.issues) ? 422 : 200).json(response);
+    res.json(response);
   });
 
   app.post("/api/workspaces/:workspaceId/assets/validate", (req, res) => {
@@ -102,7 +101,7 @@ function registerAssetMutationRoutes(
       try {
         const roots = readPathList(req.body?.paths, context.workspace.defaultScanPaths);
         const response = await validateWorkspaceAssets(context.workspace, roots);
-        res.status(hasErrors(response.issues) ? 422 : 200).json(response);
+        res.json(response);
       } catch (error) {
         sendError(res, error, 400);
       }
@@ -140,7 +139,7 @@ function registerAssetMutationRoutes(
     void (async () => {
       try {
         const response = await validateWorkspaceAsset(context.workspace, req.params.query);
-        res.status(hasErrors(response.validatedIssues ?? []) ? 422 : 200).json(response);
+        res.json(response);
       } catch (error) {
         sendError(res, error, 400);
       }

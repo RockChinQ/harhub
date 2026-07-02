@@ -7,7 +7,7 @@ import {
   loadState
 } from "../../state/index.js";
 import { loadOrCreateWorkspaceCatalog, scanAndPersistWorkspace } from "../services/workspace-catalogs.js";
-import { hasErrors, readPathList } from "../utils/http.js";
+import { readPathList } from "../utils/http.js";
 
 export function registerLegacySkillRoutes(app: Express): void {
   app.get("/api/skills", (req, res) => {
@@ -29,7 +29,7 @@ export function registerLegacySkillRoutes(app: Express): void {
       workspace,
       readPathList(req.body?.paths, workspace.defaultScanPaths)
     );
-    res.status(hasErrors(response.issues) ? 422 : 200).json(response);
+    res.json(response);
   });
 }
 
