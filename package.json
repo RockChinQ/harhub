@@ -3,6 +3,23 @@
   "version": "0.1.0",
   "description": "Team AI harness management for skills, MCP, rules, and agent instructions.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RockChinQ/harhub.git"
+  },
+  "homepage": "https://github.com/RockChinQ/harhub#readme",
+  "bugs": {
+    "url": "https://github.com/RockChinQ/harhub/issues"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "examples",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "harhub": "./dist/cli.js"
   },

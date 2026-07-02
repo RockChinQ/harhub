@@ -162,6 +162,21 @@ node dist/cli.js skills upload ./examples/skills --all --workspace ws_demo --tok
 node dist/cli.js assets list
 ```
 
+## Release
+
+Publishing to npm is handled by GitHub Actions when a GitHub Release is
+published. The release tag must match `package.json`:
+
+```bash
+npm version patch
+git push origin main --tags
+```
+
+Then create and publish a GitHub Release for that tag. Stable releases publish
+to the npm `latest` tag; GitHub prereleases publish to `next`.
+
+The publish workflow requires a GitHub Actions secret named `NPM_TOKEN`.
+
 ## API
 
 ```text
