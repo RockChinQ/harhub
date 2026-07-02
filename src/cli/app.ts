@@ -18,6 +18,7 @@ import {
   runScan,
   runShow,
   runUpdate,
+  runUpload,
   runValidate
 } from "./commands/skills.js";
 import {
@@ -91,6 +92,8 @@ function runSkillCommand(subcommand: string, parsed: ReturnType<typeof parseArgs
       return runShow(parsed);
     case "create":
       return runCreate(parsed);
+    case "upload":
+      return runUpload(parsed);
     case "update":
       return runUpdate(parsed);
     case "delete":

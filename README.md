@@ -104,8 +104,48 @@ The Skills-only MVP is the first wedge because Skills have a concrete package sh
 
 ## Commands
 
+Install the CLI from a checkout:
+
 ```bash
-npm run cli -- assets upload <skill.zip> --workspace <workspace-id> --token <token>
+npm install
+npm run build
+npm install -g .
+```
+
+Configure the target Harhub workspace:
+
+```bash
+export HARHUB_URL=http://127.0.0.1:3310
+export HARHUB_WORKSPACE_ID=ws_demo
+export HARHUB_TOKEN=<access-token>
+```
+
+Scan the current directory and choose which discovered Agent Skills to upload:
+
+```bash
+harhub skills upload
+```
+
+You can also scan a specific repository or directory:
+
+```bash
+harhub skills upload /path/to/repo
+```
+
+In a real terminal, `harhub skills upload` opens a TUI selector. Invalid Skills
+are shown but cannot be selected. For scripts or CI, pass `--all` to upload every
+valid Skill without the selector:
+
+```bash
+harhub skills upload /path/to/repo --all \
+  --url http://127.0.0.1:3310 \
+  --workspace ws_demo \
+  --token "$HARHUB_TOKEN"
+```
+
+```bash
+npm run cli -- skills upload [paths...] --all --workspace <workspace-id> --token <token> --url <harhub-url>
+npm run cli -- assets upload <skill.zip> --workspace <workspace-id> --token <token> --url <harhub-url>
 npm run cli -- assets list
 npm run cli -- assets show <id|name|slug>
 npm run cli -- skills scan [paths...]
@@ -118,7 +158,7 @@ npm run cli -- skills create <name> [--dir skills]
 After `npm run build`, the compiled CLI can also be run directly:
 
 ```bash
-node dist/cli.js assets upload ./code-review.zip --workspace ws_demo --token "$HARHUB_TOKEN"
+node dist/cli.js skills upload ./examples/skills --all --workspace ws_demo --token "$HARHUB_TOKEN"
 node dist/cli.js assets list
 ```
 

@@ -16,6 +16,12 @@ import {
   validateSkills
 } from "../../features/skills/index.js";
 import {
+  resolveHarhubApiUrl,
+  resolveHarhubToken,
+  resolveHarhubWorkspaceId,
+  uploadSkillZip
+} from "../api.js";
+import {
   optionString,
   resolveAssetCatalogPath
 } from "../args.js";
@@ -135,12 +141,12 @@ export function runAssetsCreate(parsed: ParsedArgs): number {
 
 export async function runAssetsUpload(parsed: ParsedArgs): Promise<number> {
   const zipPath = parsed.positionals[0];
-  const workspaceId = optionString(parsed, "workspace");
-  const token = optionString(parsed, "token") ?? process.env.HARHUB_TOKEN;
-  const api = (optionString(parsed, "api") ?? "http://127.0.0.1:3310").replace(/\/+$/g, "");
+  const workspaceId = resolveHarhubWorkspaceId(parsed);
+  const token = resolveHarhubToken(parsed);
+  const apiUrl = resolveHarhubApiUrl(parsed);
 
   if (!zipPath || !workspaceId) {
-    console.error("Usage: harhub assets upload <skill.zip> --workspace <workspace-id> --token <token>");
+    console.error("Usage: harhub assets upload <skill.zip> --workspace <workspace-id> --token <token> [--url <harhub-url>]");
     return 1;
   }
 
@@ -150,24 +156,17 @@ export async function runAssetsUpload(parsed: ParsedArgs): Promise<number> {
   }
 
   const absolutePath = path.resolve(process.cwd(), zipPath);
-  const form = new FormData();
-  form.set(
-    "file",
-    new Blob([readFileSync(absolutePath)], { type: "application/zip" }),
-    path.basename(absolutePath)
-  );
-
-  const response = await fetch(`${api}/api/workspaces/${workspaceId}/assets/upload`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`
-    },
-    body: form
-  });
-  const data = await response.json().catch(() => undefined);
-
-  if (!response.ok) {
-    console.error(typeof data?.error === "string" ? data.error : `Upload failed with ${response.status}`);
+  let data: Record<string, any>;
+  try {
+    data = await uploadSkillZip({
+      apiUrl,
+      workspaceId,
+      token,
+      fileName: path.basename(absolutePath),
+      buffer: readFileSync(absolutePath)
+    });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
     return 1;
   }
 
@@ -286,9 +285,9 @@ async function runAssetApiMutation(
   action: string,
   suffix?: string
 ): Promise<number> {
-  const workspaceId = optionString(parsed, "workspace");
-  const token = optionString(parsed, "token") ?? process.env.HARHUB_TOKEN;
-  const api = (optionString(parsed, "api") ?? "http://127.0.0.1:3310").replace(/\/+$/g, "");
+  const workspaceId = resolveHarhubWorkspaceId(parsed);
+  const token = resolveHarhubToken(parsed);
+  const apiUrl = resolveHarhubApiUrl(parsed);
 
   if (!workspaceId) {
     console.error("A workspace id is required. Pass --workspace <workspace-id>.");
@@ -300,7 +299,7 @@ async function runAssetApiMutation(
     return 1;
   }
 
-  const pathParts = [`${api}/api/workspaces/${workspaceId}/assets`];
+  const pathParts = [`${apiUrl}/api/workspaces/${workspaceId}/assets`];
   if (query) pathParts.push(encodeURIComponent(query));
   if (suffix) pathParts.push(suffix);
   const response = await fetch(pathParts.join("/"), {

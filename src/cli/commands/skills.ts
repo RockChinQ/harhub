@@ -10,12 +10,19 @@ import {
   deleteSkill,
   filterCatalog,
   findSkill,
+  packageSkillDirectory,
   readCatalog,
   scanSkills,
   updateSkillFrontmatter,
   validateSkills,
   writeCatalog
 } from "../../features/skills/index.js";
+import {
+  resolveHarhubApiUrl,
+  resolveHarhubToken,
+  resolveHarhubWorkspaceId,
+  uploadSkillZip
+} from "../api.js";
 import {
   optionString,
   resolveAssetCatalogPath,
@@ -26,6 +33,12 @@ import {
   printIssues,
   printSkillTable
 } from "../format.js";
+import {
+  canUseInteractiveTerminal,
+  promptSecret,
+  promptText,
+  selectSkillsForUpload
+} from "../interactive.js";
 import type { ParsedArgs } from "../types.js";
 
 export function runScan(parsed: ParsedArgs): number {
@@ -160,6 +173,121 @@ export async function runUpdate(parsed: ParsedArgs): Promise<number> {
   return 0;
 }
 
+export async function runUpload(parsed: ParsedArgs): Promise<number> {
+  const interactive = shouldUseInteractiveUpload(parsed);
+  const roots = parsed.positionals.length > 0 ? parsed.positionals : [process.cwd()];
+  const skills = scanSkills({ roots });
+  const issues = validateSkills(skills);
+
+  if (skills.length === 0) {
+    if (parsed.options.json) {
+      console.log(JSON.stringify({ uploaded: [], skills: [], issues }, null, 2));
+      return 1;
+    }
+
+    console.error("No skills found.");
+    printIssues(issues);
+    return 1;
+  }
+
+  let selectedSkills = skills;
+
+  if (interactive) {
+    const selected = await selectSkillsForUpload({ skills, issues });
+    if (!selected) {
+      console.log("Upload cancelled.");
+      return 0;
+    }
+    selectedSkills = selected;
+
+    if (selectedSkills.length === 0) {
+      console.error("No valid skills selected.");
+      return 1;
+    }
+  }
+
+  const selectedIds = new Set(selectedSkills.map((skill) => skill.id));
+  const selectedIssues = issues.filter((issue) => !issue.skillId || selectedIds.has(issue.skillId));
+
+  if (hasErrors(selectedIssues)) {
+    if (parsed.options.json) {
+      console.log(JSON.stringify({ uploaded: [], skills, issues }, null, 2));
+      return 1;
+    }
+
+    console.error("Refusing to upload invalid skills.");
+    printIssues(selectedIssues);
+    return 1;
+  }
+
+  const apiUrl = interactive
+    ? await promptText({ label: "Harhub URL", defaultValue: resolveHarhubApiUrl(parsed) }) ?? resolveHarhubApiUrl(parsed)
+    : resolveHarhubApiUrl(parsed);
+  const workspaceId = interactive
+    ? await promptText({ label: "Workspace ID", defaultValue: resolveHarhubWorkspaceId(parsed), required: true })
+    : resolveHarhubWorkspaceId(parsed);
+  const token = interactive
+    ? resolveHarhubToken(parsed) ?? await promptSecret("Access token")
+    : resolveHarhubToken(parsed);
+
+  if (!workspaceId) {
+    console.error("A workspace id is required. Pass --workspace <workspace-id> or set HARHUB_WORKSPACE_ID.");
+    return 1;
+  }
+
+  if (!token) {
+    console.error("An access token is required. Pass --token or set HARHUB_TOKEN.");
+    return 1;
+  }
+
+  const uploaded: Array<Record<string, unknown>> = [];
+
+  for (const skill of selectedSkills) {
+    const packaged = await packageSkillDirectory(skill);
+    const response = await uploadSkillZip({
+      apiUrl,
+      workspaceId,
+      token,
+      fileName: packaged.fileName,
+      buffer: packaged.buffer
+    });
+
+    uploaded.push({
+      skill: skill.name,
+      fileName: packaged.fileName,
+      rootDir: packaged.rootDir,
+      asset: response.uploaded
+    });
+
+    if (!parsed.options.json) {
+      console.log(`Uploaded ${skill.name} from ${packaged.rootDir}`);
+    }
+  }
+
+  if (parsed.options.json) {
+    console.log(JSON.stringify({ uploaded, selected: selectedSkills, skills, issues }, null, 2));
+  } else {
+    console.log(`Uploaded ${uploaded.length} skill(s) to ${workspaceId}.`);
+  }
+
+  return 0;
+}
+
+function shouldUseInteractiveUpload(parsed: ParsedArgs): boolean {
+  return (
+    canUseInteractiveTerminal() &&
+    !hasBooleanOption(parsed, "json") &&
+    !hasBooleanOption(parsed, "all") &&
+    !hasBooleanOption(parsed, "yes") &&
+    !hasBooleanOption(parsed, "no-interactive")
+  );
+}
+
+function hasBooleanOption(parsed: ParsedArgs, name: string): boolean {
+  const value = parsed.options[name];
+  return value === true || value === "true";
+}
+
 export async function runDelete(parsed: ParsedArgs): Promise<number> {
   const query = parsed.positionals[0];
   if (!query) {
@@ -236,9 +364,9 @@ async function runSkillApiMutation(
   action: string,
   suffix?: string
 ): Promise<number> {
-  const workspaceId = optionString(parsed, "workspace");
-  const token = optionString(parsed, "token") ?? process.env.HARHUB_TOKEN;
-  const api = (optionString(parsed, "api") ?? "http://127.0.0.1:3310").replace(/\/+$/g, "");
+  const workspaceId = resolveHarhubWorkspaceId(parsed);
+  const token = resolveHarhubToken(parsed);
+  const apiUrl = resolveHarhubApiUrl(parsed);
 
   if (!workspaceId) {
     console.error("A workspace id is required. Pass --workspace <workspace-id>.");
@@ -250,7 +378,7 @@ async function runSkillApiMutation(
     return 1;
   }
 
-  const pathParts = [`${api}/api/workspaces/${workspaceId}/skills`];
+  const pathParts = [`${apiUrl}/api/workspaces/${workspaceId}/skills`];
   if (query) pathParts.push(encodeURIComponent(query));
   if (suffix) pathParts.push(suffix);
   const response = await fetch(pathParts.join("/"), {
