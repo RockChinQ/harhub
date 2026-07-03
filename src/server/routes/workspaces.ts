@@ -1,9 +1,12 @@
 import type { Express } from "express";
 import {
-  addWorkspaceMember,
+  acceptWorkspaceInvitation,
+  createWorkspaceInvitation,
   createWorkspaceForAccount,
   listAccountWorkspaces,
+  listWorkspacePendingInvitations,
   listWorkspaceMembers,
+  removeWorkspaceInvitation,
   removeWorkspaceMember,
   updateWorkspaceForAccount,
   updateWorkspaceMemberRole
@@ -14,6 +17,8 @@ import {
   readWorkspaceRole,
   sendError
 } from "../utils/http.js";
+import { sendWorkspaceInvitationEmail } from "../services/email.js";
+import { publicAppUrl } from "../services/oauth.js";
 
 export function registerWorkspaceRoutes(app: Express): void {
   app.get("/api/workspaces", async (req, res) => {
@@ -63,6 +68,24 @@ export function registerWorkspaceRoutes(app: Express): void {
   });
 
   registerMemberRoutes(app);
+
+  app.post("/api/invitations/accept", async (req, res) => {
+    const context = await requireAuth(req, res);
+    if (!context) return;
+
+    try {
+      const workspace = await acceptWorkspaceInvitation(
+        context.account.id,
+        String(req.body?.token ?? "")
+      );
+      res.json({
+        workspace,
+        ...(await listAccountWorkspaces(context.account.id))
+      });
+    } catch (error) {
+      sendError(res, error, 400);
+    }
+  });
 }
 
 function registerMemberRoutes(app: Express): void {
@@ -73,7 +96,8 @@ function registerMemberRoutes(app: Express): void {
     try {
       res.json({
         workspace: context.workspace,
-        members: await listWorkspaceMembers(context.account.id, context.workspace.id)
+        members: await listWorkspaceMembers(context.account.id, context.workspace.id),
+        invitations: await listWorkspacePendingInvitations(context.account.id, context.workspace.id)
       });
     } catch (error) {
       sendError(res, error, 403);
@@ -85,13 +109,31 @@ function registerMemberRoutes(app: Express): void {
     if (!context) return;
 
     try {
-      const member = await addWorkspaceMember(context.account.id, context.workspace.id, {
+      const invitation = await createWorkspaceInvitation(context.account.id, context.workspace.id, {
         email: String(req.body?.email ?? ""),
         role: readWorkspaceRole(req.body?.role)
       });
-      res.status(201).json({
+      const acceptUrl = `${publicAppUrl(req)}/?invite=${encodeURIComponent(invitation.token)}`;
+      let emailError: string | undefined;
+      try {
+        await sendWorkspaceInvitationEmail({
+          email: invitation.email,
+          workspaceName: context.workspace.name,
+          inviterName: context.account.name,
+          acceptUrl
+        });
+      } catch (caught) {
+        emailError = caught instanceof Error ? caught.message : String(caught);
+      }
+      res.status(emailError ? 202 : 201).json({
         workspace: context.workspace,
-        member,
+        invitation,
+        invitationUrl: acceptUrl,
+        email: {
+          sent: !emailError,
+          error: emailError
+        },
+        invitations: await listWorkspacePendingInvitations(context.account.id, context.workspace.id),
         members: await listWorkspaceMembers(context.account.id, context.workspace.id)
       });
     } catch (error) {
@@ -126,6 +168,22 @@ function registerMemberRoutes(app: Express): void {
 
     try {
       await removeWorkspaceMember(context.account.id, context.workspace.id, req.params.membershipId);
+      res.status(204).send();
+    } catch (error) {
+      sendError(res, error, 400);
+    }
+  });
+
+  app.delete("/api/workspaces/:workspaceId/invitations/:invitationId", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
+    if (!context) return;
+
+    try {
+      await removeWorkspaceInvitation(
+        context.account.id,
+        context.workspace.id,
+        req.params.invitationId
+      );
       res.status(204).send();
     } catch (error) {
       sendError(res, error, 400);

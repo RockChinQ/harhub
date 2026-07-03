@@ -8,8 +8,15 @@ import {
   toPublicAccount,
   uniqueWorkspaceSlug
 } from "./records.js";
+import {
+  inviteWorkspaceMember,
+  listWorkspaceInvitations,
+  revokeWorkspaceInvitation,
+  workspaceMembersFromState
+} from "./invitations.js";
 import { loadState, saveState } from "./store.js";
 import type {
+  WorkspaceInvitation,
   WorkspaceMember,
   WorkspaceRecord,
   WorkspaceRole
@@ -99,51 +106,30 @@ export async function listWorkspaceMembers(
   const state = await loadState();
   requireWorkspaceMembership(state, accountId, workspaceId);
 
-  return state.memberships
-    .filter((membership) => membership.workspaceId === workspaceId)
-    .map((membership) => {
-      const account = state.accounts.find((item) => item.id === membership.accountId);
-      if (!account) return undefined;
-      return {
-        account: toPublicAccount(account),
-        membership
-      };
-    })
-    .filter((member): member is WorkspaceMember => Boolean(member))
-    .sort((a, b) => a.account.email.localeCompare(b.account.email));
+  return workspaceMembersFromState(state, workspaceId);
 }
 
-export async function addWorkspaceMember(
+export async function listWorkspacePendingInvitations(
+  accountId: string,
+  workspaceId: string
+): Promise<WorkspaceInvitation[]> {
+  return listWorkspaceInvitations(accountId, workspaceId);
+}
+
+export async function createWorkspaceInvitation(
   actorAccountId: string,
   workspaceId: string,
   input: { email: string; role: WorkspaceRole }
-): Promise<WorkspaceMember> {
-  const state = await loadState();
-  requireWorkspaceAdmin(state, actorAccountId, workspaceId);
+): Promise<WorkspaceInvitation> {
+  return inviteWorkspaceMember(actorAccountId, workspaceId, input);
+}
 
-  const email = input.email.trim().toLowerCase();
-  const account = state.accounts.find((item) => item.email.toLowerCase() === email);
-  if (!account) {
-    throw new Error("Invitee must create an account before being added.");
-  }
-
-  if (
-    state.memberships.some(
-      (membership) =>
-        membership.accountId === account.id && membership.workspaceId === workspaceId
-    )
-  ) {
-    throw new Error("Account is already a workspace member.");
-  }
-
-  const membership = createMembership(account.id, workspaceId, input.role);
-  state.memberships.push(membership);
-  await saveState(state);
-
-  return {
-    account: toPublicAccount(account),
-    membership
-  };
+export async function removeWorkspaceInvitation(
+  actorAccountId: string,
+  workspaceId: string,
+  invitationId: string
+): Promise<void> {
+  return revokeWorkspaceInvitation(actorAccountId, workspaceId, invitationId);
 }
 
 export async function updateWorkspaceMemberRole(

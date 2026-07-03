@@ -1,20 +1,28 @@
 import * as React from "react"
 import {
+  Building2,
+  Check,
+  ChevronsUpDown,
   GalleryVerticalEnd,
   Layers3,
+  Plus,
   ScrollText,
   Server,
+  Settings,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
+import { Button } from "@/components/ui/button"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
 import {
   Sidebar,
   SidebarContent,
@@ -25,26 +33,30 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import type { SessionResponse } from "@/lib/api"
+import { createWorkspace, type SessionResponse } from "@/lib/api"
 import type { WorkspaceRecord } from "../../../shared/types"
 
 type AppSidebarView = "assets" | "asset-detail" | "workspace" | "account"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
+  token: string
   session: SessionResponse
   activeWorkspace?: WorkspaceRecord
   view: AppSidebarView
   onNavigate: (route: { view: AppSidebarView; assetQuery?: string }) => void
   onWorkspaceChange: (workspaceId: string) => void
+  onSessionChange: (session: SessionResponse, workspace?: WorkspaceRecord) => Promise<void>
   onLogout: () => void
 }
 
 export function AppSidebar({
+  token,
   session,
   activeWorkspace,
   view,
   onNavigate,
   onWorkspaceChange,
+  onSessionChange,
   onLogout,
   ...props
 }: AppSidebarProps) {
@@ -72,9 +84,12 @@ export function AppSidebar({
           </SidebarMenuItem>
         </SidebarMenu>
         <WorkspaceSelect
+          token={token}
           workspaces={session.workspaces}
           activeWorkspace={activeWorkspace}
+          onNavigate={onNavigate}
           onWorkspaceChange={onWorkspaceChange}
+          onSessionChange={onSessionChange}
         />
       </SidebarHeader>
       <SidebarContent>
@@ -112,7 +127,6 @@ export function AppSidebar({
             avatar: "",
           }}
           isActive={view === "account"}
-          onOpenWorkspace={() => onNavigate({ view: "workspace" })}
           onOpenAccount={() => onNavigate({ view: "account" })}
           onLogout={onLogout}
         />
@@ -123,46 +137,133 @@ export function AppSidebar({
 }
 
 function WorkspaceSelect({
+  token,
   workspaces,
   activeWorkspace,
+  onNavigate,
   onWorkspaceChange,
+  onSessionChange,
 }: {
+  token: string
   workspaces: WorkspaceRecord[]
   activeWorkspace?: WorkspaceRecord
+  onNavigate: (route: { view: AppSidebarView; assetQuery?: string }) => void
   onWorkspaceChange: (workspaceId: string) => void
+  onSessionChange: (session: SessionResponse, workspace?: WorkspaceRecord) => Promise<void>
 }) {
+  const [newWorkspaceName, setNewWorkspaceName] = React.useState("")
+  const [isCreating, setIsCreating] = React.useState(false)
+  const [message, setMessage] = React.useState<string | undefined>()
+
+  async function createNewWorkspace(event: React.FormEvent) {
+    event.preventDefault()
+    const name = newWorkspaceName.trim()
+    if (!name) return
+
+    setIsCreating(true)
+    setMessage(undefined)
+    try {
+      const result = await createWorkspace(token, {
+        name,
+        defaultScanPaths: ["examples"],
+        skillRoot: "skills",
+      })
+      setNewWorkspaceName("")
+      await onSessionChange(result, result.workspace)
+      onNavigate({ view: "assets" })
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
   return (
     <div className="px-2 pb-2 group-data-[collapsible=icon]:hidden">
-      <Select
-        value={activeWorkspace?.id}
-        onValueChange={onWorkspaceChange}
-        disabled={workspaces.length === 0}
-      >
-        <SelectTrigger
-          className="h-11 rounded-lg border-sidebar-border/80 bg-sidebar-accent/55 px-3 py-2 text-sidebar-foreground shadow-sm transition-colors hover:bg-sidebar-accent focus:ring-2 focus:ring-blue-500/25 data-[state=open]:border-blue-300 data-[state=open]:bg-sidebar-accent"
-          aria-label="Workspace"
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            className="h-11 w-full justify-between rounded-lg border border-sidebar-border/80 bg-sidebar-accent/55 px-3 py-2 text-sidebar-foreground shadow-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-blue-500/25 data-[state=open]:border-blue-300 data-[state=open]:bg-sidebar-accent"
+            aria-label="Workspace"
+          >
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-sidebar-primary/10 text-sidebar-primary">
+              <Building2 className="size-4" aria-hidden="true" />
+            </span>
+            <span className="grid min-w-0 flex-1 text-left leading-tight">
+              <span className="text-[10px] font-medium uppercase tracking-wide text-sidebar-foreground/55">
+                Organization
+              </span>
+              <span className="truncate text-sm font-medium">
+                {activeWorkspace?.name ?? "Select organization"}
+              </span>
+            </span>
+            <ChevronsUpDown className="size-4 text-sidebar-foreground/55" aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="start"
+          side="bottom"
+          sideOffset={6}
+          className="w-[--radix-dropdown-menu-trigger-width] min-w-64 rounded-lg border-sidebar-border/80 shadow-lg"
         >
-          <div className="grid min-w-0 flex-1 text-left leading-tight">
-            <span className="text-[10px] font-medium uppercase tracking-wide text-sidebar-foreground/55">
-              Organization
-            </span>
-            <span className="truncate text-sm font-medium">
-              <SelectValue placeholder="Select organization" />
-            </span>
-          </div>
-        </SelectTrigger>
-        <SelectContent className="rounded-lg border-sidebar-border/80 shadow-lg">
+          <DropdownMenuLabel className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+            Workspaces
+          </DropdownMenuLabel>
           {workspaces.map((workspace) => (
-            <SelectItem
+            <DropdownMenuItem
               key={workspace.id}
-              value={workspace.id}
-              className="h-9 rounded-md font-medium"
+              className="items-start gap-2 rounded-md px-2 py-2"
+              onSelect={() => {
+                if (workspace.id !== activeWorkspace?.id) {
+                  onWorkspaceChange(workspace.id)
+                }
+              }}
             >
-              {workspace.name}
-            </SelectItem>
+              <Building2 className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="grid min-w-0 flex-1">
+                <span className="truncate text-sm font-medium">{workspace.name}</span>
+                <span className="truncate text-xs text-muted-foreground">{workspace.slug}</span>
+              </span>
+              {workspace.id === activeWorkspace?.id ? (
+                <Check className="mt-0.5 size-4 text-primary" aria-hidden="true" />
+              ) : null}
+            </DropdownMenuItem>
           ))}
-        </SelectContent>
-      </Select>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="rounded-md px-2 py-2 text-sm font-medium"
+            onSelect={() => onNavigate({ view: "workspace" })}
+          >
+            <Settings className="size-4 text-muted-foreground" aria-hidden="true" />
+            Workspace settings
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="px-2 py-2 font-normal">
+            <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+              <Plus className="size-3.5" aria-hidden="true" />
+              New workspace
+            </div>
+            <form className="grid gap-2" onSubmit={createNewWorkspace}>
+              <Input
+                value={newWorkspaceName}
+                onChange={(event) => setNewWorkspaceName(event.target.value)}
+                onKeyDown={(event) => event.stopPropagation()}
+                placeholder="New workspace"
+                disabled={isCreating}
+                required
+              />
+              <Button type="submit" size="sm" disabled={isCreating || !newWorkspaceName.trim()}>
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                Add workspace
+              </Button>
+            </form>
+            {message ? (
+              <p className="mt-2 text-xs text-destructive">{message}</p>
+            ) : null}
+          </DropdownMenuLabel>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 }

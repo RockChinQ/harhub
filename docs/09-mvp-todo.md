@@ -18,8 +18,9 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 当前代码中已经存在：
 
 - **Fullstack app**：Express API、Vite/React frontend、shared TypeScript types 和 CLI entry point。
-- **Authentication**：本地 email/password accounts、bearer-token sessions、profile updates、password changes 和 logout。
+- **Authentication**：本地 email/password accounts、Google/GitHub OAuth、邮件验证码登录、bearer-token sessions、profile updates、password changes 和 logout。
 - **Tenant model**：workspaces、memberships、workspace roles、default scan paths 和 workspace-scoped catalogs。
+- **Workspace invitations**：owner/admin 可邀请邮箱加入 workspace、Resend 发送邀请邮件、pending invitation 可撤销、invite token 可用于登录/注册/OAuth 后进入 workspace。
 - **Skill asset flow**：S3-compatible zip upload、`SKILL.md` extraction、runtime indexing、search/filter、table view、detail view、file tree preview 和 deletion。
 - **Validation foundation**：递归 `SKILL.md` scanning、官方 frontmatter checks、name validation、description checks，以及官方可选字段 checks。
 - **CLI foundation**：local scan、validate、list、show、create、asset scan、asset validate、asset create、interactive TUI upload、local Skill directory packaging 和 API-backed zip upload。
@@ -207,7 +208,10 @@ Distribution action 可以是：
 - [ ] Workspace settings、member changes、uploads 和 deletes 均要求 owner/admin 权限。
 - [ ] 按角色允许 member/viewer read-only access。
 - [ ] 为 auth 和 upload endpoints 添加 rate limiting。
-- [ ] 在 broad public signup 前添加 email verification 或明确的 MVP invite-code gate。
+- [x] 添加邮件验证码登录，使用 Resend 发送一次性 code。
+- [x] 添加 Google/GitHub OAuth 登录，并绑定 provider identity。
+- [x] 添加 workspace invitation token flow，支持登录/注册/OAuth 后加入 workspace。
+- [ ] 在 broad public signup 前添加明确的 MVP invite-code gate 或 signup allowlist。
 - [ ] 添加 password reset，或在计划很快使用外部 auth provider 时文档化临时 auth。
 - [ ] 添加 request logging，包含 workspace/account IDs 且不记录 secrets。
 

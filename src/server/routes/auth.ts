@@ -1,11 +1,18 @@
 import type { Express } from "express";
+import type { AuthProvider } from "../../shared/types.js";
 import {
   changeAccountPassword,
+  consumeOAuthState,
+  createEmailLoginCode,
+  createOAuthState,
   createSession,
   deleteSession,
+  getInvitationByToken,
   loginAccount,
+  signInWithOAuthProfile,
   signUpAccount,
-  updateAccountProfile
+  updateAccountProfile,
+  verifyEmailLoginCode
 } from "../../state/index.js";
 import {
   buildSessionPayload,
@@ -16,8 +23,28 @@ import {
   getBearerToken,
   sendError
 } from "../utils/http.js";
+import {
+  isEmailDeliveryConfigured,
+  sendLoginCodeEmail
+} from "../services/email.js";
+import {
+  buildOAuthAuthorizationUrl,
+  exchangeOAuthCode,
+  oauthProviderConfigured,
+  oauthRedirectUri
+} from "../services/oauth.js";
 
 export function registerAuthRoutes(app: Express): void {
+  app.get("/api/auth/config", (_req, res) => {
+    res.json({
+      emailCode: isEmailDeliveryConfigured(),
+      oauth: {
+        google: oauthProviderConfigured("google"),
+        github: oauthProviderConfigured("github")
+      }
+    });
+  });
+
   app.get("/api/session", async (req, res) => {
     const context = await getAuthContext(req);
     if (!context) {
@@ -36,7 +63,11 @@ export function registerAuthRoutes(app: Express): void {
 
   app.post("/api/auth/login", async (req, res) => {
     try {
-      const account = await loginAccount(String(req.body?.email ?? ""), String(req.body?.password ?? ""));
+      const account = await loginAccount(
+        String(req.body?.email ?? ""),
+        String(req.body?.password ?? ""),
+        typeof req.body?.inviteToken === "string" ? req.body.inviteToken : undefined
+      );
       const token = await createSession(account.id);
       res.json({ token, ...(await buildSessionPayload(account)) });
     } catch (error) {
@@ -51,13 +82,109 @@ export function registerAuthRoutes(app: Express): void {
         name: String(req.body?.name ?? ""),
         password: String(req.body?.password ?? ""),
         workspaceName:
-          typeof req.body?.workspaceName === "string" ? req.body.workspaceName : undefined
+          typeof req.body?.workspaceName === "string" ? req.body.workspaceName : undefined,
+        inviteToken:
+          typeof req.body?.inviteToken === "string" ? req.body.inviteToken : undefined
       });
       const token = await createSession(account.id);
       res.status(201).json({ token, ...(await buildSessionPayload(account)) });
     } catch (error) {
       sendError(res, error, 400);
     }
+  });
+
+  app.post("/api/auth/email-code/request", async (req, res) => {
+    try {
+      const result = await createEmailLoginCode({
+        email: String(req.body?.email ?? ""),
+        inviteToken:
+          typeof req.body?.inviteToken === "string" ? req.body.inviteToken : undefined
+      });
+      await sendLoginCodeEmail({
+        email: result.email,
+        code: result.code
+      });
+      res.json({ sent: true, expiresAt: result.expiresAt });
+    } catch (error) {
+      sendError(res, error, 400);
+    }
+  });
+
+  app.post("/api/auth/email-code/verify", async (req, res) => {
+    try {
+      const account = await verifyEmailLoginCodeRoute(req.body);
+      const token = await createSession(account.id);
+      res.json({ token, ...(await buildSessionPayload(account)) });
+    } catch (error) {
+      sendError(res, error, 401);
+    }
+  });
+
+  app.get("/api/auth/oauth/:provider/start", async (req, res) => {
+    const provider = readProvider(req.params.provider);
+    if (!provider) {
+      res.status(404).json({ error: "OAuth provider not found." });
+      return;
+    }
+
+    try {
+      const state = await createOAuthState({
+        provider,
+        redirectPath: typeof req.query.redirect === "string" ? req.query.redirect : "/skills",
+        inviteToken: typeof req.query.invite === "string" ? req.query.invite : undefined
+      });
+      res.redirect(buildOAuthAuthorizationUrl({
+        provider,
+        state: state.state,
+        redirectUri: oauthRedirectUri(req, provider)
+      }));
+    } catch (error) {
+      sendError(res, error, 400);
+    }
+  });
+
+  app.get("/api/auth/oauth/:provider/callback", async (req, res) => {
+    const provider = readProvider(req.params.provider);
+    if (!provider) {
+      res.status(404).send("OAuth provider not found.");
+      return;
+    }
+
+    try {
+      const oauthState = await consumeOAuthState(provider, String(req.query.state ?? ""));
+      const profile = await exchangeOAuthCode({
+        provider,
+        code: String(req.query.code ?? ""),
+        redirectUri: oauthRedirectUri(req, provider)
+      });
+      const account = await signInWithOAuthProfile({
+        ...profile,
+        inviteToken: oauthState.inviteToken
+      });
+      const token = await createSession(account.id);
+      res.type("html").send(authCallbackHtml({
+        token,
+        redirectPath: oauthState.redirectPath
+      }));
+    } catch (error) {
+      res.status(400).type("html").send(authCallbackHtml({
+        error: error instanceof Error ? error.message : String(error),
+        redirectPath: "/"
+      }));
+    }
+  });
+
+  app.get("/api/invitations/:token", async (req, res) => {
+    const result = await getInvitationByToken(req.params.token);
+    if (!result) {
+      res.status(404).json({ error: "Invitation not found." });
+      return;
+    }
+
+    res.json({
+      invitation: result.invitation,
+      workspace: result.workspace
+    });
   });
 
   app.post("/api/auth/logout", async (req, res) => {
@@ -95,4 +222,47 @@ export function registerAuthRoutes(app: Express): void {
       sendError(res, error, 400);
     }
   });
+}
+
+async function verifyEmailLoginCodeRoute(body: unknown) {
+  return verifyEmailLoginCode({
+    email: String((body as { email?: unknown })?.email ?? ""),
+    code: String((body as { code?: unknown })?.code ?? ""),
+    inviteToken:
+      typeof (body as { inviteToken?: unknown })?.inviteToken === "string"
+        ? (body as { inviteToken: string }).inviteToken
+        : undefined
+  });
+}
+
+function readProvider(value: string): AuthProvider | undefined {
+  return value === "google" || value === "github" ? value : undefined;
+}
+
+function authCallbackHtml(input: {
+  token?: string;
+  error?: string;
+  redirectPath: string;
+}): string {
+  const payload = JSON.stringify(input).replace(/</g, "\\u003c");
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Harhub Authentication</title>
+  </head>
+  <body>
+    <script>
+      const payload = ${payload};
+      if (payload.token) {
+        localStorage.setItem("harhub.token", payload.token);
+      }
+      if (payload.error) {
+        sessionStorage.setItem("harhub.auth_error", payload.error);
+      }
+      window.location.replace(payload.redirectPath || "/skills");
+    </script>
+  </body>
+</html>`;
 }

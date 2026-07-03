@@ -2,6 +2,8 @@ export type SkillValidationSeverity = "error" | "warning";
 
 export type WorkspaceRole = "owner" | "admin" | "member" | "viewer";
 
+export type AuthProvider = "google" | "github";
+
 export type AssetKind = "skill";
 
 export type AssetHealth = "valid" | "warning" | "error" | "unknown";
@@ -41,6 +43,16 @@ export interface AccountProfile {
   updatedAt?: string;
 }
 
+export interface AccountIdentity {
+  id: string;
+  accountId: string;
+  provider: AuthProvider;
+  providerAccountId: string;
+  email: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface WorkspaceRecord {
   id: string;
   name: string;
@@ -58,6 +70,23 @@ export interface WorkspaceMembership {
   role: WorkspaceRole;
   createdAt: string;
   updatedAt?: string;
+}
+
+export type WorkspaceInvitationStatus = "pending" | "accepted" | "revoked";
+
+export interface WorkspaceInvitation {
+  id: string;
+  workspaceId: string;
+  email: string;
+  role: WorkspaceRole;
+  token: string;
+  invitedByAccountId: string;
+  status: WorkspaceInvitationStatus;
+  createdAt: string;
+  expiresAt: string;
+  updatedAt?: string;
+  acceptedAt?: string;
+  acceptedByAccountId?: string;
 }
 
 export interface WorkspaceMember {

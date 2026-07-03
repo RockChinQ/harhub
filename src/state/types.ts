@@ -1,5 +1,8 @@
 import type {
   AccountProfile,
+  AccountIdentity,
+  AuthProvider,
+  WorkspaceInvitation,
   WorkspaceMembership,
   WorkspaceRecord
 } from "../shared/types.js";
@@ -14,11 +17,35 @@ export interface SessionRecord {
   createdAt: string;
 }
 
+export interface EmailLoginCodeRecord {
+  id: string;
+  email: string;
+  codeHash: string;
+  inviteToken?: string;
+  attempts: number;
+  createdAt: string;
+  expiresAt: string;
+  consumedAt?: string;
+}
+
+export interface OAuthStateRecord {
+  state: string;
+  provider: AuthProvider;
+  redirectPath: string;
+  inviteToken?: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
 export interface AppState {
   schemaVersion: 1;
   accounts: AccountRecord[];
+  identities: AccountIdentity[];
   workspaces: WorkspaceRecord[];
   memberships: WorkspaceMembership[];
+  invitations: WorkspaceInvitation[];
+  emailLoginCodes: EmailLoginCodeRecord[];
+  oauthStates: OAuthStateRecord[];
   sessions: SessionRecord[];
 }
 

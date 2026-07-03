@@ -91,7 +91,6 @@ export function AppContent({
         {view === "workspace" && activeWorkspace ? (
           <WorkspaceView
             token={token}
-            session={session}
             workspace={activeWorkspace}
             onSessionChange={onSessionChange}
           />

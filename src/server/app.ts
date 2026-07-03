@@ -13,6 +13,7 @@ import { registerWorkspaceRoutes } from "./routes/workspaces.js";
 
 export function createServerApp() {
   const app = express();
+  app.set("trust proxy", true);
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: {

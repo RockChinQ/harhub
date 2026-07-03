@@ -20,30 +20,36 @@ import { viewTitle } from "./routing";
 import type { AppRoute, View } from "./types";
 
 export function AppLayout({
+  token,
   session,
   activeWorkspace,
   view,
   onNavigate,
   onWorkspaceChange,
+  onSessionChange,
   onLogout,
   children
 }: {
+  token: string;
   session: SessionResponse;
   activeWorkspace?: WorkspaceRecord;
   view: View;
   onNavigate: (route: AppRoute) => void;
   onWorkspaceChange: (workspaceId: string) => void;
+  onSessionChange: (session: SessionResponse, workspace?: WorkspaceRecord) => Promise<void>;
   onLogout: () => Promise<void>;
   children: ReactNode;
 }) {
   return (
     <SidebarProvider className="h-svh overflow-hidden">
       <AppSidebar
+        token={token}
         session={session}
         activeWorkspace={activeWorkspace}
         view={view}
         onNavigate={onNavigate}
         onWorkspaceChange={onWorkspaceChange}
+        onSessionChange={onSessionChange}
         onLogout={onLogout}
       />
       <SidebarInset className="h-svh min-w-0 overflow-hidden">

@@ -65,16 +65,24 @@ function createSeedState(): AppState {
   return {
     schemaVersion: 1,
     accounts: [account],
+    identities: [],
     workspaces: [workspace],
     memberships: [createMembership(account.id, workspace.id, "owner")],
+    invitations: [],
+    emailLoginCodes: [],
+    oauthStates: [],
     sessions: []
   };
 }
 
 function normalizeState(state: AppState): AppState {
   state.accounts ??= [];
+  state.identities ??= [];
   state.workspaces ??= [];
   state.memberships ??= [];
+  state.invitations ??= [];
+  state.emailLoginCodes ??= [];
+  state.oauthStates ??= [];
   state.sessions ??= [];
 
   if (state.accounts.length === 0 || state.workspaces.length === 0) {
@@ -87,6 +95,10 @@ function normalizeState(state: AppState): AppState {
 
   for (const membership of state.memberships) {
     membership.updatedAt ??= membership.createdAt;
+  }
+
+  for (const invitation of state.invitations) {
+    invitation.updatedAt ??= invitation.createdAt;
   }
 
   for (const workspace of state.workspaces) {

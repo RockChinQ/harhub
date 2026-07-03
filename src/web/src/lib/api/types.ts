@@ -1,9 +1,11 @@
 import type {
   AccountProfile,
+  AuthProvider,
   AssetRecord,
   SkillRecord,
   StorageStatus,
   ValidationIssue,
+  WorkspaceInvitation,
   WorkspaceMember,
   WorkspaceMembership,
   WorkspaceRecord
@@ -17,6 +19,11 @@ export interface SessionResponse {
 
 export interface AuthResponse extends SessionResponse {
   token: string;
+}
+
+export interface AuthConfigResponse {
+  emailCode: boolean;
+  oauth: Record<AuthProvider, boolean>;
 }
 
 export interface SkillListResponse {
@@ -73,8 +80,15 @@ export interface WorkspaceMutationResponse extends SessionResponse {
 export interface WorkspaceMembersResponse {
   workspace: WorkspaceRecord;
   members: WorkspaceMember[];
+  invitations: WorkspaceInvitation[];
 }
 
 export interface WorkspaceMemberMutationResponse extends WorkspaceMembersResponse {
-  member: WorkspaceMember;
+  member?: WorkspaceMember;
+  invitation?: WorkspaceInvitation;
+  invitationUrl?: string;
+  email?: {
+    sent: boolean;
+    error?: string;
+  };
 }

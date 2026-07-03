@@ -3,7 +3,6 @@
 import {
   BadgeCheck,
   ChevronsUpDown,
-  GalleryVerticalEnd,
   LogOut,
 } from "lucide-react"
 
@@ -31,7 +30,6 @@ import { cn } from "@/lib/utils"
 export function NavUser({
   user,
   isActive,
-  onOpenWorkspace,
   onOpenAccount,
   onLogout,
 }: {
@@ -41,7 +39,6 @@ export function NavUser({
     avatar?: string
   }
   isActive?: boolean
-  onOpenWorkspace: () => void
   onOpenAccount: () => void
   onLogout: () => void
 }) {
@@ -95,10 +92,6 @@ export function NavUser({
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={onOpenWorkspace}>
-              <GalleryVerticalEnd />
-              Workspace settings
-            </DropdownMenuItem>
             <DropdownMenuItem onSelect={onOpenAccount}>
               <BadgeCheck />
               Account

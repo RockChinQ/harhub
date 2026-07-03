@@ -5,9 +5,11 @@ Harhub 的 SaaS MVP 采用云原生持久化优先，同时保留本地 JSON fal
 ## 对象
 
 - **Account**：已登录用户，包含邮箱、显示名、密码哈希和 sessions。
+- **Account Identity**：Google/GitHub OAuth identity 与 Harhub account 的绑定关系。
 - **Workspace**：租户边界，包含默认扫描路径、Skill root 和 workspace 级 catalog。
 - **Membership**：账号与 workspace 之间的角色关系。
 - **Session**：登录或注册后签发的 bearer token。
+- **Workspace Invitation**：workspace-scoped 邀请，包含目标邮箱、角色、token、过期时间和接受状态。
 
 ## 云原生持久化
 
@@ -54,6 +56,25 @@ AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
 ```
 
+如果启用 hosted login 和邀请邮件，还需要配置：
+
+```bash
+HARHUB_PUBLIC_URL=https://harhub.example.com
+RESEND_API_KEY=...
+HARHUB_EMAIL_FROM="Harhub <hello@example.com>"
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GITHUB_CLIENT_ID=...
+GITHUB_CLIENT_SECRET=...
+```
+
+OAuth callback URL 使用 API host：
+
+```text
+https://harhub.example.com/api/auth/oauth/google/callback
+https://harhub.example.com/api/auth/oauth/github/callback
+```
+
 如果 managed database 要求 TLS，设置：
 
 ```bash
@@ -74,10 +95,18 @@ SaaS routes 按 workspace 作用域组织：
 
 ```text
 POST /api/auth/login
+POST /api/auth/email-code/request
+POST /api/auth/email-code/verify
+GET  /api/auth/oauth/:provider/start
+GET  /api/auth/oauth/:provider/callback
 GET  /api/session
 GET  /api/workspaces
 POST /api/workspaces
 PATCH /api/workspaces/:workspaceId
+GET  /api/workspaces/:workspaceId/members
+POST /api/workspaces/:workspaceId/members
+DELETE /api/workspaces/:workspaceId/invitations/:invitationId
+POST /api/invitations/accept
 GET  /api/workspaces/:workspaceId/skills
 POST /api/workspaces/:workspaceId/skills/scan
 POST /api/workspaces/:workspaceId/skills

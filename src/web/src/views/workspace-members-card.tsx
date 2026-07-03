@@ -1,7 +1,11 @@
-import { Trash2, UserPlus } from "lucide-react";
+import { MailPlus, Trash2, UserPlus, X } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
-import type { WorkspaceMember, WorkspaceRole } from "../../../shared/types";
+import type {
+  WorkspaceInvitation,
+  WorkspaceMember,
+  WorkspaceRole
+} from "../../../shared/types";
 import { roleOptions } from "../app/constants";
 import {
   AlertDialog,
@@ -32,6 +36,7 @@ import {
 
 export function WorkspaceMembersCard({
   members,
+  invitations,
   memberEmail,
   memberRole,
   memberMessage,
@@ -39,9 +44,11 @@ export function WorkspaceMembersCard({
   onMemberRoleChange,
   onInviteMember,
   onChangeRole,
-  onRemoveMember
+  onRemoveMember,
+  onRevokeInvitation
 }: {
   members: WorkspaceMember[];
+  invitations: WorkspaceInvitation[];
   memberEmail: string;
   memberRole: WorkspaceRole;
   memberMessage?: string;
@@ -50,6 +57,7 @@ export function WorkspaceMembersCard({
   onInviteMember: (event: FormEvent) => void;
   onChangeRole: (membershipId: string, role: WorkspaceRole) => void;
   onRemoveMember: (membershipId: string) => void;
+  onRevokeInvitation: (invitationId: string) => void;
 }) {
   const [memberToRemove, setMemberToRemove] = useState<string | undefined>();
   const selectedMember = members.find((member) => member.membership.id === memberToRemove);
@@ -116,6 +124,41 @@ export function WorkspaceMembersCard({
               </tbody>
             </table>
           </div>
+          {invitations.length > 0 ? (
+            <div className="rounded-lg border bg-muted/20">
+              <div className="flex items-center gap-2 border-b px-3 py-2 text-xs font-medium uppercase text-muted-foreground">
+                <MailPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                Pending invitations
+              </div>
+              <div className="divide-y">
+                {invitations.map((invitation) => (
+                  <div
+                    key={invitation.id}
+                    className="grid gap-2 px-3 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">{invitation.email}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Expires {new Date(invitation.expiresAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <div className="text-xs font-medium uppercase text-muted-foreground">
+                      {invitation.role}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onRevokeInvitation(invitation.id)}
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                      Revoke
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <form className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_140px_auto]" onSubmit={onInviteMember}>
             <Input
               value={memberEmail}
@@ -138,7 +181,7 @@ export function WorkspaceMembersCard({
             </Select>
             <Button type="submit">
               <UserPlus className="h-4 w-4" aria-hidden="true" />
-              Add
+              Invite
             </Button>
           </form>
           {memberMessage ? <p className="text-sm text-muted-foreground">{memberMessage}</p> : null}

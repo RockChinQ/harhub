@@ -60,6 +60,20 @@ export async function removeWorkspaceMember(
   });
 }
 
+export async function revokeWorkspaceInvitation(
+  token: string,
+  workspaceId: string,
+  invitationId: string
+): Promise<void> {
+  await request<void>(
+    `/api/workspaces/${workspaceId}/invitations/${invitationId}`,
+    {
+      token,
+      method: "DELETE"
+    }
+  );
+}
+
 export async function createWorkspace(
   token: string,
   input: {

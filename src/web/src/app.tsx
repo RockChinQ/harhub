@@ -18,6 +18,7 @@ import {
 } from "./app/routing";
 import type { AppRoute } from "./app/types";
 import {
+  acceptInvitation,
   getSession,
   getWorkspaceAssets,
   logout,
@@ -33,6 +34,8 @@ export function App() {
     () => localStorage.getItem(WORKSPACE_KEY) ?? ""
   );
   const [route, setRoute] = useState<AppRoute>(() => readRouteFromLocation());
+  const [inviteToken, setInviteToken] = useState(() => readInviteTokenFromLocation());
+  const [isAcceptingInvite, setIsAcceptingInvite] = useState(false);
   const [assets, setAssets] = useState<AssetRecord[]>([]);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [storageStatus, setStorageStatus] = useState<StorageStatus | undefined>();
@@ -53,10 +56,12 @@ export function App() {
 
   useEffect(() => {
     const nextRoute = readRouteFromLocation();
+    setInviteToken(readInviteTokenFromLocation());
     replaceBrowserRoute(nextRoute);
     setRoute(nextRoute);
 
     function handlePopState() {
+      setInviteToken(readInviteTokenFromLocation());
       setRoute(readRouteFromLocation());
     }
 
@@ -91,6 +96,24 @@ export function App() {
       setSelectedId(routedAsset.id);
     }
   }, [routedAsset?.id, selectedId]);
+
+  useEffect(() => {
+    if (!token || !session || !inviteToken || isAcceptingInvite) return;
+
+    setIsAcceptingInvite(true);
+    setError(undefined);
+    acceptInvitation(token, inviteToken)
+      .then((nextSession) => applySession(nextSession, nextSession.workspace))
+      .then(() => {
+        setInviteToken("");
+        navigate({ view: "assets" }, { replace: true });
+      })
+      .catch((caught) => {
+        setError(caught instanceof Error ? caught.message : String(caught));
+        setInviteToken("");
+      })
+      .finally(() => setIsAcceptingInvite(false));
+  }, [token, session?.account.id, inviteToken, isAcceptingInvite]);
 
   function navigate(nextRoute: AppRoute, options: { replace?: boolean } = {}) {
     const normalizedRoute = normalizeRoute(nextRoute);
@@ -151,6 +174,7 @@ export function App() {
     localStorage.setItem(TOKEN_KEY, response.token);
     setToken(response.token);
     setSession(response);
+    setInviteToken("");
     const workspace = response.workspaces[0];
     if (workspace) {
       setActiveWorkspaceId(workspace.id);
@@ -184,6 +208,7 @@ export function App() {
       <AuthScreen
         isLoading={isLoading}
         error={error}
+        inviteToken={inviteToken}
         onAuthenticated={handleAuth}
       />
     );
@@ -191,6 +216,7 @@ export function App() {
 
   return (
     <AppLayout
+      token={token}
       session={session}
       activeWorkspace={activeWorkspace}
       view={view}
@@ -199,6 +225,7 @@ export function App() {
         setActiveWorkspaceId(workspaceId);
         navigate({ view: "assets" });
       }}
+      onSessionChange={applySession}
       onLogout={handleLogout}
     >
       <AppContent
@@ -230,4 +257,8 @@ export function App() {
       />
     </AppLayout>
   );
+}
+
+function readInviteTokenFromLocation(): string {
+  return new URLSearchParams(window.location.search).get("invite") ?? "";
 }
