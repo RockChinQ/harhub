@@ -140,8 +140,8 @@ export function WorkspaceView({
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto pr-1">
-      <div className="grid gap-4 lg:grid-cols-2">
+    <div className="min-h-0 w-full flex-1 overflow-auto pr-1">
+      <div className="space-y-4">
         <Card>
           <CardHeader>
             <CardTitle>Workspace Settings</CardTitle>
@@ -182,7 +182,7 @@ export function WorkspaceView({
                 </div>
               ))}
             </div>
-            <form className="flex gap-2" onSubmit={createNewWorkspace}>
+            <form className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]" onSubmit={createNewWorkspace}>
               <Input
                 value={newWorkspaceName}
                 onChange={(event) => setNewWorkspaceName(event.target.value)}

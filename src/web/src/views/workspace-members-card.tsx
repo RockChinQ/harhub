@@ -56,7 +56,7 @@ export function WorkspaceMembersCard({
 
   return (
     <>
-      <Card className="lg:col-span-2">
+      <Card>
         <CardHeader>
           <CardTitle>Members</CardTitle>
           <CardDescription>{members.length} account(s) in this workspace</CardDescription>

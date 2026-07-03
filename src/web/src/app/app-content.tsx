@@ -55,55 +55,57 @@ export function AppContent({
   onPasswordChanged: () => Promise<void>;
 }) {
   return (
-    <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-4 sm:p-6 lg:p-8">
-      {error ? (
-        <div className="mb-4 shrink-0 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error}
-        </div>
-      ) : null}
-      {view === "assets" && activeWorkspace ? (
-        <AssetsView
-          workspace={activeWorkspace}
-          token={token}
-          assets={assets}
-          storage={storage}
-          query={query}
-          isLoading={isLoading}
-          selectedId={selectedId}
-          onQueryChange={onQueryChange}
-          onSelect={onSelectAsset}
-          onOpenDetail={onOpenAssetDetail}
-          onRefresh={onRefreshAssets}
-        />
-      ) : null}
-      {view === "asset-detail" && activeWorkspace ? (
-        <SkillDetailView
-          workspace={activeWorkspace}
-          token={token}
-          asset={selectedAsset}
-          issues={issues}
-          onBack={() => onNavigate({ view: "assets" })}
-          onChanged={onRefreshAssets}
-          onDeleted={() => onNavigate({ view: "assets" })}
-        />
-      ) : null}
-      {view === "workspace" && activeWorkspace ? (
-        <WorkspaceView
-          token={token}
-          session={session}
-          workspace={activeWorkspace}
-          onSessionChange={onSessionChange}
-        />
-      ) : null}
-      {view === "account" ? (
-        <AccountView
-          token={token}
-          account={session.account}
-          memberships={session.memberships}
-          onSessionChange={onSessionSet}
-          onPasswordChanged={onPasswordChanged}
-        />
-      ) : null}
+    <main className="flex min-h-0 min-w-0 flex-1 flex-col items-center overflow-hidden p-4 sm:p-6 lg:p-8">
+      <div className="flex min-h-0 w-full max-w-[1440px] flex-1 flex-col overflow-hidden">
+        {error ? (
+          <div className="mb-4 shrink-0 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </div>
+        ) : null}
+        {view === "assets" && activeWorkspace ? (
+          <AssetsView
+            workspace={activeWorkspace}
+            token={token}
+            assets={assets}
+            storage={storage}
+            query={query}
+            isLoading={isLoading}
+            selectedId={selectedId}
+            onQueryChange={onQueryChange}
+            onSelect={onSelectAsset}
+            onOpenDetail={onOpenAssetDetail}
+            onRefresh={onRefreshAssets}
+          />
+        ) : null}
+        {view === "asset-detail" && activeWorkspace ? (
+          <SkillDetailView
+            workspace={activeWorkspace}
+            token={token}
+            asset={selectedAsset}
+            issues={issues}
+            onBack={() => onNavigate({ view: "assets" })}
+            onChanged={onRefreshAssets}
+            onDeleted={() => onNavigate({ view: "assets" })}
+          />
+        ) : null}
+        {view === "workspace" && activeWorkspace ? (
+          <WorkspaceView
+            token={token}
+            session={session}
+            workspace={activeWorkspace}
+            onSessionChange={onSessionChange}
+          />
+        ) : null}
+        {view === "account" ? (
+          <AccountView
+            token={token}
+            account={session.account}
+            memberships={session.memberships}
+            onSessionChange={onSessionSet}
+            onPasswordChanged={onPasswordChanged}
+          />
+        ) : null}
+      </div>
     </main>
   );
 }

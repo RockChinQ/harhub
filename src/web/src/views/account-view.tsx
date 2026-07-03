@@ -77,8 +77,8 @@ export function AccountView({
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto pr-1">
-      <div className="grid gap-4 lg:grid-cols-2">
+    <div className="min-h-0 w-full flex-1 overflow-auto pr-1">
+      <div className="space-y-4">
         <Card>
           <CardHeader>
             <CardTitle>Profile</CardTitle>
@@ -156,7 +156,7 @@ export function AccountView({
             </form>
           </CardContent>
         </Card>
-        <Card className="lg:col-span-2">
+        <Card>
           <CardHeader>
             <CardTitle>Memberships</CardTitle>
             <CardDescription>{memberships.length} workspace role(s)</CardDescription>
