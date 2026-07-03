@@ -39,6 +39,14 @@ runtime state needed to manage them in a workspace.
 
 ## Quick Start
 
+Try the hosted demo:
+
+```text
+https://harhub.rcpd.cc
+```
+
+Run Harhub locally:
+
 ```bash
 npm install
 npm run build
@@ -88,9 +96,15 @@ npm install -g .
 Configure your Harhub target:
 
 ```bash
-export HARHUB_URL=http://127.0.0.1:3310
 export HARHUB_WORKSPACE_ID=ws_demo
 export HARHUB_TOKEN=<access-token>
+```
+
+The CLI defaults to the hosted demo at `https://harhub.rcpd.cc`. Set
+`HARHUB_URL` or pass `--url` when targeting a local or self-hosted instance:
+
+```bash
+export HARHUB_URL=http://127.0.0.1:3310
 ```
 
 Scan the current directory and choose which discovered Skills to upload:

@@ -1,3 +1,5 @@
+import { DEFAULT_HARHUB_API_URL } from "./api.js";
+
 export function printHelp(): void {
   console.log(`Harhub
 
@@ -17,13 +19,13 @@ Usage:
   harhub assets validate [paths...] [--json]
   harhub assets list [--catalog .harhub/assets.json] [--kind skill] [--json]
   harhub assets show <id|name|slug> [--catalog .harhub/assets.json] [--json]
-  harhub assets upload <skill.zip> --workspace <workspace-id> --token <token> [--url http://127.0.0.1:3310] [--json]
+  harhub assets upload <skill.zip> --workspace <workspace-id> --token <token> [--url ${DEFAULT_HARHUB_API_URL}] [--json]
   harhub assets create <name> [--kind skill] [--dir skills] [--description text]
   harhub assets update <id|name|slug> [--catalog .harhub/assets.json] [--description text] [--json]
-  harhub assets update <id|name|slug> --workspace <workspace-id> --token <token> [--url http://127.0.0.1:3310] [--description text] [--json]
+  harhub assets update <id|name|slug> --workspace <workspace-id> --token <token> [--url ${DEFAULT_HARHUB_API_URL}] [--description text] [--json]
   harhub assets delete <id|name|slug> [--catalog .harhub/assets.json] [--json]
-  harhub assets delete <id|name|slug> --workspace <workspace-id> --token <token> [--url http://127.0.0.1:3310] [--json]
-  harhub assets revalidate [id|name|slug] --workspace <workspace-id> --token <token> [--url http://127.0.0.1:3310] [--json]
+  harhub assets delete <id|name|slug> --workspace <workspace-id> --token <token> [--url ${DEFAULT_HARHUB_API_URL}] [--json]
+  harhub assets revalidate [id|name|slug] --workspace <workspace-id> --token <token> [--url ${DEFAULT_HARHUB_API_URL}] [--json]
 `);
 }
 
@@ -36,11 +38,11 @@ Usage:
   harhub skills list [--catalog .harhub/skills.json] [--json]
   harhub skills show <id|name|slug> [--catalog .harhub/skills.json] [--json]
   harhub skills create <name> [--dir skills] [--description text]
-  harhub skills upload [paths...] [--workspace <workspace-id>] [--token <token>] [--url http://127.0.0.1:3310] [--all] [--json]
+  harhub skills upload [paths...] [--workspace <workspace-id>] [--token <token>] [--url ${DEFAULT_HARHUB_API_URL}] [--all] [--json]
   harhub skills update <id|name|slug> [--catalog .harhub/skills.json] [--asset-catalog .harhub/assets.json] [--description text] [--json]
-  harhub skills update <id|name|slug> --workspace <workspace-id> --token <token> [--url http://127.0.0.1:3310] [--description text] [--json]
+  harhub skills update <id|name|slug> --workspace <workspace-id> --token <token> [--url ${DEFAULT_HARHUB_API_URL}] [--description text] [--json]
   harhub skills delete <id|name|slug> [--catalog .harhub/skills.json] [--asset-catalog .harhub/assets.json] [--json]
-  harhub skills delete <id|name|slug> --workspace <workspace-id> --token <token> [--url http://127.0.0.1:3310] [--json]
-  harhub skills revalidate [id|name|slug] --workspace <workspace-id> --token <token> [--url http://127.0.0.1:3310] [--json]
+  harhub skills delete <id|name|slug> --workspace <workspace-id> --token <token> [--url ${DEFAULT_HARHUB_API_URL}] [--json]
+  harhub skills revalidate [id|name|slug] --workspace <workspace-id> --token <token> [--url ${DEFAULT_HARHUB_API_URL}] [--json]
 `);
 }

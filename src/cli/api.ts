@@ -1,13 +1,15 @@
 import type { ParsedArgs } from "./types.js";
 import { optionString } from "./args.js";
 
+export const DEFAULT_HARHUB_API_URL = "https://harhub.rcpd.cc";
+
 export function resolveHarhubApiUrl(parsed: ParsedArgs): string {
   return (
     optionString(parsed, "url") ??
     optionString(parsed, "api") ??
     process.env.HARHUB_URL ??
     process.env.HARHUB_API_URL ??
-    "http://127.0.0.1:3310"
+    DEFAULT_HARHUB_API_URL
   ).replace(/\/+$/g, "");
 }
 
