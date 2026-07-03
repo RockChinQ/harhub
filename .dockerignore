@@ -1,0 +1,8 @@
+node_modules
+dist
+.harhub
+.env
+.env.local
+*.log
+.git
+.DS_Store
