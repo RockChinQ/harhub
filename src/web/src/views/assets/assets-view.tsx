@@ -7,7 +7,7 @@ import {
   Upload,
   X
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type DragEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   AssetRecord,
@@ -67,10 +67,14 @@ export function AssetsView({
   onRefresh: () => Promise<void>;
 }) {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isDragActive, setIsDragActive] = useState(false);
+  const [droppedUploadFile, setDroppedUploadFile] = useState<File | undefined>();
+  const [dropUploadError, setDropUploadError] = useState<string | undefined>();
   const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
   const [bulkAction, setBulkAction] = useState<BulkAction | undefined>();
   const [bulkMessage, setBulkMessage] = useState<BulkMessage | undefined>();
+  const dragDepth = useRef(0);
   const managedAssets = useMemo(
     () => assets.filter((asset) => asset.storage),
     [assets]
@@ -120,6 +124,49 @@ export function AssetsView({
     });
   }
 
+  function openUploadPopover(open: boolean) {
+    setIsUploadOpen(open);
+    if (!open) {
+      setDroppedUploadFile(undefined);
+      setDropUploadError(undefined);
+    }
+  }
+
+  function handleDragEnter(event: DragEvent<HTMLDivElement>) {
+    if (!dragHasFiles(event)) return;
+    event.preventDefault();
+    dragDepth.current += 1;
+    setIsDragActive(true);
+  }
+
+  function handleDragOver(event: DragEvent<HTMLDivElement>) {
+    if (!dragHasFiles(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setIsDragActive(true);
+  }
+
+  function handleDragLeave(event: DragEvent<HTMLDivElement>) {
+    if (!dragHasFiles(event)) return;
+    event.preventDefault();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) {
+      setIsDragActive(false);
+    }
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    if (!dragHasFiles(event)) return;
+    event.preventDefault();
+    dragDepth.current = 0;
+    setIsDragActive(false);
+
+    const zipFile = firstZipFile(event.dataTransfer.files);
+    setDroppedUploadFile(zipFile);
+    setDropUploadError(zipFile ? undefined : "Drop a .zip skill package.");
+    setIsUploadOpen(true);
+  }
+
   async function runBulkAction(action: BulkAction) {
     if (selectedBulkCount === 0) return;
 
@@ -157,7 +204,27 @@ export function AssetsView({
   }
 
   return (
-    <div className="flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col gap-4 overflow-hidden">
+    <div
+      data-testid="skills-drop-zone"
+      className="relative flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col gap-4 overflow-hidden"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragActive ? (
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-blue-400 bg-blue-500/10 p-6 backdrop-blur-[1px]">
+          <div className="flex max-w-sm flex-col items-center gap-3 rounded-lg border bg-background px-5 py-4 text-center shadow-lg">
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-blue-600 text-white">
+              <FileArchive className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <div>
+              <div className="text-sm font-medium">Drop skill package</div>
+              <div className="mt-1 text-xs text-muted-foreground">Release the .zip file to preview upload.</div>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="flex shrink-0 min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-normal">Skills</h1>
@@ -166,7 +233,7 @@ export function AssetsView({
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          <Popover open={isUploadOpen} onOpenChange={setIsUploadOpen}>
+          <Popover open={isUploadOpen} onOpenChange={openUploadPopover}>
             <PopoverTrigger asChild>
               <Button>
                 <Upload className="h-4 w-4" aria-hidden="true" />
@@ -176,7 +243,7 @@ export function AssetsView({
             <PopoverContent
               align="end"
               sideOffset={8}
-              className="w-[min(420px,calc(100vw-2rem))] overflow-hidden p-0"
+              className="max-h-[min(640px,calc(100vh-1.5rem))] w-[min(420px,calc(100vw-2rem))] overflow-hidden p-0"
             >
               <div className="flex items-start gap-3 border-b bg-muted/30 px-4 py-4">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-background text-primary shadow-sm">
@@ -187,12 +254,16 @@ export function AssetsView({
                   <div className="mt-1 text-xs text-muted-foreground">{uploadStatusLabel(storage)}</div>
                 </div>
               </div>
-              <div className="p-4">
+              <div className="max-h-[calc(100vh-8.5rem)] overflow-y-auto p-4">
                 <UploadSkillZipForm
                   workspace={workspace}
                   token={token}
                   storage={storage}
+                  initialFile={droppedUploadFile}
+                  initialError={dropUploadError}
                   onUploaded={async () => {
+                    setDroppedUploadFile(undefined);
+                    setDropUploadError(undefined);
                     await onRefresh();
                   }}
                 />
@@ -337,4 +408,12 @@ export function AssetsView({
 
 function bulkActionLabel(action: BulkAction): string {
   return action === "delete" ? "Delete" : "Validate";
+}
+
+function dragHasFiles(event: DragEvent<HTMLDivElement>): boolean {
+  return Array.from(event.dataTransfer.types).includes("Files");
+}
+
+function firstZipFile(files: FileList): File | undefined {
+  return Array.from(files).find((file) => file.name.toLowerCase().endsWith(".zip"));
 }
