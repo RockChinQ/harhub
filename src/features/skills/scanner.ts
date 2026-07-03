@@ -13,7 +13,7 @@ import {
 } from "../../shared/markdown.js";
 import type { SkillRecord } from "../../shared/types.js";
 import type { ScanOptions } from "./types.js";
-import { titleFromSlug } from "./utils.js";
+import { displayNameFromSkillFrontmatter } from "./utils.js";
 
 export function scanSkills(options: ScanOptions): SkillRecord[] {
   const roots = options.roots.length > 0 ? options.roots : [process.cwd()];
@@ -39,7 +39,11 @@ export function scanSkills(options: ScanOptions): SkillRecord[] {
       records.push({
         id,
         name: slug,
-        displayName: parsed.title ?? titleFromSlug(slug),
+        displayName: displayNameFromSkillFrontmatter({
+          frontmatter: parsed.frontmatter,
+          title: parsed.title,
+          slug
+        }),
         slug,
         description: stringValue(parsed.frontmatter.description) ?? "",
         headings: parsed.headings,

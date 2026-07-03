@@ -50,6 +50,18 @@ export interface AssetScanResponse extends AssetListResponse {
   validatedIssues?: ValidationIssue[];
 }
 
+export interface AssetBulkResponse extends AssetScanResponse {
+  bulk: {
+    action: "validate" | "delete";
+    requested: number;
+    succeeded: string[];
+    failed: Array<{
+      id: string;
+      error: string;
+    }>;
+  };
+}
+
 export interface AssetUploadResponse extends AssetScanResponse {
   uploaded: AssetRecord;
 }

@@ -70,6 +70,54 @@ export async function validateWorkspaceAsset(
   };
 }
 
+export async function validateWorkspaceAssetBatch(
+  workspace: WorkspaceRecord,
+  queries: string[]
+) {
+  let catalog = await loadOrCreateWorkspaceAssetCatalog(workspace);
+  const succeeded: string[] = [];
+  const failed: Array<{ id: string; error: string }> = [];
+
+  for (const query of uniqueQueries(queries)) {
+    const asset = findAsset(catalog, query);
+    if (!asset) {
+      failed.push({ id: query, error: "Asset not found." });
+      continue;
+    }
+
+    if (!asset.storage) {
+      failed.push({ id: query, error: "Only uploaded skill packages can be bulk validated." });
+      continue;
+    }
+
+    try {
+      const nextAsset = await validateStoredAsset(workspace, asset);
+      catalog = upsertAsset(catalog, nextAsset);
+      succeeded.push(asset.id);
+    } catch (error) {
+      failed.push({
+        id: asset.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  if (succeeded.length > 0) {
+    await writeWorkspaceAssetCatalog(workspace.id, catalog);
+  }
+
+  return {
+    ...assetListPayload(workspace, catalog.generatedAt, catalog.assets),
+    assetCatalogStorage: describeWorkspaceCatalogStorage(workspace.id),
+    bulk: {
+      action: "validate" as const,
+      requested: queries.length,
+      succeeded,
+      failed
+    }
+  };
+}
+
 async function validateStoredAsset(
   workspace: WorkspaceRecord,
   asset: AssetRecord
@@ -92,4 +140,8 @@ async function validateStoredAsset(
     validation: refreshed.validation,
     validationIssues: refreshed.validationIssues
   };
+}
+
+function uniqueQueries(queries: string[]): string[] {
+  return Array.from(new Set(queries.map((query) => query.trim()).filter(Boolean)));
 }

@@ -6,11 +6,16 @@ import {
 import { readStoredObject } from "../../storage/index.js";
 import { requireWorkspaceAccess } from "../auth.js";
 import { createSkillAsset } from "../services/skill-factory.js";
-import { deleteAsset, patchAsset } from "../services/asset-mutations.js";
+import {
+  deleteAsset,
+  deleteWorkspaceAssetBatch,
+  patchAsset
+} from "../services/asset-mutations.js";
 import { handleAssetUpload } from "../services/asset-upload.js";
 import { assetListPayload } from "../services/asset-responses.js";
 import {
   validateWorkspaceAsset,
+  validateWorkspaceAssetBatch,
   validateWorkspaceAssets
 } from "../services/asset-validation.js";
 import {
@@ -106,6 +111,34 @@ function registerAssetMutationRoutes(
     }
   });
 
+  app.post("/api/workspaces/:workspaceId/assets/bulk", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
+    if (!context) return;
+
+    try {
+      const assetIds = readAssetIds(req.body?.assetIds);
+      if (assetIds.length === 0) {
+        res.status(400).json({ error: "assetIds must include at least one asset id." });
+        return;
+      }
+
+      const action = String(req.body?.action ?? "");
+      if (action === "validate") {
+        res.json(await validateWorkspaceAssetBatch(context.workspace, assetIds));
+        return;
+      }
+
+      if (action === "delete") {
+        res.json(await deleteWorkspaceAssetBatch(context, assetIds));
+        return;
+      }
+
+      res.status(400).json({ error: "Bulk action must be validate or delete." });
+    } catch (error) {
+      sendError(res, error, 400);
+    }
+  });
+
   app.post("/api/workspaces/:workspaceId/assets/upload", upload.single("file"), async (req, res) => {
     const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
@@ -147,4 +180,9 @@ function registerAssetMutationRoutes(
     if (!context) return;
     await deleteAsset(req, res, context);
   });
+}
+
+function readAssetIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }

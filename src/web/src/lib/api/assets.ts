@@ -1,6 +1,7 @@
 import type { AssetPreview } from "../../../../shared/types";
 import { JSON_HEADERS, request } from "./request";
 import type {
+  AssetBulkResponse,
   AssetListResponse,
   AssetScanResponse,
   AssetUploadResponse
@@ -117,6 +118,25 @@ export async function validateWorkspaceAsset(
       method: "POST",
       headers: JSON_HEADERS,
       body: JSON.stringify({})
+    }
+  );
+}
+
+export async function bulkWorkspaceAssets(
+  token: string,
+  workspaceId: string,
+  input: {
+    action: "validate" | "delete";
+    assetIds: string[];
+  }
+): Promise<AssetBulkResponse> {
+  return request<AssetBulkResponse>(
+    `/api/workspaces/${workspaceId}/assets/bulk`,
+    {
+      token,
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(input)
     }
   );
 }

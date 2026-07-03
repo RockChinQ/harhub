@@ -11,6 +11,7 @@ import type {
   StoredObject,
   ValidationIssue
 } from "../../shared/types.js";
+import { displayNameFromSkillFrontmatter } from "../skills/utils.js";
 import { validateSkillMarkdown } from "../skills/validation.js";
 
 export async function createUploadedSkillAsset(input: {
@@ -70,7 +71,11 @@ export async function createUploadedSkillAsset(input: {
     id: assetId,
     kind: "skill",
     name,
-    displayName: parsed.title ?? titleFromSlug(name),
+    displayName: displayNameFromSkillFrontmatter({
+      frontmatter: parsed.frontmatter,
+      title: parsed.title,
+      slug: name
+    }),
     slug: name,
     description:
       stringValue(parsed.frontmatter.description) ||
@@ -104,14 +109,6 @@ export async function validateUploadedSkillZip(input: {
       originalName: input.fileName
     },
   });
-}
-
-function titleFromSlug(slug: string): string {
-  return slug
-    .split("-")
-    .filter(Boolean)
-    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
-    .join(" ");
 }
 
 function validateZipStructure(entries: JSZipObject[]): ValidationIssue[] {

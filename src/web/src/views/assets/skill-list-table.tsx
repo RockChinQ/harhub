@@ -4,19 +4,26 @@ import type { AssetRecord } from "../../../../shared/types";
 import { healthBadgeClass } from "../../app/format";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Checkbox } from "../../components/ui/checkbox";
 import { cn } from "../../lib/utils";
 
 export function SkillListTable({
   assets,
   selectedId,
+  selectedAssetIds,
   isLoading,
   onSelect,
+  onToggleSelection,
+  onToggleAllVisible,
   onOpenDetail
 }: {
   assets: AssetRecord[];
   selectedId?: string;
+  selectedAssetIds: Set<string>;
   isLoading: boolean;
   onSelect: (id: string) => void;
+  onToggleSelection: (id: string, selected: boolean) => void;
+  onToggleAllVisible: (selected: boolean) => void;
   onOpenDetail: (id: string) => void;
 }) {
   if (isLoading) {
@@ -37,10 +44,24 @@ export function SkillListTable({
     );
   }
 
+  const selectableVisibleAssets = assets.filter((asset) => asset.storage);
+  const selectedVisibleCount = selectableVisibleAssets.filter((asset) => selectedAssetIds.has(asset.id)).length;
+  const allVisibleSelected =
+    selectableVisibleAssets.length > 0 && selectedVisibleCount === selectableVisibleAssets.length;
+  const someVisibleSelected = selectedVisibleCount > 0 && !allVisibleSelected;
+
   return (
     <div className="min-h-[420px] w-full min-w-0 max-w-full overflow-hidden rounded-lg border bg-card xl:h-full xl:min-h-0">
       <div className="h-full w-full min-w-0 overflow-y-auto overflow-x-hidden overscroll-y-contain">
-        <div className="sticky top-0 z-10 hidden min-w-0 grid-cols-[minmax(260px,1fr)_120px] gap-3 border-b bg-muted/95 px-4 py-3 text-left text-xs uppercase text-muted-foreground backdrop-blur md:grid">
+        <div className="sticky top-0 z-10 hidden min-w-0 grid-cols-[2rem_minmax(260px,1fr)_120px] gap-3 border-b bg-muted/95 px-4 py-3 text-left text-xs uppercase text-muted-foreground backdrop-blur md:grid">
+          <div>
+            <Checkbox
+              checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
+              onCheckedChange={(checked) => onToggleAllVisible(checked === true)}
+              disabled={selectableVisibleAssets.length === 0}
+              aria-label="Select all visible skills"
+            />
+          </div>
           <div className="font-medium">Skill</div>
           <div className="font-medium">Status</div>
         </div>
@@ -52,7 +73,7 @@ export function SkillListTable({
                 role="button"
                 tabIndex={0}
                 className={cn(
-                  "grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] gap-3 border-b px-4 py-4 text-sm transition-colors last:border-0 hover:bg-accent/45 md:grid-cols-[minmax(260px,1fr)_120px]",
+                  "grid min-w-0 cursor-pointer grid-cols-[2rem_minmax(0,1fr)_auto] gap-3 border-b px-4 py-4 text-sm transition-colors last:border-0 hover:bg-accent/45 md:grid-cols-[2rem_minmax(260px,1fr)_120px]",
                   selectedId === asset.id && "bg-blue-50/80"
                 )}
                 onClick={() => onSelect(asset.id)}
@@ -61,6 +82,15 @@ export function SkillListTable({
                   if (event.key === "Enter") onOpenDetail(asset.id);
                 }}
               >
+                <div className="pt-1">
+                  <Checkbox
+                    checked={selectedAssetIds.has(asset.id)}
+                    onClick={(event) => event.stopPropagation()}
+                    onCheckedChange={(checked) => onToggleSelection(asset.id, checked === true)}
+                    disabled={!asset.storage}
+                    aria-label={`Select ${asset.displayName}`}
+                  />
+                </div>
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-start gap-3">
                     <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-600 text-white">

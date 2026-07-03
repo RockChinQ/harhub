@@ -115,9 +115,9 @@ function addFrontmatterIssues(
     if (!STANDARD_FRONTMATTER_KEYS.has(key)) {
       issues.push(markdownIssue(
         context,
-        "error",
-        "unsupported-frontmatter-field",
-        `Frontmatter field "${key}" is not part of the Agent Skills spec.`
+        "warning",
+        "non-standard-frontmatter-field",
+        `Frontmatter field "${key}" is not part of the Agent Skills spec and may be ignored by other runtimes.`
       ));
     }
   }

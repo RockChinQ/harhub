@@ -83,6 +83,54 @@ export async function deleteAsset(
   }
 }
 
+export async function deleteWorkspaceAssetBatch(
+  context: WorkspaceContext,
+  queries: string[]
+) {
+  let catalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
+  const succeeded: string[] = [];
+  const failed: Array<{ id: string; error: string }> = [];
+
+  for (const query of unique(queries.map((item) => item.trim()).filter(Boolean))) {
+    const asset = findAsset(catalog, query);
+    if (!asset) {
+      failed.push({ id: query, error: "Asset not found." });
+      continue;
+    }
+
+    if (!asset.storage) {
+      failed.push({ id: query, error: "Only uploaded skill packages can be bulk deleted." });
+      continue;
+    }
+
+    try {
+      await deleteStoredObject(asset.storage);
+      catalog = removeCatalogAsset(catalog, asset.id);
+      succeeded.push(asset.id);
+    } catch (error) {
+      failed.push({
+        id: asset.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  if (succeeded.length > 0) {
+    await writeWorkspaceAssetCatalog(context.workspace.id, catalog);
+  }
+
+  return {
+    ...assetListPayload(context.workspace, catalog.generatedAt, catalog.assets),
+    issues: [],
+    bulk: {
+      action: "delete" as const,
+      requested: queries.length,
+      succeeded,
+      failed
+    }
+  };
+}
+
 function rescanWorkspaceAssets(context: WorkspaceContext) {
   return scanAndPersistWorkspace(
     context.workspace,
