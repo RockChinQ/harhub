@@ -19,6 +19,8 @@ import type { SessionResponse } from "../lib/api";
 import { viewTitle } from "./routing";
 import type { AppRoute, View } from "./types";
 
+type AppLayoutView = Exclude<View, "landing">;
+
 export function AppLayout({
   token,
   session,
@@ -33,7 +35,7 @@ export function AppLayout({
   token: string;
   session: SessionResponse;
   activeWorkspace?: WorkspaceRecord;
-  view: View;
+  view: AppLayoutView;
   onNavigate: (route: AppRoute) => void;
   onWorkspaceChange: (workspaceId: string) => void;
   onSessionChange: (session: SessionResponse, workspace?: WorkspaceRecord) => Promise<void>;

@@ -24,9 +24,10 @@
     "harhub": "./dist/cli.js"
   },
   "scripts": {
-    "build": "npm run build:server && npm run build:web",
+    "build": "npm run build:server && npm run build:web && npm run build:docs",
     "build:server": "tsc -p tsconfig.node.json",
     "build:web": "vite build",
+    "build:docs": "vitepress build docs",
     "check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "start": "node dist/server.js",
     "start:cli": "node dist/cli.js",
@@ -35,6 +36,9 @@
     "dev:minio": "node scripts/dev-minio.mjs",
     "dev:api": "tsx watch src/server.ts",
     "dev:web": "vite --host 127.0.0.1",
+    "docs:dev": "vitepress dev docs --host 127.0.0.1 --port 5177",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs --host 127.0.0.1 --port 4177",
     "cli": "tsx src/cli.ts"
   },
   "dependencies": {
@@ -79,7 +83,9 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.20.3",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vite": "^5.4.21",
+    "vitepress": "^1.6.4"
   },
   "engines": {
     "node": ">=20"

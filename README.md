@@ -1,4 +1,22 @@
-# Harhub
+<div align="center">
+  <img src="./docs/public/harhub-icon.svg" alt="Harhub" width="96" height="96" />
+  <h1>Harhub</h1>
+  <p><strong>Asset control for agent teams.</strong></p>
+  <p>
+    Upload, validate, preview, and govern reusable Agent Skills from one workspace.
+  </p>
+  <p>
+    <a href="https://harhub.rcpd.cc">Hosted Demo</a>
+    ·
+    <a href="./docs/guide/getting-started.md">Docs</a>
+    ·
+    <a href="https://www.npmjs.com/package/harhub">npm</a>
+    ·
+    <a href="https://github.com/RockChinQ/harhub">GitHub</a>
+  </p>
+</div>
+
+## Overview
 
 Harhub is a workspace for managing reusable Agent Skills.
 

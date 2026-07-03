@@ -8,7 +8,9 @@ export function routeFromPath(pathname: string): AppRoute {
   const segments = pathname.split("/").filter(Boolean);
   const section = segments[0];
 
-  if (!section || section === "skills" || section === "assets") {
+  if (!section) return { view: "landing" };
+
+  if (section === "skills" || section === "assets") {
     const assetQuery = segments[1] ? decodeRoutePart(segments.slice(1).join("/")) : undefined;
     return assetQuery ? { view: "asset-detail", assetQuery } : { view: "assets" };
   }
@@ -32,6 +34,7 @@ export function pathForRoute(route: AppRoute): string {
   }
   if (route.view === "workspace") return "/workspace";
   if (route.view === "account") return "/account";
+  if (route.view === "landing") return "/";
   return "/skills";
 }
 
@@ -46,6 +49,7 @@ export function viewTitle(view: View): string {
   if (view === "asset-detail") return "Skill Detail";
   if (view === "workspace") return "Workspace";
   if (view === "account") return "Account";
+  if (view === "landing") return "Home";
   return "Skills";
 }
 

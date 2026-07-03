@@ -26,6 +26,7 @@ import {
   type SessionResponse
 } from "./lib/api";
 import { AuthScreen } from "./views/auth-screen";
+import { LandingPage } from "./views/landing-page";
 
 export function App() {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) ?? "");
@@ -203,6 +204,10 @@ export function App() {
     await refreshAssets(workspace?.id ?? activeWorkspace?.id);
   }
 
+  if (route.view === "landing" && !inviteToken) {
+    return <LandingPage isSignedIn={Boolean(token && session)} />;
+  }
+
   if (!token || !session) {
     return (
       <AuthScreen
@@ -214,12 +219,18 @@ export function App() {
     );
   }
 
+  if (route.view === "landing") {
+    return <LandingPage isSignedIn={true} />;
+  }
+
+  const appView = route.view as Exclude<AppRoute["view"], "landing">;
+
   return (
     <AppLayout
       token={token}
       session={session}
       activeWorkspace={activeWorkspace}
-      view={view}
+      view={appView}
       onNavigate={navigate}
       onWorkspaceChange={(workspaceId) => {
         setActiveWorkspaceId(workspaceId);
@@ -230,7 +241,7 @@ export function App() {
     >
       <AppContent
         error={error}
-        view={view}
+        view={appView}
         activeWorkspace={activeWorkspace}
         token={token}
         assets={assets}
