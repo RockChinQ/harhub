@@ -139,16 +139,24 @@ function WorkspaceSelect({
         disabled={workspaces.length === 0}
       >
         <SelectTrigger
-          className="h-8 border-sidebar-border/70 bg-sidebar-accent/35 text-sidebar-foreground shadow-none"
+          className="h-11 rounded-lg border-sidebar-border/80 bg-sidebar-accent/55 px-3 py-2 text-sidebar-foreground shadow-sm transition-colors hover:bg-sidebar-accent focus:ring-2 focus:ring-blue-500/25 data-[state=open]:border-blue-300 data-[state=open]:bg-sidebar-accent"
           aria-label="Workspace"
         >
-          <SelectValue placeholder="Workspace" />
+          <div className="grid min-w-0 flex-1 text-left leading-tight">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-sidebar-foreground/55">
+              Organization
+            </span>
+            <span className="truncate text-sm font-medium">
+              <SelectValue placeholder="Select organization" />
+            </span>
+          </div>
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="rounded-lg border-sidebar-border/80 shadow-lg">
           {workspaces.map((workspace) => (
             <SelectItem
               key={workspace.id}
               value={workspace.id}
+              className="h-9 rounded-md font-medium"
             >
               {workspace.name}
             </SelectItem>
