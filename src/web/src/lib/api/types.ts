@@ -22,6 +22,7 @@ export interface AuthResponse extends SessionResponse {
 }
 
 export interface AuthConfigResponse {
+  password: boolean;
   emailCode: boolean;
   oauth: Record<AuthProvider, boolean>;
 }

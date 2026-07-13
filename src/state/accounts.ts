@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { createMembership, createWorkspaceRecord, toPublicAccount } from "./records.js";
+import { toPublicAccount } from "./records.js";
 import {
   acceptMatchingPendingInvitations,
   ensureAccountHasWorkspace
@@ -71,69 +71,42 @@ export async function listAccountWorkspaces(accountId: string): Promise<{
   };
 }
 
-export async function loginAccount(
-  email: string,
-  password: string,
-  inviteToken?: string
-): Promise<AccountProfile> {
-  const state = await loadState();
-  const account = state.accounts.find(
-    (item) => item.email.toLowerCase() === email.trim().toLowerCase()
-  );
-
-  if (!account || !verifyPassword(password, account.passwordHash)) {
-    throw new Error("Invalid email or password.");
-  }
-
-  acceptMatchingPendingInvitations(state, account, inviteToken);
-  ensureAccountHasWorkspace(state, account);
-  await saveState(state);
-  return toPublicAccount(account);
-}
-
-export async function signUpAccount(input: {
+export async function signInWithPassword(input: {
   email: string;
-  name: string;
   password: string;
-  workspaceName?: string;
   inviteToken?: string;
 }): Promise<AccountProfile> {
   const state = await loadState();
-  const email = input.email.trim().toLowerCase();
+  const email = normalizeEmail(input.email);
+  if (!email) throw new Error("A valid email is required.");
 
-  if (!email.includes("@")) {
-    throw new Error("A valid email is required.");
+  let account = state.accounts.find(
+    (item) => item.email.toLowerCase() === email
+  );
+
+  if (account) {
+    if (!verifyPassword(input.password, account.passwordHash)) {
+      throw new Error("Invalid email or password.");
+    }
+  } else {
+    if (input.password.length < 6) {
+      throw new Error("Password must be at least 6 characters.");
+    }
+
+    account = {
+      id: randomUUID(),
+      email,
+      name: email.split("@")[0] ?? "User",
+      passwordHash: hashPassword(input.password),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    state.accounts.push(account);
   }
 
-  if (input.password.length < 6) {
-    throw new Error("Password must be at least 6 characters.");
-  }
-
-  if (state.accounts.some((account) => account.email.toLowerCase() === email)) {
-    throw new Error("An account already exists for this email.");
-  }
-
-  const account: AccountRecord = {
-    id: randomUUID(),
-    email,
-    name: input.name.trim() || (email.split("@")[0] ?? "User"),
-    passwordHash: hashPassword(input.password),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-
-  state.accounts.push(account);
-  const acceptedWorkspace = acceptMatchingPendingInvitations(state, account, input.inviteToken);
-  if (!acceptedWorkspace) {
-    const workspace = createWorkspaceRecord(
-      state,
-      input.workspaceName?.trim() || `${account.name}'s Workspace`
-    );
-    state.workspaces.push(workspace);
-    state.memberships.push(createMembership(account.id, workspace.id, "owner"));
-  }
+  acceptMatchingPendingInvitations(state, account, input.inviteToken);
+  ensureAccountHasWorkspace(state, account);
   await saveState(state);
-
   return toPublicAccount(account);
 }
 

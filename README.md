@@ -172,6 +172,13 @@ export HARHUB_DATABASE_URL=postgres://user:password@host:5432/harhub
 
 Without Postgres, Harhub falls back to local development state under `.harhub/`.
 
+Password sign-in is enabled by default and automatically creates an account for
+new email addresses. Disable it when using email codes or OAuth exclusively:
+
+```bash
+export HARHUB_PASSWORD_LOGIN_ENABLED=false
+```
+
 ## Learn More
 
 Detailed documentation lives in [`docs/`](./docs/).

@@ -52,6 +52,7 @@ Optional hosted auth settings:
 
 ```bash
 HARHUB_PUBLIC_URL=https://harhub.example.com
+HARHUB_PASSWORD_LOGIN_ENABLED=false
 RESEND_API_KEY=...
 HARHUB_EMAIL_FROM="Harhub <hello@example.com>"
 GOOGLE_CLIENT_ID=...
@@ -59,6 +60,11 @@ GOOGLE_CLIENT_SECRET=...
 GITHUB_CLIENT_ID=...
 GITHUB_CLIENT_SECRET=...
 ```
+
+Password sign-in defaults to enabled. When enabled, submitting a new email to
+`POST /api/auth/login` creates the account and its initial workspace. Set
+`HARHUB_PASSWORD_LOGIN_ENABLED=false` for deployments that should use only
+email codes or OAuth.
 
 OAuth callback URLs:
 

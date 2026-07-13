@@ -15,7 +15,9 @@ import {
 import { Input } from "../components/ui/input";
 import {
   changePassword,
+  getAuthConfig,
   updateAccount,
+  type AuthConfigResponse,
   type SessionResponse
 } from "../lib/api";
 
@@ -40,11 +42,18 @@ export function AccountView({
   const [passwordMessage, setPasswordMessage] = useState<string | undefined>();
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [authConfig, setAuthConfig] = useState<AuthConfigResponse>();
 
   useEffect(() => {
     setName(account.name);
     setEmail(account.email);
   }, [account.id, account.name, account.email]);
+
+  useEffect(() => {
+    void getAuthConfig()
+      .then(setAuthConfig)
+      .catch(() => undefined);
+  }, []);
 
   async function saveProfile(event: FormEvent) {
     event.preventDefault();
@@ -119,43 +128,45 @@ export function AccountView({
             </form>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Password</CardTitle>
-            <CardDescription>Changing it signs out every active session.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form className="grid max-w-xl gap-4" onSubmit={savePassword}>
-              <label className="grid gap-1.5 text-sm font-medium">
-                Current password
-                <Input
-                  type="password"
-                  value={currentPassword}
-                  onChange={(event) => setCurrentPassword(event.target.value)}
-                />
-              </label>
-              <label className="grid gap-1.5 text-sm font-medium">
-                New password
-                <Input
-                  type="password"
-                  value={newPassword}
-                  onChange={(event) => setNewPassword(event.target.value)}
-                />
-              </label>
-              <div className="flex items-center gap-3">
-                <Button type="submit" disabled={isChangingPassword}>
-                  {isChangingPassword ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                  ) : (
-                    <KeyRound className="h-4 w-4" aria-hidden="true" />
-                  )}
-                  Change
-                </Button>
-                {passwordMessage ? <span className="text-sm text-muted-foreground">{passwordMessage}</span> : null}
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+        {authConfig?.password ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Password</CardTitle>
+              <CardDescription>Changing it signs out every active session.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form className="grid max-w-xl gap-4" onSubmit={savePassword}>
+                <label className="grid gap-1.5 text-sm font-medium">
+                  Current password
+                  <Input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(event) => setCurrentPassword(event.target.value)}
+                  />
+                </label>
+                <label className="grid gap-1.5 text-sm font-medium">
+                  New password
+                  <Input
+                    type="password"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                  />
+                </label>
+                <div className="flex items-center gap-3">
+                  <Button type="submit" disabled={isChangingPassword}>
+                    {isChangingPassword ? (
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <KeyRound className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    Change
+                  </Button>
+                  {passwordMessage ? <span className="text-sm text-muted-foreground">{passwordMessage}</span> : null}
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        ) : null}
         <Card>
           <CardHeader>
             <CardTitle>Memberships</CardTitle>

@@ -18,7 +18,7 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 当前代码中已经存在：
 
 - **Fullstack app**：Express API、Vite/React frontend、shared TypeScript types 和 CLI entry point。
-- **Authentication**：本地 email/password accounts、Google/GitHub OAuth、邮件验证码登录、bearer-token sessions、profile updates、password changes 和 logout。
+- **Authentication**：可配置的 email/password 自动注册登录、Google/GitHub OAuth、邮件验证码登录、bearer-token sessions、profile updates、password changes 和 logout。
 - **Tenant model**：workspaces、memberships、workspace roles 和 workspace-scoped asset catalogs。
 - **Workspace invitations**：owner/admin 可邀请邮箱加入 workspace、Resend 发送邀请邮件、pending invitation 可撤销、invite token 可用于登录/注册/OAuth 后进入 workspace。
 - **Skill asset flow**：S3-compatible zip upload、`SKILL.md` extraction、runtime indexing、search/filter、table view、detail view、file tree preview 和 deletion。
@@ -299,7 +299,7 @@ Distribution action 可以是：
 - [ ] `npm run check` passes。
 - [ ] `npm run build` passes。
 - [ ] 上传测试覆盖缺失 `SKILL.md`、invalid official frontmatter、too-large zip、path traversal、quota exceeded 和 S3 failure rollback。
-- [ ] 认证测试覆盖 login、signup、logout、role-gated reads、role-gated writes，以及 password change 后 session invalidation。
+- [ ] 认证测试覆盖 password login 自动注册、禁用 password login、logout、role-gated reads、role-gated writes，以及 password change 后 session invalidation。
 - [ ] 删除测试覆盖 asset index removal、S3 deletion 和 missing-object recovery。
 - [ ] SaaS 数据库迁移可以从空数据库重复执行。
 

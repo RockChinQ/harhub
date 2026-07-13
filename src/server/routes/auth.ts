@@ -8,9 +8,8 @@ import {
   createSession,
   deleteSession,
   getInvitationByToken,
-  loginAccount,
   signInWithOAuthProfile,
-  signUpAccount,
+  signInWithPassword,
   updateAccountProfile,
   verifyEmailLoginCode
 } from "../../state/index.js";
@@ -33,10 +32,12 @@ import {
   oauthProviderConfigured,
   oauthRedirectUri
 } from "../services/oauth.js";
+import { PASSWORD_LOGIN_ENABLED } from "../config.js";
 
 export function registerAuthRoutes(app: Express): void {
   app.get("/api/auth/config", (_req, res) => {
     res.json({
+      password: PASSWORD_LOGIN_ENABLED,
       emailCode: isEmailDeliveryConfigured(),
       oauth: {
         google: oauthProviderConfigured("google"),
@@ -50,10 +51,14 @@ export function registerAuthRoutes(app: Express): void {
     if (!context) {
       res.status(401).json({
         error: "Not signed in",
-        demo: {
-          email: "admin@harhub.local",
-          password: "harhub"
-        }
+        ...(PASSWORD_LOGIN_ENABLED
+          ? {
+              demo: {
+                email: "admin@harhub.local",
+                password: "harhub"
+              }
+            }
+          : {})
       });
       return;
     }
@@ -62,34 +67,22 @@ export function registerAuthRoutes(app: Express): void {
   });
 
   app.post("/api/auth/login", async (req, res) => {
-    try {
-      const account = await loginAccount(
-        String(req.body?.email ?? ""),
-        String(req.body?.password ?? ""),
-        typeof req.body?.inviteToken === "string" ? req.body.inviteToken : undefined
-      );
-      const token = await createSession(account.id);
-      res.json({ token, ...(await buildSessionPayload(account)) });
-    } catch (error) {
-      sendError(res, error, 401);
+    if (!PASSWORD_LOGIN_ENABLED) {
+      res.status(403).json({ error: "Password authentication is disabled." });
+      return;
     }
-  });
 
-  app.post("/api/auth/signup", async (req, res) => {
     try {
-      const account = await signUpAccount({
+      const account = await signInWithPassword({
         email: String(req.body?.email ?? ""),
-        name: String(req.body?.name ?? ""),
         password: String(req.body?.password ?? ""),
-        workspaceName:
-          typeof req.body?.workspaceName === "string" ? req.body.workspaceName : undefined,
         inviteToken:
           typeof req.body?.inviteToken === "string" ? req.body.inviteToken : undefined
       });
       const token = await createSession(account.id);
-      res.status(201).json({ token, ...(await buildSessionPayload(account)) });
+      res.json({ token, ...(await buildSessionPayload(account)) });
     } catch (error) {
-      sendError(res, error, 400);
+      sendError(res, error, 401);
     }
   });
 
@@ -211,6 +204,11 @@ export function registerAuthRoutes(app: Express): void {
   app.post("/api/account/password", async (req, res) => {
     const context = await requireAuth(req, res);
     if (!context) return;
+
+    if (!PASSWORD_LOGIN_ENABLED) {
+      res.status(403).json({ error: "Password authentication is disabled." });
+      return;
+    }
 
     try {
       await changeAccountPassword(context.account.id, {

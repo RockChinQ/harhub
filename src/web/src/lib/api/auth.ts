@@ -22,20 +22,6 @@ export async function login(input: {
   });
 }
 
-export async function signUp(input: {
-  email: string;
-  name: string;
-  password: string;
-  workspaceName: string;
-  inviteToken?: string;
-}): Promise<AuthResponse> {
-  return request<AuthResponse>("/api/auth/signup", {
-    method: "POST",
-    headers: JSON_HEADERS,
-    body: JSON.stringify(input)
-  });
-}
-
 export async function requestEmailCode(input: {
   email: string;
   inviteToken?: string;
