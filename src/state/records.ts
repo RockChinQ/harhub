@@ -20,15 +20,12 @@ export function toPublicAccount(account: AccountRecord): AccountProfile {
 
 export function createWorkspaceRecord(
   state: AppState | undefined,
-  name: string,
-  options: { defaultScanPaths?: string[]; skillRoot?: string } = {}
+  name: string
 ): WorkspaceRecord {
   return {
     id: randomUUID(),
     name: name.trim(),
     slug: state ? uniqueWorkspaceSlug(state, name) : slugify(name),
-    defaultScanPaths: cleanPathList(options.defaultScanPaths ?? ["examples"]),
-    skillRoot: options.skillRoot?.trim() || "skills",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -109,9 +106,4 @@ export function ensureWorkspaceHasOwner(
   if (ownerCount === 0) {
     throw new Error("Workspace must keep at least one owner.");
   }
-}
-
-export function cleanPathList(paths: string[]): string[] {
-  const cleaned = paths.map((item) => item.trim()).filter(Boolean);
-  return cleaned.length > 0 ? cleaned : ["examples"];
 }

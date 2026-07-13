@@ -5,11 +5,9 @@ import {
 } from "../../features/assets/index.js";
 import { readStoredObject } from "../../storage/index.js";
 import { requireWorkspaceAccess } from "../auth.js";
-import { createSkillAsset } from "../services/skill-factory.js";
 import {
   deleteAsset,
-  deleteWorkspaceAssetBatch,
-  patchAsset
+  deleteWorkspaceAssetBatch
 } from "../services/asset-mutations.js";
 import { handleAssetUpload } from "../services/asset-upload.js";
 import { assetListPayload } from "../services/asset-responses.js";
@@ -18,13 +16,9 @@ import {
   validateWorkspaceAssetBatch,
   validateWorkspaceAssets
 } from "../services/asset-validation.js";
-import {
-  loadOrCreateWorkspaceAssetCatalog,
-  scanAndPersistWorkspace
-} from "../services/workspace-catalogs.js";
+import { loadOrCreateWorkspaceAssetCatalog } from "../services/workspace-catalogs.js";
 import { buildAssetPreview } from "../utils/zip-preview.js";
 import {
-  readPathList,
   sendError,
   stringQuery
 } from "../utils/http.js";
@@ -89,22 +83,12 @@ function registerAssetMutationRoutes(
   app: Express,
   upload: { single(fieldName: string): RequestHandler }
 ): void {
-  app.post("/api/workspaces/:workspaceId/assets/scan", async (req, res) => {
-    const context = await requireWorkspaceAccess(req, res);
-    if (!context) return;
-
-    const roots = readPathList(req.body?.paths, context.workspace.defaultScanPaths);
-    const response = await scanAndPersistWorkspace(context.workspace, roots);
-    res.json(response);
-  });
-
   app.post("/api/workspaces/:workspaceId/assets/validate", async (req, res) => {
     const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
 
     try {
-      const roots = readPathList(req.body?.paths, context.workspace.defaultScanPaths);
-      const response = await validateWorkspaceAssets(context.workspace, roots);
+      const response = await validateWorkspaceAssets(context.workspace);
       res.json(response);
     } catch (error) {
       sendError(res, error, 400);
@@ -143,24 +127,6 @@ function registerAssetMutationRoutes(
     const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
     await handleAssetUpload(req, res, context);
-  });
-
-  app.post("/api/workspaces/:workspaceId/assets", async (req, res) => {
-    const context = await requireWorkspaceAccess(req, res);
-    if (!context) return;
-
-    if (String(req.body?.kind ?? "skill") !== "skill") {
-      res.status(400).json({ error: "Only skill assets are supported in this MVP." });
-      return;
-    }
-
-    await createSkillAsset(req, res, context.workspace);
-  });
-
-  app.patch("/api/workspaces/:workspaceId/assets/:query", async (req, res) => {
-    const context = await requireWorkspaceAccess(req, res);
-    if (!context) return;
-    await patchAsset(req, res, context);
   });
 
   app.post("/api/workspaces/:workspaceId/assets/:query/validate", async (req, res) => {

@@ -36,10 +36,6 @@ export interface SkillListResponse {
   skills: SkillRecord[];
 }
 
-export interface SkillScanResponse extends SkillListResponse {
-  issues: ValidationIssue[];
-}
-
 export interface AssetListResponse {
   workspace: WorkspaceRecord;
   catalogPath: string;

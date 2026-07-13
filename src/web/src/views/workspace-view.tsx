@@ -7,7 +7,6 @@ import type {
   WorkspaceRecord,
   WorkspaceRole
 } from "../../../shared/types";
-import { splitList } from "../app/format";
 import { Button } from "../components/ui/button";
 import {
   Card,
@@ -38,8 +37,6 @@ export function WorkspaceView({
   onSessionChange: (session: SessionResponse, workspace?: WorkspaceRecord) => Promise<void>;
 }) {
   const [name, setName] = useState(workspace.name);
-  const [scanPaths, setScanPaths] = useState(workspace.defaultScanPaths.join(", "));
-  const [skillRoot, setSkillRoot] = useState(workspace.skillRoot);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [invitations, setInvitations] = useState<WorkspaceInvitation[]>([]);
   const [memberEmail, setMemberEmail] = useState("");
@@ -49,9 +46,7 @@ export function WorkspaceView({
 
   useEffect(() => {
     setName(workspace.name);
-    setScanPaths(workspace.defaultScanPaths.join(", "));
-    setSkillRoot(workspace.skillRoot);
-  }, [workspace.id, workspace.name, workspace.defaultScanPaths, workspace.skillRoot]);
+  }, [workspace.id, workspace.name]);
 
   useEffect(() => {
     void refreshMembers();
@@ -73,9 +68,7 @@ export function WorkspaceView({
     setMessage(undefined);
     try {
       const result = await updateWorkspace(token, workspace.id, {
-        name,
-        defaultScanPaths: splitList(scanPaths),
-        skillRoot
+        name
       });
       setMessage("Workspace saved.");
       await onSessionChange(result, result.workspace);
@@ -153,14 +146,6 @@ export function WorkspaceView({
               <label className="grid gap-1.5 text-sm font-medium">
                 Name
                 <Input value={name} onChange={(event) => setName(event.target.value)} />
-              </label>
-              <label className="grid gap-1.5 text-sm font-medium">
-                Default scan paths
-                <Input value={scanPaths} onChange={(event) => setScanPaths(event.target.value)} />
-              </label>
-              <label className="grid gap-1.5 text-sm font-medium">
-                Skill root
-                <Input value={skillRoot} onChange={(event) => setSkillRoot(event.target.value)} />
               </label>
               <Button type="submit">
                 <Save className="h-4 w-4" aria-hidden="true" />

@@ -10,17 +10,12 @@ import {
 } from "../../state/index.js";
 import { readStoredObject } from "../../storage/index.js";
 import { assetListPayload } from "./asset-responses.js";
-import {
-  loadOrCreateWorkspaceAssetCatalog,
-  scanAndPersistWorkspace
-} from "./workspace-catalogs.js";
+import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
 
 export async function validateWorkspaceAssets(
-  workspace: WorkspaceRecord,
-  roots: string[]
+  workspace: WorkspaceRecord
 ) {
-  const scanned = await scanAndPersistWorkspace(workspace, roots);
-  let catalog: AssetCatalog = scanned.assetCatalog;
+  let catalog: AssetCatalog = await loadOrCreateWorkspaceAssetCatalog(workspace);
 
   for (const asset of catalog.assets) {
     if (!asset.storage) continue;
@@ -46,17 +41,7 @@ export async function validateWorkspaceAsset(
   }
 
   if (!asset.storage) {
-    const refreshed = await scanAndPersistWorkspace(workspace, [
-      workspace.skillRoot,
-      ...workspace.defaultScanPaths
-    ]);
-    const validated = findAsset(refreshed.assetCatalog, query);
-    return {
-      ...assetListPayload(workspace, refreshed.assetCatalog.generatedAt, refreshed.assetCatalog.assets),
-      assetCatalogStorage: describeWorkspaceCatalogStorage(workspace.id),
-      validated,
-      validatedIssues: validated?.validationIssues ?? []
-    };
+    throw new Error("Only uploaded skill packages can be validated.");
   }
 
   const nextAsset = await validateStoredAsset(workspace, asset);

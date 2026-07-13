@@ -6,7 +6,7 @@ Harhub 的 SaaS MVP 采用云原生持久化优先，同时保留本地 JSON fal
 
 - **Account**：已登录用户，包含邮箱、显示名、密码哈希和 sessions。
 - **Account Identity**：Google/GitHub OAuth identity 与 Harhub account 的绑定关系。
-- **Workspace**：租户边界，包含默认扫描路径、Skill root 和 workspace 级 catalog。
+- **Workspace**：租户边界，包含成员关系和 workspace 级 asset catalog。
 - **Membership**：账号与 workspace 之间的角色关系。
 - **Session**：登录或注册后签发的 bearer token。
 - **Workspace Invitation**：workspace-scoped 邀请，包含目标邮箱、角色、token、过期时间和接受状态。
@@ -23,7 +23,6 @@ harhub_state
 
 harhub_workspace_catalogs
   workspace_id
-  skill_catalog jsonb
   asset_catalog jsonb
   updated_at
 ```
@@ -42,7 +41,7 @@ password: harhub
 workspace: Engineering Platform
 ```
 
-种子 workspace 会扫描 `examples`，并将 catalog 写入当前 backend：Postgres 中的 `harhub_workspace_catalogs`，或本地 fallback 的 `.harhub/workspaces/ws_demo/`。
+种子 workspace 的 asset catalog 初始为空。Skill package 通过 Web 或 CLI 上传到对象存储后，索引写入当前 backend：Postgres 中的 `harhub_workspace_catalogs`，或本地 fallback 的 `.harhub/workspaces/ws_demo/`。
 
 ## 配置
 
@@ -108,8 +107,10 @@ POST /api/workspaces/:workspaceId/members
 DELETE /api/workspaces/:workspaceId/invitations/:invitationId
 POST /api/invitations/accept
 GET  /api/workspaces/:workspaceId/skills
-POST /api/workspaces/:workspaceId/skills/scan
-POST /api/workspaces/:workspaceId/skills
+POST /api/workspaces/:workspaceId/assets/upload
+POST /api/workspaces/:workspaceId/assets/validate
+POST /api/workspaces/:workspaceId/assets/:query/validate
+DELETE /api/workspaces/:workspaceId/assets/:query
 ```
 
 Legacy `/api/skills` routes 仍作为 demo workspace 的兼容层保留。

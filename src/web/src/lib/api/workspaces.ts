@@ -78,8 +78,6 @@ export async function createWorkspace(
   token: string,
   input: {
     name: string;
-    defaultScanPaths: string[];
-    skillRoot: string;
   }
 ): Promise<WorkspaceMutationResponse> {
   return request<WorkspaceMutationResponse>("/api/workspaces", {
@@ -95,8 +93,6 @@ export async function updateWorkspace(
   workspaceId: string,
   input: {
     name?: string;
-    defaultScanPaths?: string[];
-    skillRoot?: string;
   }
 ): Promise<WorkspaceMutationResponse> {
   return request<WorkspaceMutationResponse>(`/api/workspaces/${workspaceId}`, {

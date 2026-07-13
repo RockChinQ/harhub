@@ -1,5 +1,4 @@
 import {
-  cleanPathList,
   createMembership,
   createWorkspaceRecord,
   ensureWorkspaceHasOwner,
@@ -46,16 +45,13 @@ export async function requireWorkspace(
 
 export async function createWorkspaceForAccount(
   accountId: string,
-  input: { name: string; defaultScanPaths?: string[]; skillRoot?: string }
+  input: { name: string }
 ): Promise<WorkspaceRecord> {
   const state = await loadState();
   const account = state.accounts.find((item) => item.id === accountId);
   if (!account) throw new Error("Account not found.");
 
-  const workspace = createWorkspaceRecord(state, input.name, {
-    defaultScanPaths: input.defaultScanPaths,
-    skillRoot: input.skillRoot
-  });
+  const workspace = createWorkspaceRecord(state, input.name);
 
   state.workspaces.push(workspace);
   state.memberships.push(createMembership(accountId, workspace.id, "owner"));
@@ -67,7 +63,7 @@ export async function createWorkspaceForAccount(
 export async function updateWorkspaceForAccount(
   accountId: string,
   workspaceId: string,
-  input: { name?: string; defaultScanPaths?: string[]; skillRoot?: string }
+  input: { name?: string }
 ): Promise<WorkspaceRecord> {
   const state = await loadState();
   const membership = state.memberships.find(
@@ -84,14 +80,6 @@ export async function updateWorkspaceForAccount(
   if (input.name?.trim()) {
     workspace.name = input.name.trim();
     workspace.slug = uniqueWorkspaceSlug(state, workspace.name, workspace.id);
-  }
-
-  if (input.defaultScanPaths) {
-    workspace.defaultScanPaths = cleanPathList(input.defaultScanPaths);
-  }
-
-  if (input.skillRoot?.trim()) {
-    workspace.skillRoot = input.skillRoot.trim();
   }
 
   workspace.updatedAt = new Date().toISOString();

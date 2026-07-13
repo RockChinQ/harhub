@@ -19,7 +19,7 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 
 - **Fullstack app**：Express API、Vite/React frontend、shared TypeScript types 和 CLI entry point。
 - **Authentication**：本地 email/password accounts、Google/GitHub OAuth、邮件验证码登录、bearer-token sessions、profile updates、password changes 和 logout。
-- **Tenant model**：workspaces、memberships、workspace roles、default scan paths 和 workspace-scoped catalogs。
+- **Tenant model**：workspaces、memberships、workspace roles 和 workspace-scoped asset catalogs。
 - **Workspace invitations**：owner/admin 可邀请邮箱加入 workspace、Resend 发送邀请邮件、pending invitation 可撤销、invite token 可用于登录/注册/OAuth 后进入 workspace。
 - **Skill asset flow**：S3-compatible zip upload、`SKILL.md` extraction、runtime indexing、search/filter、table view、detail view、file tree preview 和 deletion。
 - **Validation foundation**：递归 `SKILL.md` scanning、官方 frontmatter checks、name validation、description checks，以及官方可选字段 checks。

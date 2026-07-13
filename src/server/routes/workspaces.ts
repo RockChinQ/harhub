@@ -13,7 +13,6 @@ import {
 } from "../../state/index.js";
 import { requireAuth, requireWorkspaceAccess } from "../auth.js";
 import {
-  readOptionalPathList,
   readWorkspaceRole,
   sendError
 } from "../utils/http.js";
@@ -33,10 +32,7 @@ export function registerWorkspaceRoutes(app: Express): void {
 
     try {
       const workspace = await createWorkspaceForAccount(context.account.id, {
-        name: String(req.body?.name ?? ""),
-        defaultScanPaths: readOptionalPathList(req.body?.defaultScanPaths),
-        skillRoot:
-          typeof req.body?.skillRoot === "string" ? req.body.skillRoot : undefined
+        name: String(req.body?.name ?? "")
       });
       res.status(201).json({
         workspace,
@@ -53,10 +49,7 @@ export function registerWorkspaceRoutes(app: Express): void {
 
     try {
       const workspace = await updateWorkspaceForAccount(context.account.id, req.params.workspaceId, {
-        name: typeof req.body?.name === "string" ? req.body.name : undefined,
-        defaultScanPaths: readOptionalPathList(req.body?.defaultScanPaths),
-        skillRoot:
-          typeof req.body?.skillRoot === "string" ? req.body.skillRoot : undefined
+        name: typeof req.body?.name === "string" ? req.body.name : undefined
       });
       res.json({
         workspace,

@@ -165,8 +165,6 @@ function WorkspaceSelect({
     try {
       const result = await createWorkspace(token, {
         name,
-        defaultScanPaths: ["examples"],
-        skillRoot: "skills",
       })
       setNewWorkspaceName("")
       await onSessionChange(result, result.workspace)

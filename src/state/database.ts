@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import type { AssetCatalog, SkillCatalog } from "../shared/types.js";
+import type { AssetCatalog } from "../shared/types.js";
 import type { AppState } from "./types.js";
 
 type JsonRecord = Record<string, unknown>;
@@ -43,18 +43,6 @@ export async function writeDatabaseState(state: AppState): Promise<void> {
   );
 }
 
-export async function readDatabaseSkillCatalog(
-  workspaceId: string
-): Promise<SkillCatalog | undefined> {
-  if (!isDatabaseStateEnabled()) return undefined;
-  await ensureDatabase();
-  const result = await getPool().query<{ skill_catalog: SkillCatalog | null }>(
-    "select skill_catalog from harhub_workspace_catalogs where workspace_id = $1",
-    [workspaceId]
-  );
-  return result.rows[0]?.skill_catalog ?? undefined;
-}
-
 export async function readDatabaseAssetCatalog(
   workspaceId: string
 ): Promise<AssetCatalog | undefined> {
@@ -65,21 +53,6 @@ export async function readDatabaseAssetCatalog(
     [workspaceId]
   );
   return result.rows[0]?.asset_catalog ?? undefined;
-}
-
-export async function writeDatabaseSkillCatalog(
-  workspaceId: string,
-  catalog: SkillCatalog
-): Promise<void> {
-  if (!isDatabaseStateEnabled()) return;
-  await ensureDatabase();
-  await getPool().query(
-    `insert into harhub_workspace_catalogs (workspace_id, skill_catalog, updated_at)
-     values ($1, $2::jsonb, now())
-     on conflict (workspace_id) do update
-     set skill_catalog = excluded.skill_catalog, updated_at = now()`,
-    [workspaceId, JSON.stringify(catalog)]
-  );
 }
 
 export async function writeDatabaseAssetCatalog(
@@ -113,10 +86,13 @@ async function setupDatabase(): Promise<void> {
   await getPool().query(`
     create table if not exists harhub_workspace_catalogs (
       workspace_id text primary key,
-      skill_catalog jsonb,
       asset_catalog jsonb,
       updated_at timestamptz not null default now()
     )
+  `);
+  await getPool().query(`
+    alter table harhub_workspace_catalogs
+    drop column if exists skill_catalog
   `);
 }
 

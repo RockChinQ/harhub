@@ -14,7 +14,12 @@ import type { WorkspaceRecord } from "../shared/types.js";
 export async function loadState(): Promise<AppState> {
   if (isDatabaseStateEnabled()) {
     const state = await readDatabaseState();
-    if (state) return normalizeState(state);
+    if (state) {
+      const needsMigration = hasLegacyWorkspacePaths(state);
+      const normalized = normalizeState(state);
+      if (needsMigration) await writeDatabaseState(normalized);
+      return normalized;
+    }
 
     const seeded = createSeedState();
     await saveState(seeded);
@@ -29,7 +34,10 @@ export async function loadState(): Promise<AppState> {
   }
 
   const parsed = JSON.parse(readFileSync(statePath, "utf8")) as AppState;
-  return normalizeState(parsed);
+  const needsMigration = hasLegacyWorkspacePaths(parsed);
+  const normalized = normalizeState(parsed);
+  if (needsMigration) await saveState(normalized);
+  return normalized;
 }
 
 export async function saveState(state: AppState): Promise<void> {
@@ -56,8 +64,6 @@ function createSeedState(): AppState {
     id: "ws_demo",
     name: "Engineering Platform",
     slug: "engineering-platform",
-    defaultScanPaths: ["examples"],
-    skillRoot: "skills",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -102,8 +108,20 @@ function normalizeState(state: AppState): AppState {
   }
 
   for (const workspace of state.workspaces) {
+    const legacyWorkspace = workspace as WorkspaceRecord & {
+      defaultScanPaths?: unknown;
+      skillRoot?: unknown;
+    };
+    delete legacyWorkspace.defaultScanPaths;
+    delete legacyWorkspace.skillRoot;
     workspace.updatedAt ??= workspace.createdAt;
   }
 
   return state;
+}
+
+function hasLegacyWorkspacePaths(state: AppState): boolean {
+  return (state.workspaces ?? []).some(
+    (workspace) => "defaultScanPaths" in workspace || "skillRoot" in workspace
+  );
 }

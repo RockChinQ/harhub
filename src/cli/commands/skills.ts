@@ -150,7 +150,8 @@ export async function runUpdate(parsed: ParsedArgs): Promise<number> {
   }
 
   if (optionString(parsed, "workspace")) {
-    return runSkillApiMutation(parsed, query, "PATCH", readSkillUpdateInput(parsed), "Updated");
+    console.error("Uploaded skill packages are immutable. Update the local Skill and upload a new zip.");
+    return 1;
   }
 
   const catalogPath = resolveCatalogPath(parsed);
@@ -359,7 +360,7 @@ function readSkillUpdateInput(parsed: ParsedArgs) {
 async function runSkillApiMutation(
   parsed: ParsedArgs,
   query: string | undefined,
-  method: "PATCH" | "DELETE" | "POST",
+  method: "DELETE" | "POST",
   body: unknown,
   action: string,
   suffix?: string

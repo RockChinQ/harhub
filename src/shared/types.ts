@@ -57,8 +57,6 @@ export interface WorkspaceRecord {
   id: string;
   name: string;
   slug: string;
-  defaultScanPaths: string[];
-  skillRoot: string;
   createdAt: string;
   updatedAt?: string;
 }

@@ -178,8 +178,6 @@ export function ensureAccountHasWorkspace(
     id: randomBytes(16).toString("hex"),
     name: `${account.name}'s Workspace`,
     slug: uniqueFallbackWorkspaceSlug(state, account.name),
-    defaultScanPaths: ["examples"],
-    skillRoot: "skills",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };

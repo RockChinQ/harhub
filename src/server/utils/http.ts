@@ -25,12 +25,6 @@ export function readWorkspaceRole(value: unknown): WorkspaceRole {
   return "member";
 }
 
-export function readOptionalPathList(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const paths = value.filter((item): item is string => typeof item === "string");
-  return paths.length > 0 ? paths : undefined;
-}
-
 export function readOptionalStringList(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.filter((item): item is string => typeof item === "string");
@@ -44,18 +38,6 @@ export function readOptionalStringList(value: unknown): string[] {
   }
 
   return [];
-}
-
-export function readPathList(value: unknown, fallback: string[]): string[] {
-  if (!Array.isArray(value) || value.length === 0) {
-    return fallback;
-  }
-
-  const paths = value.filter(
-    (item): item is string => typeof item === "string" && item.trim().length > 0
-  );
-
-  return paths.length > 0 ? paths : fallback;
 }
 
 export function stringQuery(value: unknown): string | undefined {

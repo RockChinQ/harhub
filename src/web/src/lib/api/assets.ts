@@ -23,40 +23,6 @@ export async function getWorkspaceAssets(
   );
 }
 
-export async function scanWorkspaceAssets(
-  token: string,
-  workspaceId: string,
-  paths: string[]
-): Promise<AssetScanResponse> {
-  return request<AssetScanResponse>(`/api/workspaces/${workspaceId}/assets/scan`, {
-    token,
-    method: "POST",
-    headers: JSON_HEADERS,
-    body: JSON.stringify({ paths })
-  });
-}
-
-export async function createWorkspaceAsset(
-  token: string,
-  workspaceId: string,
-  input: {
-    kind: "skill";
-    name: string;
-    dir: string;
-    description?: string;
-  }
-): Promise<AssetScanResponse & { path: string }> {
-  return request<AssetScanResponse & { path: string }>(
-    `/api/workspaces/${workspaceId}/assets`,
-    {
-      token,
-      method: "POST",
-      headers: JSON_HEADERS,
-      body: JSON.stringify(input)
-    }
-  );
-}
-
 export async function uploadWorkspaceSkillZip(
   token: string,
   workspaceId: string,
@@ -87,21 +53,6 @@ export async function deleteWorkspaceAsset(
     {
       token,
       method: "DELETE"
-    }
-  );
-}
-
-export async function validateWorkspaceAssets(
-  token: string,
-  workspaceId: string
-): Promise<AssetScanResponse> {
-  return request<AssetScanResponse>(
-    `/api/workspaces/${workspaceId}/assets/validate`,
-    {
-      token,
-      method: "POST",
-      headers: JSON_HEADERS,
-      body: JSON.stringify({})
     }
   );
 }
