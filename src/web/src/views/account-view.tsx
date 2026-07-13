@@ -78,14 +78,14 @@ export function AccountView({
 
   return (
     <div className="min-h-0 w-full flex-1 overflow-auto pr-1">
-      <div className="space-y-4">
+      <div className="mx-auto w-full max-w-5xl space-y-4">
         <Card>
           <CardHeader>
             <CardTitle>Profile</CardTitle>
             <CardDescription>{account.id}</CardDescription>
           </CardHeader>
           <CardContent>
-            <form className="grid gap-4" onSubmit={saveProfile}>
+            <form className="grid max-w-xl gap-4" onSubmit={saveProfile}>
               <label className="grid gap-1.5 text-sm font-medium">
                 Name
                 <Input value={name} onChange={(event) => setName(event.target.value)} />
@@ -125,7 +125,7 @@ export function AccountView({
             <CardDescription>Changing it signs out every active session.</CardDescription>
           </CardHeader>
           <CardContent>
-            <form className="grid gap-4" onSubmit={savePassword}>
+            <form className="grid max-w-xl gap-4" onSubmit={savePassword}>
               <label className="grid gap-1.5 text-sm font-medium">
                 Current password
                 <Input

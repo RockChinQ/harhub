@@ -159,7 +159,10 @@ export function WorkspaceMembersCard({
               </div>
             </div>
           ) : null}
-          <form className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_140px_auto]" onSubmit={onInviteMember}>
+          <form
+            className="grid max-w-2xl gap-2 sm:grid-cols-[minmax(0,1fr)_140px_auto]"
+            onSubmit={onInviteMember}
+          >
             <Input
               value={memberEmail}
               onChange={(event) => onMemberEmailChange(event.target.value)}

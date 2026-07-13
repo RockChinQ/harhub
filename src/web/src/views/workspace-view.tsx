@@ -135,19 +135,19 @@ export function WorkspaceView({
 
   return (
     <div className="min-h-0 w-full flex-1 overflow-auto pr-1">
-      <div className="space-y-4">
+      <div className="mx-auto w-full max-w-5xl space-y-4">
         <Card>
           <CardHeader>
             <CardTitle>Workspace Settings</CardTitle>
             <CardDescription>{workspace.slug}</CardDescription>
           </CardHeader>
           <CardContent>
-            <form className="grid gap-4" onSubmit={saveSettings}>
+            <form className="grid max-w-xl gap-4" onSubmit={saveSettings}>
               <label className="grid gap-1.5 text-sm font-medium">
                 Name
                 <Input value={name} onChange={(event) => setName(event.target.value)} />
               </label>
-              <Button type="submit">
+              <Button type="submit" className="w-fit">
                 <Save className="h-4 w-4" aria-hidden="true" />
                 Save
               </Button>
