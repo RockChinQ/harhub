@@ -7,6 +7,7 @@ import {
   GOOGLE_CLIENT_SECRET,
   PUBLIC_APP_URL
 } from "../config.js";
+import { resolveGitHubEmail } from "./github-email.js";
 
 export interface OAuthProfile {
   provider: AuthProvider;
@@ -147,14 +148,11 @@ async function exchangeGitHubCode(code: string, redirectUri: string): Promise<OA
     throw new Error("GitHub OAuth profile fetch failed.");
   }
 
-  const email =
-    typeof profile.email === "string" && profile.email
-      ? profile.email
-      : await fetchPrimaryGitHubEmail(headers);
-
-  if (!email) {
-    throw new Error("GitHub did not return a public or verified primary email.");
-  }
+  const emails =
+    typeof profile.email === "string" && profile.email.trim()
+      ? undefined
+      : await fetchGitHubEmails(headers);
+  const email = resolveGitHubEmail(profile, emails);
 
   return {
     provider: "github",
@@ -169,17 +167,8 @@ async function exchangeGitHubCode(code: string, redirectUri: string): Promise<OA
   };
 }
 
-async function fetchPrimaryGitHubEmail(headers: Record<string, string>): Promise<string | undefined> {
+async function fetchGitHubEmails(headers: Record<string, string>): Promise<unknown> {
   const response = await fetch("https://api.github.com/user/emails", { headers });
   const emails = await response.json().catch(() => undefined);
-  if (!response.ok || !Array.isArray(emails)) return undefined;
-
-  const primary = emails.find(
-    (item) =>
-      item &&
-      typeof item.email === "string" &&
-      item.primary === true &&
-      item.verified === true
-  );
-  return primary?.email;
+  return response.ok ? emails : undefined;
 }
