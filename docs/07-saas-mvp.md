@@ -2,7 +2,7 @@
 
 Harhub 的 SaaS MVP 采用云原生持久化优先，同时保留本地 JSON fallback 方便 self-host demo 和离线开发。Hosted deployment 中，API 进程不依赖本地 `.harhub` 状态文件，可以通过横向扩容连接同一组 managed Postgres 和 S3-compatible object storage。
 
-本文记录当前 `0.1.0-beta.1` 的实现快照。当前 hosted catalog 只接受 uploaded Skill zip；本地目录发现由 CLI 完成，服务端不接收或扫描本地路径。
+本文记录当前 `0.1.0-beta.2` 的实现快照。当前 hosted catalog 只接受 uploaded Skill zip；本地目录发现由 CLI 完成，服务端不接收或扫描本地路径。
 
 ## 对象
 

@@ -1,6 +1,6 @@
 {
   "name": "harhub",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "description": "Team AI harness management for skills, MCP, rules, and agent instructions.",
   "type": "module",
   "repository": {
@@ -68,6 +68,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwind-merge": "^3.3.1",
+    "undici": "^7.28.0",
     "yaml": "^2.8.1"
   },
   "devDependencies": {
@@ -89,6 +90,6 @@
     "vitepress": "^1.6.4"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.18.1"
   }
 }

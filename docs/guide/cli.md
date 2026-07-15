@@ -63,6 +63,11 @@ token and workspace flags take precedence over `HARHUB_WORKSPACE_ID` and
 `HARHUB_TOKEN`, which in turn take precedence over the saved login. Server
 selection is only changed with an explicit `--url`.
 
+The CLI automatically honors uppercase and lowercase `HTTP_PROXY`,
+`HTTPS_PROXY`, and `NO_PROXY` environment variables. A transient network failure
+while polling an approved device is retried until the device authorization
+expires.
+
 ## Upload Skills
 
 Open the interactive selector:

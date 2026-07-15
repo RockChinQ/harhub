@@ -24,7 +24,7 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 - **Skill asset flow**：S3-compatible zip upload、`SKILL.md` extraction、runtime indexing、search/filter、table view、detail view、file tree preview 和 deletion。
 - **Validation foundation**：local scan 和 uploaded zip 共用官方 frontmatter、name、description 和 optional-field checks；upload 还会拒绝多个 `SKILL.md`、path traversal、absolute paths、drive-letter paths 和 null-byte paths。
 - **CLI foundation**：local scan、validate、list、show、create、asset scan、asset validate、asset create、interactive TUI upload、local Skill directory packaging 和 API-backed zip upload。
-- **Open-source release path**：GitHub Release 触发 npm publish workflow，使用 `NPM_TOKEN` 发布；`0.1.0-beta.1` 已作为当前 npm beta 版本发布。
+- **Open-source release path**：GitHub Release 触发 npm publish workflow，使用 `NPM_TOKEN` 发布；`0.1.0-beta.2` 是当前 npm beta 版本。
 - **Cloud-native persistence**：`HARHUB_DATABASE_URL` 存在时，accounts、sessions、workspace metadata、memberships 和 workspace asset indexes 存入 Postgres-compatible database；uploaded zip bytes 存入 S3-compatible object storage。本地 `.harhub` JSON 只作为 fallback。
 - **Deployment surface**：production build 由单一 Express process 提供 Web、API 和 docs；仓库包含 multi-stage Dockerfile、Docker image workflow 和 VitePress 文档站。
 - **Cloud catalog boundary**：服务端已经移除 local path scan/create/update。Local directory discovery 只在 CLI 中执行，hosted workspace catalog 只管理 uploaded immutable zip packages。

@@ -17,6 +17,7 @@ import {
   writeCliConfig
 } from "../config.js";
 import { canUseInteractiveTerminal, selectWorkspace } from "../interactive.js";
+import { HarhubNetworkError } from "../http.js";
 import type { ParsedArgs } from "../types.js";
 
 export async function runLogin(parsed: ParsedArgs): Promise<number> {
@@ -162,20 +163,40 @@ export async function runWhoami(parsed: ParsedArgs): Promise<number> {
   return 0;
 }
 
-async function waitForDeviceToken(
+export async function waitForDeviceToken(
   apiUrl: string,
   authorization: {
     device_code: string;
     expires_in: number;
     interval: number;
-  }
+  },
+  dependencies: {
+    poll?: typeof pollDeviceToken;
+    wait?: typeof delay;
+  } = {}
 ): Promise<string> {
   const expiresAt = Date.now() + authorization.expires_in * 1000;
   let intervalSeconds = authorization.interval || 5;
+  let lastNetworkError: HarhubNetworkError | undefined;
+  let showedNetworkWarning = false;
+  const poll = dependencies.poll ?? pollDeviceToken;
+  const wait = dependencies.wait ?? delay;
 
   while (Date.now() < expiresAt) {
-    await delay(intervalSeconds * 1000);
-    const result = await pollDeviceToken(apiUrl, authorization.device_code);
+    await wait(intervalSeconds * 1000);
+    let result: Awaited<ReturnType<typeof pollDeviceToken>>;
+    try {
+      result = await poll(apiUrl, authorization.device_code);
+      lastNetworkError = undefined;
+    } catch (error) {
+      if (!(error instanceof HarhubNetworkError)) throw error;
+      lastNetworkError = error;
+      if (!showedNetworkWarning) {
+        console.error(`${error.message}. Retrying device authorization...`);
+        showedNetworkWarning = true;
+      }
+      continue;
+    }
     if ("access_token" in result) return result.access_token;
     if (result.error === "authorization_pending") continue;
     if (result.error === "slow_down") {
@@ -187,6 +208,7 @@ async function waitForDeviceToken(
     );
   }
 
+  if (lastNetworkError) throw lastNetworkError;
   throw new Error("Device authorization expired before it was completed.");
 }
 

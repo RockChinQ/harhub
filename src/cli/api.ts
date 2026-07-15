@@ -10,6 +10,7 @@ import {
 } from "../shared/oauth.js";
 import { optionString } from "./args.js";
 import { readCliConfig } from "./config.js";
+import { fetchHarhub } from "./http.js";
 
 export const DEFAULT_HARHUB_API_URL = "https://harhub.rcpd.cc";
 
@@ -72,7 +73,7 @@ export async function pollDeviceToken(
   apiUrl: string,
   deviceCode: string
 ): Promise<OAuthDeviceTokenResponse | OAuthDeviceTokenError> {
-  const response = await fetch(`${apiUrl}/api/oauth/token`, {
+  const response = await fetchHarhub(`${apiUrl}/api/oauth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -90,7 +91,7 @@ export async function getHarhubSession(
   apiUrl: string,
   token: string
 ): Promise<SessionPayload> {
-  const response = await fetch(`${apiUrl}/api/session`, {
+  const response = await fetchHarhub(`${apiUrl}/api/session`, {
     headers: { Authorization: `Bearer ${token}` }
   });
   const data = await response.json().catch(() => undefined);
@@ -108,7 +109,7 @@ export async function revokeHarhubSession(
   apiUrl: string,
   token: string
 ): Promise<void> {
-  const response = await fetch(`${apiUrl}/api/auth/logout`, {
+  const response = await fetchHarhub(`${apiUrl}/api/auth/logout`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` }
   });
@@ -134,7 +135,7 @@ export async function uploadSkillZip(input: {
     input.fileName
   );
 
-  const response = await fetch(
+  const response = await fetchHarhub(
     `${input.apiUrl}/api/workspaces/${input.workspaceId}/assets/upload`,
     {
       method: "POST",
@@ -158,7 +159,7 @@ export async function uploadSkillZip(input: {
 }
 
 async function requestForm<T>(url: string, body: Record<string, string>): Promise<T> {
-  const response = await fetch(url, {
+  const response = await fetchHarhub(url, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(body)

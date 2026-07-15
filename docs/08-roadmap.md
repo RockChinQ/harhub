@@ -129,7 +129,7 @@ MVP 应先证明 Harhub 能把散落的 Agent Skills 转化为可管理、可复
 
 ## MVP 边界
 
-当前 `0.1.0-beta.1` 已实现：
+当前 `0.1.0-beta.2` 已实现：
 
 - 本地 TypeScript CLI 和 React Web UI。
 - Password、email code、Google/GitHub OAuth、sessions 和 account settings。

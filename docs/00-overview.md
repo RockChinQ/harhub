@@ -6,7 +6,7 @@ Harhub 是面向团队的 agent harness 控制平面。这里的 harness 指让 
 
 ## 当前实现与目标
 
-当前 `0.1.0-beta.1` MVP 只管理 Agent Skills。已经实现的产品表面包括：
+当前 `0.1.0-beta.2` MVP 只管理 Agent Skills。已经实现的产品表面包括：
 
 - React Web UI 和 TypeScript CLI。
 - 账号、session、workspace、角色和邀请。
