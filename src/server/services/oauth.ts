@@ -43,7 +43,7 @@ export function buildOAuthAuthorizationUrl(input: {
   const url = new URL("https://github.com/login/oauth/authorize");
   url.searchParams.set("client_id", GITHUB_CLIENT_ID);
   url.searchParams.set("redirect_uri", input.redirectUri);
-  url.searchParams.set("scope", "read:user user:email");
+  url.searchParams.set("scope", "read:user");
   url.searchParams.set("state", input.state);
   return url.toString();
 }
@@ -148,11 +148,7 @@ async function exchangeGitHubCode(code: string, redirectUri: string): Promise<OA
     throw new Error("GitHub OAuth profile fetch failed.");
   }
 
-  const emails =
-    typeof profile.email === "string" && profile.email.trim()
-      ? undefined
-      : await fetchGitHubEmails(headers);
-  const email = resolveGitHubEmail(profile, emails);
+  const email = resolveGitHubEmail(profile);
 
   return {
     provider: "github",
@@ -165,10 +161,4 @@ async function exchangeGitHubCode(code: string, redirectUri: string): Promise<OA
           ? profile.login
           : email
   };
-}
-
-async function fetchGitHubEmails(headers: Record<string, string>): Promise<unknown> {
-  const response = await fetch("https://api.github.com/user/emails", { headers });
-  const emails = await response.json().catch(() => undefined);
-  return response.ok ? emails : undefined;
 }
