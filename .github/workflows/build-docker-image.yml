@@ -1,26 +1,47 @@
-name: Build Docker Image
+name: Build and Deploy Docker Image
 
 on:
   push:
     branches:
       - main
+      - deploy/dev
   workflow_dispatch:
 
+concurrency:
+  group: harhub-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-  publish-docker-image:
-    runs-on: ubuntu-latest
+  build:
     name: Build and push image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      release_tag: ${{ steps.tags.outputs.release_tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Select release tag
+        id: tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == "refs/heads/deploy/dev" ]]; then
+            RELEASE_TAG="deploy-dev"
+          else
+            RELEASE_TAG="latest"
+          fi
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -29,11 +50,130 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
           push: true
+          pull: true
           tags: |
-            rockchin/harhub:latest
+            rockchin/harhub:${{ steps.tags.outputs.release_tag }}
             rockchin/harhub:${{ github.sha }}
+          cache-from: type=registry,ref=rockchin/harhub:buildcache
+          cache-to: type=registry,ref=rockchin/harhub:buildcache,mode=max
+
+  deploy-dev:
+    name: Deploy harhub.rcpd.cc
+    needs: build
+    if: github.ref == 'refs/heads/deploy/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: harhub-dev
+      url: https://harhub.rcpd.cc
+    env:
+      PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+      PORTAINER_USER: ${{ secrets.PORTAINER_USER }}
+      PORTAINER_PASSWORD: ${{ secrets.PORTAINER_PASSWORD }}
+      STACK_ID: ${{ secrets.PORTAINER_STACK_ID }}
+      ENDPOINT_ID: ${{ secrets.PORTAINER_ENDPOINT_ID }}
+      REPO_USER: ${{ secrets.PORTAINER_REPO_USER }}
+      REPO_TOKEN: ${{ secrets.PORTAINER_REPO_TOKEN }}
+      HEALTH_URL: https://harhub.rcpd.cc/api/health
+      IMAGE: rockchin/harhub:deploy-dev
+    steps:
+      - name: Redeploy Portainer stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORTAINER_URL="${PORTAINER_URL%/}"
+
+          AUTH_BODY=$(jq -n --arg u "$PORTAINER_USER" --arg p "$PORTAINER_PASSWORD" \
+            '{Username: $u, Password: $p}')
+          JWT=$(curl --fail-with-body --silent --show-error \
+            -X POST "$PORTAINER_URL/api/auth" \
+            -H "Content-Type: application/json" \
+            -d "$AUTH_BODY" | jq -r '.jwt')
+          test -n "$JWT" && test "$JWT" != "null"
+
+          STACK_JSON=$(curl --fail-with-body --silent --show-error \
+            "$PORTAINER_URL/api/stacks/$STACK_ID" \
+            -H "Authorization: Bearer $JWT")
+          STACK_ENV=$(jq -c '.Env // []' <<< "$STACK_JSON")
+          for NAME in HARHUB_DB_PASSWORD MINIO_ACCESS_KEY MINIO_SECRET_KEY GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET RESEND_API_KEY; do
+            jq -e --arg name "$NAME" \
+              'any(.[]; .name == $name and (.value | type == "string") and (.value | length > 0))' \
+              <<< "$STACK_ENV" >/dev/null
+          done
+
+          DEPLOY_BODY=$(jq -n \
+            --arg repo_ref "refs/heads/main" \
+            --arg repo_user "$REPO_USER" \
+            --arg repo_token "$REPO_TOKEN" \
+            --argjson env "$STACK_ENV" \
+            '{RepositoryReferenceName: $repo_ref,
+              RepositoryAuthentication: true,
+              RepositoryUsername: $repo_user,
+              RepositoryPassword: $repo_token,
+              Env: $env,
+              RepullImageAndRedeploy: true}')
+
+          curl --fail-with-body --silent --show-error \
+            -X PUT "$PORTAINER_URL/api/stacks/$STACK_ID/git/redeploy?endpointId=$ENDPOINT_ID" \
+            -H "Authorization: Bearer $JWT" \
+            -H "Content-Type: application/json" \
+            -d "$DEPLOY_BODY" \
+            -o /tmp/portainer-redeploy.json
+          jq -e --argjson id "$STACK_ID" '.Id == $id and .Status == 1' \
+            /tmp/portainer-redeploy.json >/dev/null
+
+          echo "Portainer accepted stack $STACK_ID redeploy"
+
+      - name: Verify deployed image and health
+        shell: bash
+        env:
+          EXPECTED_DIGEST: ${{ needs.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          PORTAINER_URL="${PORTAINER_URL%/}"
+
+          AUTH_BODY=$(jq -n --arg u "$PORTAINER_USER" --arg p "$PORTAINER_PASSWORD" \
+            '{Username: $u, Password: $p}')
+          JWT=$(curl --fail-with-body --silent --show-error \
+            -X POST "$PORTAINER_URL/api/auth" \
+            -H "Content-Type: application/json" \
+            -d "$AUTH_BODY" | jq -r '.jwt')
+          test -n "$JWT" && test "$JWT" != "null"
+
+          FILTER=$(jq -nc --arg image "$IMAGE" '{reference: [$image]}')
+          VERIFIED=false
+          for ATTEMPT in $(seq 1 30); do
+            IMAGE_LIST=$(curl --fail-with-body --silent --show-error --get \
+              "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/images/json" \
+              -H "Authorization: Bearer $JWT" \
+              --data-urlencode "filters=$FILTER" || true)
+            TAG_IMAGE_ID=$(jq -r '.[0].Id // empty' <<< "$IMAGE_LIST" 2>/dev/null || true)
+
+            CONTAINER_JSON=$(curl --silent --show-error \
+              "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/containers/harhub/json" \
+              -H "Authorization: Bearer $JWT" || true)
+            CONTAINER_IMAGE_ID=$(jq -r '.Image // empty' <<< "$CONTAINER_JSON" 2>/dev/null || true)
+            CONTAINER_HEALTH=$(jq -r '.State.Health.Status // empty' <<< "$CONTAINER_JSON" 2>/dev/null || true)
+
+            echo "attempt=$ATTEMPT tag_image=${TAG_IMAGE_ID:0:19} container_image=${CONTAINER_IMAGE_ID:0:19} health=$CONTAINER_HEALTH"
+            if [[ -n "$TAG_IMAGE_ID" && "$CONTAINER_IMAGE_ID" == "$TAG_IMAGE_ID" && "$CONTAINER_HEALTH" == "healthy" ]]; then
+              VERIFIED=true
+              break
+            fi
+            sleep 5
+          done
+          [[ "$VERIFIED" == "true" ]]
+
+          HEALTH_BODY=$(curl --fail-with-body --silent --show-error \
+            --retry 12 --retry-all-errors --retry-delay 5 \
+            "$HEALTH_URL")
+          jq -e '.ok == true and .stateBackend == "postgres"' <<< "$HEALTH_BODY" >/dev/null
+
+          echo "Deployed $IMAGE from build digest $EXPECTED_DIGEST"
+          echo "Public health check passed: $HEALTH_URL"
