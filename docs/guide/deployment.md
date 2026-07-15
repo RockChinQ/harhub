@@ -129,3 +129,7 @@ The verification page is served at `/device`. Device codes expire after ten
 minutes, are stored as hashes, and can only be exchanged once. Production
 deployments should expose `HARHUB_PUBLIC_URL` over HTTPS so the metadata issuer,
 verification page, and token endpoint share the public origin.
+
+The same public origin is used to generate `/s/:token` share links, public zip
+download URLs, and the `harhub install` command shown on share pages. Set it to
+the real browser-visible HTTPS origin in production.

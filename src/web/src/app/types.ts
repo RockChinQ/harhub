@@ -1,14 +1,16 @@
 export type View =
   | "landing"
   | "device"
+  | "share"
   | "assets"
   | "asset-detail"
   | "workspace"
   | "account";
 
-export type AppShellView = Exclude<View, "landing" | "device">;
+export type AppShellView = Exclude<View, "landing" | "device" | "share">;
 
 export interface AppRoute {
   view: View;
   assetQuery?: string;
+  shareToken?: string;
 }

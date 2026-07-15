@@ -28,6 +28,7 @@ import {
 import { AuthScreen } from "./views/auth-screen";
 import { DeviceAuthorizationView } from "./views/device-authorization-view";
 import { LandingPage } from "./views/landing-page";
+import { PublicShareView } from "./views/public-share-view";
 
 export function App() {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) ?? "");
@@ -88,7 +89,7 @@ export function App() {
   );
 
   useEffect(() => {
-    if (!activeWorkspace || !token || route.view === "device") return;
+    if (!activeWorkspace || !token || route.view === "device" || route.view === "share") return;
     localStorage.setItem(WORKSPACE_KEY, activeWorkspace.id);
     void refreshAssets(activeWorkspace.id);
   }, [activeWorkspace?.id, token, route.view]);
@@ -205,6 +206,10 @@ export function App() {
       localStorage.setItem(WORKSPACE_KEY, workspace.id);
     }
     await refreshAssets(workspace?.id ?? activeWorkspace?.id);
+  }
+
+  if (route.view === "share" && route.shareToken) {
+    return <PublicShareView shareToken={route.shareToken} />;
   }
 
   if (route.view === "landing" && !inviteToken) {

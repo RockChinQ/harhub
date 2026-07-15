@@ -3,7 +3,10 @@ import {
   findAsset,
   removeCatalogAsset
 } from "../../features/assets/index.js";
-import { writeWorkspaceAssetCatalog } from "../../state/index.js";
+import {
+  removeAssetShares,
+  writeWorkspaceAssetCatalog
+} from "../../state/index.js";
 import { deleteStoredObject } from "../../storage/index.js";
 import { sendError, unique } from "../utils/http.js";
 import { assetListPayload } from "./asset-responses.js";
@@ -27,6 +30,7 @@ export async function deleteAsset(
       await deleteStoredObject(asset.storage);
       const nextCatalog = removeCatalogAsset(catalog, asset.id);
       await writeWorkspaceAssetCatalog(context.workspace.id, nextCatalog);
+      await removeAssetShares(context.workspace.id, [asset.id]);
       res.json({
         ...assetListPayload(context.workspace, nextCatalog.generatedAt, nextCatalog.assets),
         issues: []
@@ -74,6 +78,7 @@ export async function deleteWorkspaceAssetBatch(
 
   if (succeeded.length > 0) {
     await writeWorkspaceAssetCatalog(context.workspace.id, catalog);
+    await removeAssetShares(context.workspace.id, succeeded);
   }
 
   return {

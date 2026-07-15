@@ -337,6 +337,8 @@ Harhub 不在当前产品中定义任何新的 Skill 标准或用户必须采用
 - `/api/workspaces`：workspace 创建、重命名和当前账号可访问列表。
 - `/api/workspaces/{workspaceId}/members`：成员、角色和 invitations。
 - `/api/workspaces/{workspaceId}/assets`：列表、详情、preview、upload、validate、bulk validate/delete 和 delete。
+- `/api/workspaces/{workspaceId}/assets/{query}/share`：创建、读取和撤销公开分享。
+- `/api/public/shares/{token}`：无需登录的分享元数据与 zip download。
 - `/api/workspaces/{workspaceId}/skills`：Skills-only compatibility view、validate 和 delete。
 - `/api/skills`：只面向 demo workspace 的 legacy read compatibility route。
 
@@ -359,7 +361,7 @@ Harhub 不在当前产品中定义任何新的 Skill 标准或用户必须采用
 
 ### 当前 CLI
 
-CLI 当前支持本地 `skills`/`assets` scan、validate、list、show、create 和 update；支持将本地 Skill 目录打包上传，以及对 workspace 中已上传的 Skill 执行 revalidate 和 delete。服务端不会接收或扫描客户端本地路径。
+CLI 当前支持本地 `skills`/`assets` scan、validate、list、show、create 和 update；支持将本地 Skill 目录打包上传、用 `--share` 立即创建公开链接、对已有 asset 执行 share/unshare，以及用 `harhub install` 将公开 zip 下载到当前目录。它也支持对 workspace 中已上传的 Skill 执行 revalidate 和 delete。服务端不会接收或扫描客户端本地路径。
 
 Uploaded workspace packages 不支持原地修改；修改本地 Skill 后需要重新上传。
 

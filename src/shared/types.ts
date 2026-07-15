@@ -140,6 +140,35 @@ export interface AssetRecord {
   validationIssues?: ValidationIssue[];
 }
 
+export interface AssetShareRecord {
+  token: string;
+  workspaceId: string;
+  assetId: string;
+  createdByAccountId: string;
+  createdAt: string;
+}
+
+export interface PublicSharedAsset {
+  id: string;
+  kind: AssetKind;
+  name: string;
+  displayName: string;
+  slug: string;
+  description: string;
+  health: AssetHealth;
+  validation: AssetRecord["validation"];
+}
+
+export interface AssetShareResponse {
+  token: string;
+  createdAt: string;
+  shareUrl: string;
+  downloadUrl: string;
+  cliCommand: string;
+  fileName: string;
+  asset: PublicSharedAsset;
+}
+
 export interface AssetCatalog {
   schemaVersion: 1;
   generatedAt: string;

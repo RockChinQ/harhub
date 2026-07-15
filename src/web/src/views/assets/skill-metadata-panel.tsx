@@ -1,8 +1,18 @@
-import { Loader2, ShieldCheck, Trash2 } from "lucide-react";
+import {
+  Check,
+  Copy,
+  ExternalLink,
+  Link2Off,
+  Loader2,
+  Share2,
+  ShieldCheck,
+  Trash2
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type {
   AssetRecord,
+  AssetShareResponse,
   ValidationIssue,
   WorkspaceRecord
 } from "../../../../shared/types";
@@ -20,8 +30,12 @@ import {
 } from "../../components/ui/alert-dialog";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
 import {
+  createWorkspaceAssetShare,
   deleteWorkspaceAsset,
+  getWorkspaceAssetShare,
+  revokeWorkspaceAssetShare,
   validateWorkspaceAsset
 } from "../../lib/api";
 import { cn } from "../../lib/utils";
@@ -47,11 +61,33 @@ export function SkillOverviewPanel({
   const [message, setMessage] = useState<string | undefined>();
   const [isDeleting, setIsDeleting] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [share, setShare] = useState<AssetShareResponse | undefined>();
+  const [copied, setCopied] = useState<"url" | "cli" | undefined>();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
     setMessage(undefined);
-  }, [asset?.id]);
+    setShare(undefined);
+    setCopied(undefined);
+    if (!asset) return;
+
+    let active = true;
+    setIsSharing(true);
+    getWorkspaceAssetShare(token, workspace.id, asset.id)
+      .then((nextShare) => {
+        if (active) setShare(nextShare);
+      })
+      .catch((caught) => {
+        if (active) setMessage(caught instanceof Error ? caught.message : String(caught));
+      })
+      .finally(() => {
+        if (active) setIsSharing(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [asset?.id, token, workspace.id]);
 
   if (!asset) {
     return (
@@ -110,6 +146,44 @@ export function SkillOverviewPanel({
     }
   }
 
+  async function publishShare() {
+    setIsSharing(true);
+    setMessage(undefined);
+    try {
+      const nextShare = await createWorkspaceAssetShare(token, workspace.id, selectedAsset.id);
+      setShare(nextShare);
+      setMessage("Public share link created.");
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsSharing(false);
+    }
+  }
+
+  async function stopSharing() {
+    setIsSharing(true);
+    setMessage(undefined);
+    try {
+      await revokeWorkspaceAssetShare(token, workspace.id, selectedAsset.id);
+      setShare(undefined);
+      setMessage("Public share link revoked.");
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsSharing(false);
+    }
+  }
+
+  async function copyShareValue(kind: "url" | "cli", value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(kind);
+      window.setTimeout(() => setCopied(undefined), 1800);
+    } catch {
+      setMessage("Could not copy to the clipboard.");
+    }
+  }
+
   return (
     <div
       className={cn(
@@ -140,6 +214,16 @@ export function SkillOverviewPanel({
               )}
               Validate
             </Button>
+            {!share ? (
+              <Button type="button" variant="outline" onClick={publishShare} disabled={isSharing}>
+                {isSharing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Share2 className="h-4 w-4" aria-hidden="true" />
+                )}
+                Share
+              </Button>
+            ) : null}
             <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
               <AlertDialogTrigger asChild>
                 <Button type="button" variant="outline" disabled={isDeleting}>
@@ -179,6 +263,38 @@ export function SkillOverviewPanel({
               </AlertDialogContent>
             </AlertDialog>
           </div>
+
+          {share ? (
+            <div className="grid gap-3 rounded-lg border bg-muted/20 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-medium">Public share</div>
+                  <div className="text-xs text-muted-foreground">Anyone with this link can download the zip.</div>
+                </div>
+                <Button type="button" variant="ghost" size="sm" onClick={stopSharing} disabled={isSharing}>
+                  {isSharing ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Link2Off aria-hidden="true" />}
+                  Revoke
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Input readOnly value={share.shareUrl} className="min-w-0 text-xs" />
+                <Button type="button" variant="outline" size="icon" onClick={() => copyShareValue("url", share.shareUrl)} aria-label="Copy public share URL">
+                  {copied === "url" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+                </Button>
+                <Button asChild variant="outline" size="icon">
+                  <a href={share.shareUrl} target="_blank" rel="noreferrer" aria-label="Open public share page">
+                    <ExternalLink aria-hidden="true" />
+                  </a>
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Input readOnly value={share.cliCommand} className="min-w-0 font-mono text-xs" />
+                <Button type="button" variant="outline" size="icon" onClick={() => copyShareValue("cli", share.cliCommand)} aria-label="Copy CLI install command">
+                  {copied === "cli" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+                </Button>
+              </div>
+            </div>
+          ) : null}
 
           <ValidationIssuesList issues={assetIssues} />
           {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}

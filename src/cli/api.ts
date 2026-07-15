@@ -1,5 +1,8 @@
 import type { ParsedArgs } from "./types.js";
-import type { SessionPayload } from "../shared/types.js";
+import type {
+  AssetShareResponse,
+  SessionPayload
+} from "../shared/types.js";
 import {
   HARHUB_CLI_CLIENT_ID,
   HARHUB_CLI_SCOPE,
@@ -156,6 +159,98 @@ export async function uploadSkillZip(input: {
   }
 
   return data as Record<string, any>;
+}
+
+export async function createWorkspaceAssetShare(input: {
+  apiUrl: string;
+  workspaceId: string;
+  token: string;
+  assetQuery: string;
+}): Promise<AssetShareResponse> {
+  return requestAssetShare(input, "POST");
+}
+
+export async function revokeWorkspaceAssetShare(input: {
+  apiUrl: string;
+  workspaceId: string;
+  token: string;
+  assetQuery: string;
+}): Promise<void> {
+  const response = await fetchHarhub(assetShareApiUrl(input), {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${input.token}` }
+  });
+  if (!response.ok && response.status !== 404) {
+    const data = await response.json().catch(() => undefined);
+    throw new Error(
+      typeof data?.error === "string"
+        ? data.error
+        : `Unshare failed with ${response.status}.`
+    );
+  }
+}
+
+export async function getPublicAssetShare(
+  apiUrl: string,
+  shareToken: string
+): Promise<AssetShareResponse> {
+  const response = await fetchHarhub(
+    `${apiUrl}/api/public/shares/${encodeURIComponent(shareToken)}`
+  );
+  const data = await response.json().catch(() => undefined);
+  if (!response.ok) {
+    throw new Error(
+      typeof data?.error === "string"
+        ? data.error
+        : `Share request failed with ${response.status}.`
+    );
+  }
+  return data as AssetShareResponse;
+}
+
+export async function downloadPublicAssetShare(downloadUrl: string): Promise<Buffer> {
+  const response = await fetchHarhub(downloadUrl);
+  if (!response.ok) {
+    const data = await response.json().catch(() => undefined);
+    throw new Error(
+      typeof data?.error === "string"
+        ? data.error
+        : `Download failed with ${response.status}.`
+    );
+  }
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function requestAssetShare(
+  input: {
+    apiUrl: string;
+    workspaceId: string;
+    token: string;
+    assetQuery: string;
+  },
+  method: "POST" | "GET"
+): Promise<AssetShareResponse> {
+  const response = await fetchHarhub(assetShareApiUrl(input), {
+    method,
+    headers: { Authorization: `Bearer ${input.token}` }
+  });
+  const data = await response.json().catch(() => undefined);
+  if (!response.ok) {
+    throw new Error(
+      typeof data?.error === "string"
+        ? data.error
+        : `Share request failed with ${response.status}.`
+    );
+  }
+  return data as AssetShareResponse;
+}
+
+function assetShareApiUrl(input: {
+  apiUrl: string;
+  workspaceId: string;
+  assetQuery: string;
+}): string {
+  return `${input.apiUrl}/api/workspaces/${encodeURIComponent(input.workspaceId)}/assets/${encodeURIComponent(input.assetQuery)}/share`;
 }
 
 async function requestForm<T>(url: string, body: Record<string, string>): Promise<T> {

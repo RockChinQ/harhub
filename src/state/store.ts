@@ -15,7 +15,7 @@ export async function loadState(): Promise<AppState> {
   if (isDatabaseStateEnabled()) {
     const state = await readDatabaseState();
     if (state) {
-      const needsMigration = hasLegacyWorkspacePaths(state);
+      const needsMigration = needsStateMigration(state);
       const normalized = normalizeState(state);
       if (needsMigration) await writeDatabaseState(normalized);
       return normalized;
@@ -34,7 +34,7 @@ export async function loadState(): Promise<AppState> {
   }
 
   const parsed = JSON.parse(readFileSync(statePath, "utf8")) as AppState;
-  const needsMigration = hasLegacyWorkspacePaths(parsed);
+  const needsMigration = needsStateMigration(parsed);
   const normalized = normalizeState(parsed);
   if (needsMigration) await saveState(normalized);
   return normalized;
@@ -75,6 +75,7 @@ function createSeedState(): AppState {
     workspaces: [workspace],
     memberships: [createMembership(account.id, workspace.id, "owner")],
     invitations: [],
+    assetShares: [],
     emailLoginCodes: [],
     oauthStates: [],
     deviceAuthorizations: [],
@@ -88,6 +89,7 @@ function normalizeState(state: AppState): AppState {
   state.workspaces ??= [];
   state.memberships ??= [];
   state.invitations ??= [];
+  state.assetShares ??= [];
   state.emailLoginCodes ??= [];
   state.oauthStates ??= [];
   state.deviceAuthorizations ??= [];
@@ -126,4 +128,8 @@ function hasLegacyWorkspacePaths(state: AppState): boolean {
   return (state.workspaces ?? []).some(
     (workspace) => "defaultScanPaths" in workspace || "skillRoot" in workspace
   );
+}
+
+function needsStateMigration(state: AppState): boolean {
+  return !Array.isArray(state.assetShares) || hasLegacyWorkspacePaths(state);
 }

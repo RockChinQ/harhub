@@ -9,6 +9,7 @@ import { registerAuthRoutes } from "./routes/auth.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerLegacySkillRoutes } from "./routes/legacy-skills.js";
 import { registerOAuthDeviceRoutes } from "./routes/oauth-device.js";
+import { registerShareRoutes } from "./routes/shares.js";
 import { registerSkillRoutes } from "./routes/skills.js";
 import { registerWorkspaceRoutes } from "./routes/workspaces.js";
 
@@ -29,6 +30,7 @@ export function createServerApp() {
   registerHealthRoutes(app);
   registerAuthRoutes(app);
   registerOAuthDeviceRoutes(app);
+  registerShareRoutes(app);
   registerWorkspaceRoutes(app);
   registerAssetRoutes(app, upload);
   registerSkillRoutes(app);

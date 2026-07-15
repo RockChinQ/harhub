@@ -88,12 +88,46 @@ Upload all valid discovered Skills without the selector:
 harhub skills upload /path/to/repo --all
 ```
 
+Add `--share` to create a public link for every successful upload and print the
+link immediately:
+
+```bash
+harhub skills upload /path/to/repo --all --share
+```
+
+## Share And Download
+
+Share or revoke an existing uploaded Skill using its id, name, or slug. These
+commands reuse the saved login and workspace:
+
+```bash
+harhub share <id|name|slug>
+harhub unshare <id|name|slug>
+```
+
+The public page can be opened without a Harhub account. It exposes the Skill's
+public metadata, a revocable zip download, and a copyable install command. The
+current CLI install behavior only downloads the zip into the current directory;
+it does not extract or activate the Skill yet:
+
+```bash
+harhub install https://harhub.rcpd.cc/s/<share-token>
+```
+
+If the target filename already exists, the CLI writes a numbered filename such
+as `my-skill-2.zip` instead of overwriting it. A raw share token can also be
+used; it targets `https://harhub.rcpd.cc` unless `--url` is explicitly passed.
+
 ## Useful Commands
 
 ```bash
 harhub skills scan [paths...]
 harhub skills validate [paths...]
 harhub skills create <name> [--dir skills]
+harhub skills upload [paths...] [--share]
+harhub install <share-url|token>
+harhub share <id|name|slug>
+harhub unshare <id|name|slug>
 harhub assets list
 harhub assets show <id|name|slug>
 ```

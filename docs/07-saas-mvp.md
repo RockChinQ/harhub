@@ -144,6 +144,12 @@ POST /api/workspaces/:workspaceId/assets/validate
 POST /api/workspaces/:workspaceId/assets/bulk
 POST /api/workspaces/:workspaceId/assets/:query/validate
 DELETE /api/workspaces/:workspaceId/assets/:query
+GET  /api/workspaces/:workspaceId/assets/:query/share
+POST /api/workspaces/:workspaceId/assets/:query/share
+DELETE /api/workspaces/:workspaceId/assets/:query/share
+
+GET  /api/public/shares/:token
+GET  /api/public/shares/:token/download
 
 GET  /api/workspaces/:workspaceId/skills
 GET  /api/workspaces/:workspaceId/skills/:query
@@ -154,6 +160,6 @@ DELETE /api/workspaces/:workspaceId/skills/:query
 GET  /api/skills
 ```
 
-`/api/workspaces/:workspaceId/skills` 是 Assets API 的 Skills-only compatibility view；legacy `/api/skills` 只保留 demo workspace 的 read route。服务端已经移除 path-based scan、create 和 patch routes。Uploaded packages 是 immutable，修改后应重新上传 zip。
+`/api/workspaces/:workspaceId/skills` 是 Assets API 的 Skills-only compatibility view；legacy `/api/skills` 只保留 demo workspace 的 read route。公开 share token 是可撤销 bearer link；公开响应不会暴露 S3 bucket 或 object key，asset 删除时对应 share 也会失效。服务端已经移除 path-based scan、create 和 patch routes。Uploaded packages 是 immutable，修改后应重新上传 zip。
 
 当前角色执行范围并不完全一致：workspace 重命名、邀请、成员角色修改和成员移除会执行 owner/admin 检查；资产 upload、validate 和 delete 目前只要求 workspace membership。按角色限制资产 mutation 仍是发布前 TODO。

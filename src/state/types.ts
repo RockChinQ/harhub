@@ -1,6 +1,7 @@
 import type {
   AccountProfile,
   AccountIdentity,
+  AssetShareRecord,
   AuthProvider,
   WorkspaceInvitation,
   WorkspaceMembership,
@@ -60,6 +61,7 @@ export interface AppState {
   workspaces: WorkspaceRecord[];
   memberships: WorkspaceMembership[];
   invitations: WorkspaceInvitation[];
+  assetShares: AssetShareRecord[];
   emailLoginCodes: EmailLoginCodeRecord[];
   oauthStates: OAuthStateRecord[];
   deviceAuthorizations: OAuthDeviceAuthorizationRecord[];

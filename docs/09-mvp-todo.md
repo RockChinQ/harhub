@@ -40,7 +40,7 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 
 - **Quota 尚未建模**：上传大小有 process-level cap，但没有 per-user、per-workspace、per-asset、daily upload 或 total storage quota。
 - **Zip resource limits 仍不完整**：上传已经执行官方 Skill 字段校验和路径安全检查，但还没有 zip-entry count 与 uncompressed-size limits，仍需防御 zip bomb 和超大展开内容。
-- **没有 activation/distribution event**：产品有 preview，但没有一等的“download”、“copy install command”、“copy Codex install path”或 usage event 来证明复用。
+- **没有 activation/distribution event**：产品已有 public share、download 和 copy install command，但还没有 usage event 或 copy Codex install path 来证明复用。
 - **SaaS persistence 仍需产品化**：Postgres backend 已可用，但还缺 explicit migration runner、normalized reporting schema、backup/export policy 和 production readiness checks。
 - **没有 operations dashboard**：缺少 signups、activated workspaces、asset counts、storage usage、failed uploads、quota hits 或 over-limit users 的 admin view。
 - **Role enforcement 不完整**：很多 asset actions 只要求 workspace access；hosted SaaS 应按角色显式限制 mutation。
@@ -65,6 +65,7 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 - [x] 添加 multi-stage Dockerfile，并通过 GitHub Actions 构建 `latest` 和 commit-SHA image tags。
 - [x] 移除 server-local Skill paths 和 path-based workspace scan/create/update；cloud catalog 只保留 uploaded assets。
 - [x] 统一 password sign-in 与 registration：新邮箱通过同一个 login flow 创建账号和初始 workspace。
+- [x] 添加可撤销 public share 页面、公开 zip download、CLI `--share` 和下载到当前目录的 `harhub install`。
 
 更广义 team-harness 产品的重要缺口：
 
@@ -176,7 +177,7 @@ Distribution action 可以是：
 
 - [ ] 在 Skills 页面添加 onboarding checklist：upload/import 3 Skills、fix validation、preview one、copy install/download once。
 - [ ] 添加清晰 empty states，包含 sample Skill zip 和可复制 CLI upload 示例。
-- [ ] 在 Skill detail 上添加一等 distribution action：download zip 和 copy install instructions。
+- [x] 在 Skill detail 上添加一等 distribution action：public share、download zip 和 copy install instructions。
 - [ ] 追踪 distribution events，让 activation 可衡量。
 - [ ] 在 workspace 级展示 activation progress。
 

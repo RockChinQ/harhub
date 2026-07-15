@@ -16,6 +16,7 @@ import {
   validateSkills
 } from "../../features/skills/index.js";
 import {
+  createWorkspaceAssetShare,
   resolveHarhubApiUrl,
   resolveHarhubToken,
   resolveHarhubWorkspaceId,
@@ -146,7 +147,7 @@ export async function runAssetsUpload(parsed: ParsedArgs): Promise<number> {
   const apiUrl = resolveHarhubApiUrl(parsed);
 
   if (!zipPath || !workspaceId) {
-    console.error("Usage: harhub assets upload <skill.zip> [--workspace <workspace-id>] [--token <token>] [--url <harhub-url>]");
+    console.error("Usage: harhub assets upload <skill.zip> [--share] [--workspace <workspace-id>] [--token <token>] [--url <harhub-url>]");
     return 1;
   }
 
@@ -165,6 +166,14 @@ export async function runAssetsUpload(parsed: ParsedArgs): Promise<number> {
       fileName: path.basename(absolutePath),
       buffer: readFileSync(absolutePath)
     });
+    if (hasBooleanOption(parsed, "share")) {
+      data.share = await createWorkspaceAssetShare({
+        apiUrl,
+        workspaceId,
+        token,
+        assetQuery: data.uploaded.id
+      });
+    }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     return 1;
@@ -177,6 +186,7 @@ export async function runAssetsUpload(parsed: ParsedArgs): Promise<number> {
 
   console.log(`Uploaded ${data.uploaded?.displayName ?? path.basename(absolutePath)}`);
   console.log(`Object: ${data.uploaded?.storage?.key ?? "-"}`);
+  if (data.share?.shareUrl) console.log(`Share: ${data.share.shareUrl}`);
   return 0;
 }
 

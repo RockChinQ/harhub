@@ -137,6 +137,7 @@ MVP 应先证明 Harhub 能把散落的 Agent Skills 转化为可管理、可复
 - Agent Skills 本地 scan、create、validate、package 和 interactive upload。
 - Workspace-scoped Skill catalog、搜索、详情、文件树 preview、批量校验和删除。
 - Postgres-compatible state、S3-compatible zip storage 和本地 JSON fallback。
+- 可撤销 public share 页面、zip download，以及下载到当前目录的 `harhub install`。
 - Production build、VitePress docs、multi-stage Dockerfile、npm beta 和 release workflows。
 
 公开 MVP 前的主要边界：
@@ -144,7 +145,7 @@ MVP 应先证明 Harhub 能把散落的 Agent Skills 转化为可管理、可复
 - 产品仍只管理 Skills，不管理 Rules、MCP definitions 或通用 harness files。
 - Hosted workspace catalog 只来自 zip upload；服务端不扫描本地路径，也没有 Git provider import。
 - Uploaded package 没有显式 version history、release、diff 或 approval lifecycle。
-- 没有 distribution/download/install action 和 adoption event。
+- 已有基础 public share/download/install action，但没有 adoption event、目标目录安装或 usage analytics。
 - 没有 quota、usage reporting、admin operations dashboard 或完整 asset mutation RBAC。
 - 没有 composition、lockfile、policy、drift、PR automation 或 evaluation infrastructure。
 
@@ -161,7 +162,7 @@ MVP 应先证明 Harhub 能把散落的 Agent Skills 转化为可管理、可复
 
 ## 建议的下一步决策
 
-1. 选择第一个 distribution target：generic zip download、Codex local skills path 或 Claude-compatible path。
+1. 在已完成的 generic zip download 上选择第一个自动安装 target：Codex local skills path 或 Claude-compatible path。
 2. 确认 hosted free limits，并实现 quota 与 usage event schema。
 3. 在公开注册前补齐 asset mutation RBAC、rate limiting 和 production operations checks。
 4. 决定第一个导入来源：GitHub repository path、zip URL 或 connected repository scan。

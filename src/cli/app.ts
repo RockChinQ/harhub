@@ -22,6 +22,7 @@ import {
   runValidate
 } from "./commands/skills.js";
 import { runLogin, runLogout, runWhoami } from "./commands/auth.js";
+import { runInstall, runShare, runUnshare } from "./commands/share.js";
 import {
   printAssetsHelp,
   printHelp,
@@ -44,6 +45,9 @@ export async function runCli(argv: string[]): Promise<number> {
   if (command === "login") return runLogin(parseArgs(argv.slice(1)));
   if (command === "logout") return runLogout(parseArgs(argv.slice(1)));
   if (command === "whoami") return runWhoami(parseArgs(argv.slice(1)));
+  if (command === "install") return runInstall(parseArgs(argv.slice(1)));
+  if (command === "share") return runShare(parseArgs(argv.slice(1)));
+  if (command === "unshare") return runUnshare(parseArgs(argv.slice(1)));
 
   if (command !== "skills" && command !== "assets") {
     console.error(`Unknown command: ${command}`);

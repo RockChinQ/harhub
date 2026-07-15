@@ -18,6 +18,7 @@ import {
   writeCatalog
 } from "../../features/skills/index.js";
 import {
+  createWorkspaceAssetShare,
   resolveHarhubApiUrl,
   resolveHarhubToken,
   resolveHarhubWorkspaceId,
@@ -244,16 +245,26 @@ export async function runUpload(parsed: ParsedArgs): Promise<number> {
       fileName: packaged.fileName,
       buffer: packaged.buffer
     });
+    const share = hasBooleanOption(parsed, "share")
+      ? await createWorkspaceAssetShare({
+          apiUrl,
+          workspaceId,
+          token,
+          assetQuery: response.uploaded.id
+        })
+      : undefined;
 
     uploaded.push({
       skill: skill.name,
       fileName: packaged.fileName,
       rootDir: packaged.rootDir,
-      asset: response.uploaded
+      asset: response.uploaded,
+      ...(share ? { share } : {})
     });
 
     if (!parsed.options.json) {
       console.log(`Uploaded ${skill.name} from ${packaged.rootDir}`);
+      if (share) console.log(`Share: ${share.shareUrl}`);
     }
   }
 

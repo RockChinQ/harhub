@@ -34,6 +34,7 @@ is intentionally Skills-first.
 - Validate packages against the Agent Skills `SKILL.md` format.
 - Search and browse Skills in a workspace.
 - Preview Skill metadata and package files.
+- Publish revocable public share pages with zip downloads and CLI install commands.
 - Manage Skills from the web UI or CLI.
 - Run Harhub locally with S3-compatible object storage and optional Postgres
   persistence.
@@ -168,6 +169,28 @@ Upload every valid discovered Skill without the selector:
 harhub skills upload /path/to/repo --all
 ```
 
+Upload and immediately create a public share link:
+
+```bash
+harhub skills upload /path/to/repo --all --share
+```
+
+Existing uploaded Skills can be shared and revoked by id, name, or slug:
+
+```bash
+harhub share <id|name|slug>
+harhub unshare <id|name|slug>
+```
+
+Every public share page includes a direct zip download and a one-line CLI
+command. The current install command downloads the zip into the current
+directory and chooses a numbered filename instead of overwriting an existing
+file:
+
+```bash
+harhub install https://harhub.rcpd.cc/s/<share-token>
+```
+
 Useful commands:
 
 ```bash
@@ -177,6 +200,10 @@ harhub skills scan [paths...]
 harhub skills validate [paths...]
 harhub skills create <name>
 harhub skills upload [paths...]
+harhub skills upload [paths...] --share
+harhub install <share-url|token>
+harhub share <id|name|slug>
+harhub unshare <id|name|slug>
 harhub assets list
 harhub assets show <id|name|slug>
 harhub logout
