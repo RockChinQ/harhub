@@ -2,6 +2,7 @@ import path from "node:path";
 import readline from "node:readline";
 import { createInterface } from "node:readline/promises";
 import type { SkillRecord, ValidationIssue } from "../shared/types.js";
+import type { WorkspaceRecord } from "../shared/types.js";
 
 export function canUseInteractiveTerminal(): boolean {
   return Boolean(process.stdin.isTTY && process.stdout.isTTY);
@@ -88,6 +89,32 @@ export async function promptSecret(label: string): Promise<string | undefined> {
     stdin.resume();
     stdin.on("data", onData);
   });
+}
+
+export async function selectWorkspace(input: {
+  workspaces: WorkspaceRecord[];
+  defaultWorkspaceId?: string;
+}): Promise<WorkspaceRecord | undefined> {
+  if (input.workspaces.length === 0) return undefined;
+  if (input.workspaces.length === 1) return input.workspaces[0];
+
+  console.log("Select a default workspace:");
+  input.workspaces.forEach((workspace, index) => {
+    console.log(`  ${index + 1}. ${workspace.name} (${workspace.slug})`);
+  });
+  const defaultIndex = Math.max(
+    0,
+    input.workspaces.findIndex(
+      (workspace) => workspace.id === input.defaultWorkspaceId
+    )
+  );
+  const answer = await promptText({
+    label: "Workspace",
+    defaultValue: String(defaultIndex + 1),
+    required: true
+  });
+  const selectedIndex = Number.parseInt(answer ?? "", 10) - 1;
+  return input.workspaces[selectedIndex];
 }
 
 export async function selectSkillsForUpload(input: {

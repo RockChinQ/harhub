@@ -103,7 +103,13 @@ npm run dev:cloud
 
 ## CLI
 
-Install the CLI from a checkout:
+Install the current beta from npm:
+
+```bash
+npm install -g harhub@beta
+```
+
+Or install it from a checkout:
 
 ```bash
 npm install
@@ -111,19 +117,26 @@ npm run build
 npm install -g .
 ```
 
-Configure your Harhub target:
+Sign in once with the OAuth device flow:
 
 ```bash
-export HARHUB_WORKSPACE_ID=ws_demo
-export HARHUB_TOKEN=<access-token>
+harhub login
+harhub whoami
 ```
 
-The CLI defaults to the hosted demo at `https://harhub.rcpd.cc`. Set
-`HARHUB_URL` or pass `--url` when targeting a local or self-hosted instance:
+The CLI opens a browser for approval, lets you choose a default workspace once,
+and saves the access token and workspace in the user config directory. The CLI
+defaults to the hosted demo at `https://harhub.rcpd.cc`. For a local or
+self-hosted instance, pass its URL during login:
 
 ```bash
-export HARHUB_URL=http://127.0.0.1:3310
+harhub login --url http://127.0.0.1:3310
 ```
+
+Without `--url`, every CLI command targets `https://harhub.rcpd.cc`. For a
+self-hosted login, keep passing the same `--url`; the saved token and workspace
+are reused only when they belong to that exact URL. `HARHUB_WORKSPACE_ID` and
+`HARHUB_TOKEN` remain available as temporary overrides for CI and automation.
 
 Scan the current directory and choose which discovered Skills to upload:
 
@@ -146,11 +159,14 @@ harhub skills upload /path/to/repo --all
 Useful commands:
 
 ```bash
-harhub assets list
-harhub assets show <id|name|slug>
+harhub login
+harhub whoami
 harhub skills scan [paths...]
 harhub skills validate [paths...]
 harhub skills upload [paths...]
+harhub assets list
+harhub assets show <id|name|slug>
+harhub logout
 ```
 
 ## Configuration

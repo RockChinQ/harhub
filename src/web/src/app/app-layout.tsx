@@ -17,9 +17,7 @@ import {
 } from "../components/ui/sidebar";
 import type { SessionResponse } from "../lib/api";
 import { viewTitle } from "./routing";
-import type { AppRoute, View } from "./types";
-
-type AppLayoutView = Exclude<View, "landing">;
+import type { AppRoute, AppShellView } from "./types";
 
 export function AppLayout({
   token,
@@ -35,7 +33,7 @@ export function AppLayout({
   token: string;
   session: SessionResponse;
   activeWorkspace?: WorkspaceRecord;
-  view: AppLayoutView;
+  view: AppShellView;
   onNavigate: (route: AppRoute) => void;
   onWorkspaceChange: (workspaceId: string) => void;
   onSessionChange: (session: SessionResponse, workspace?: WorkspaceRecord) => Promise<void>;

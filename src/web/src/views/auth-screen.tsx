@@ -102,7 +102,7 @@ export function AuthScreen({
   }
 
   function startOAuth(provider: "google" | "github") {
-    const redirect = window.location.pathname || "/skills";
+    const redirect = `${window.location.pathname}${window.location.search}` || "/skills";
     const params = new URLSearchParams({ redirect });
     if (inviteToken) params.set("invite", inviteToken);
     window.location.href = `/api/auth/oauth/${provider}/start?${params.toString()}`;

@@ -77,6 +77,7 @@ function createSeedState(): AppState {
     invitations: [],
     emailLoginCodes: [],
     oauthStates: [],
+    deviceAuthorizations: [],
     sessions: []
   };
 }
@@ -89,6 +90,7 @@ function normalizeState(state: AppState): AppState {
   state.invitations ??= [];
   state.emailLoginCodes ??= [];
   state.oauthStates ??= [];
+  state.deviceAuthorizations ??= [];
   state.sessions ??= [];
 
   if (state.accounts.length === 0 || state.workspaces.length === 0) {

@@ -21,9 +21,11 @@ import {
   runUpload,
   runValidate
 } from "./commands/skills.js";
+import { runLogin, runLogout, runWhoami } from "./commands/auth.js";
 import {
   printAssetsHelp,
   printHelp,
+  printLoginHelp,
   printSkillsHelp
 } from "./help.js";
 
@@ -34,6 +36,14 @@ export async function runCli(argv: string[]): Promise<number> {
     printHelp();
     return 0;
   }
+
+  if (command === "login" && ["help", "--help", "-h"].includes(subcommand ?? "")) {
+    printLoginHelp();
+    return 0;
+  }
+  if (command === "login") return runLogin(parseArgs(argv.slice(1)));
+  if (command === "logout") return runLogout(parseArgs(argv.slice(1)));
+  if (command === "whoami") return runWhoami(parseArgs(argv.slice(1)));
 
   if (command !== "skills" && command !== "assets") {
     console.error(`Unknown command: ${command}`);

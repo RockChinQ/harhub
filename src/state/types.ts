@@ -37,6 +37,22 @@ export interface OAuthStateRecord {
   expiresAt: string;
 }
 
+export interface OAuthDeviceAuthorizationRecord {
+  deviceCodeHash: string;
+  userCode: string;
+  clientId: string;
+  scope: string;
+  status: "pending" | "approved" | "denied" | "consumed";
+  accountId?: string;
+  intervalSeconds: number;
+  lastPolledAt?: string;
+  createdAt: string;
+  expiresAt: string;
+  approvedAt?: string;
+  deniedAt?: string;
+  consumedAt?: string;
+}
+
 export interface AppState {
   schemaVersion: 1;
   accounts: AccountRecord[];
@@ -46,6 +62,7 @@ export interface AppState {
   invitations: WorkspaceInvitation[];
   emailLoginCodes: EmailLoginCodeRecord[];
   oauthStates: OAuthStateRecord[];
+  deviceAuthorizations: OAuthDeviceAuthorizationRecord[];
   sessions: SessionRecord[];
 }
 

@@ -35,8 +35,6 @@ import {
 } from "../format.js";
 import {
   canUseInteractiveTerminal,
-  promptSecret,
-  promptText,
   selectSkillsForUpload
 } from "../interactive.js";
 import type { ParsedArgs } from "../types.js";
@@ -149,7 +147,7 @@ export async function runUpdate(parsed: ParsedArgs): Promise<number> {
     return 1;
   }
 
-  if (optionString(parsed, "workspace")) {
+  if (optionString(parsed, "workspace") || hasBooleanOption(parsed, "remote")) {
     console.error("Uploaded skill packages are immutable. Update the local Skill and upload a new zip.");
     return 1;
   }
@@ -221,23 +219,17 @@ export async function runUpload(parsed: ParsedArgs): Promise<number> {
     return 1;
   }
 
-  const apiUrl = interactive
-    ? await promptText({ label: "Harhub URL", defaultValue: resolveHarhubApiUrl(parsed) }) ?? resolveHarhubApiUrl(parsed)
-    : resolveHarhubApiUrl(parsed);
-  const workspaceId = interactive
-    ? await promptText({ label: "Workspace ID", defaultValue: resolveHarhubWorkspaceId(parsed), required: true })
-    : resolveHarhubWorkspaceId(parsed);
-  const token = interactive
-    ? resolveHarhubToken(parsed) ?? await promptSecret("Access token")
-    : resolveHarhubToken(parsed);
+  const apiUrl = resolveHarhubApiUrl(parsed);
+  const workspaceId = resolveHarhubWorkspaceId(parsed);
+  const token = resolveHarhubToken(parsed);
 
   if (!workspaceId) {
-    console.error("A workspace id is required. Pass --workspace <workspace-id> or set HARHUB_WORKSPACE_ID.");
+    console.error("A workspace is required. Run `harhub login` or pass --workspace <workspace-id>.");
     return 1;
   }
 
   if (!token) {
-    console.error("An access token is required. Pass --token or set HARHUB_TOKEN.");
+    console.error("Authentication is required. Run `harhub login` or pass --token <token>.");
     return 1;
   }
 
@@ -296,7 +288,7 @@ export async function runDelete(parsed: ParsedArgs): Promise<number> {
     return 1;
   }
 
-  if (optionString(parsed, "workspace")) {
+  if (optionString(parsed, "workspace") || hasBooleanOption(parsed, "remote")) {
     return runSkillApiMutation(parsed, query, "DELETE", undefined, "Deleted");
   }
 
@@ -322,8 +314,8 @@ export async function runDelete(parsed: ParsedArgs): Promise<number> {
 
 export async function runRevalidate(parsed: ParsedArgs): Promise<number> {
   const query = parsed.positionals[0];
-  const workspaceId = optionString(parsed, "workspace");
-  if (!workspaceId) {
+  const remote = optionString(parsed, "workspace") || hasBooleanOption(parsed, "remote");
+  if (!remote) {
     return runValidate(parsed);
   }
 
@@ -370,12 +362,12 @@ async function runSkillApiMutation(
   const apiUrl = resolveHarhubApiUrl(parsed);
 
   if (!workspaceId) {
-    console.error("A workspace id is required. Pass --workspace <workspace-id>.");
+    console.error("A workspace is required. Run `harhub login` or pass --workspace <workspace-id>.");
     return 1;
   }
 
   if (!token) {
-    console.error("A token is required. Pass --token or set HARHUB_TOKEN.");
+    console.error("Authentication is required. Run `harhub login` or pass --token <token>.");
     return 1;
   }
 

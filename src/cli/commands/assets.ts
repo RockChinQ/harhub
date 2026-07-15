@@ -146,12 +146,12 @@ export async function runAssetsUpload(parsed: ParsedArgs): Promise<number> {
   const apiUrl = resolveHarhubApiUrl(parsed);
 
   if (!zipPath || !workspaceId) {
-    console.error("Usage: harhub assets upload <skill.zip> --workspace <workspace-id> --token <token> [--url <harhub-url>]");
+    console.error("Usage: harhub assets upload <skill.zip> [--workspace <workspace-id>] [--token <token>] [--url <harhub-url>]");
     return 1;
   }
 
   if (!token) {
-    console.error("A token is required. Pass --token or set HARHUB_TOKEN.");
+    console.error("Authentication is required. Run `harhub login` or pass --token <token>.");
     return 1;
   }
 
@@ -188,7 +188,7 @@ export async function runAssetsUpdate(parsed: ParsedArgs): Promise<number> {
   }
 
   const input = readAssetUpdateInput(parsed);
-  if (optionString(parsed, "workspace")) {
+  if (optionString(parsed, "workspace") || hasBooleanOption(parsed, "remote")) {
     console.error("Uploaded skill packages are immutable. Update the local Skill and upload a new zip.");
     return 1;
   }
@@ -232,7 +232,7 @@ export async function runAssetsDelete(parsed: ParsedArgs): Promise<number> {
     return 1;
   }
 
-  if (optionString(parsed, "workspace")) {
+  if (optionString(parsed, "workspace") || hasBooleanOption(parsed, "remote")) {
     return runAssetApiMutation(parsed, query, "DELETE", undefined, "Deleted");
   }
 
@@ -257,8 +257,8 @@ export async function runAssetsDelete(parsed: ParsedArgs): Promise<number> {
 
 export async function runAssetsRevalidate(parsed: ParsedArgs): Promise<number> {
   const query = parsed.positionals[0];
-  const workspaceId = optionString(parsed, "workspace");
-  if (!workspaceId) {
+  const remote = optionString(parsed, "workspace") || hasBooleanOption(parsed, "remote");
+  if (!remote) {
     return runAssetsValidate(parsed);
   }
 
@@ -270,6 +270,11 @@ export async function runAssetsRevalidate(parsed: ParsedArgs): Promise<number> {
     query ? "Validated" : "Validated workspace",
     "validate"
   );
+}
+
+function hasBooleanOption(parsed: ParsedArgs, name: string): boolean {
+  const value = parsed.options[name];
+  return value === true || value === "true";
 }
 
 function readAssetUpdateInput(parsed: ParsedArgs) {
@@ -291,12 +296,12 @@ async function runAssetApiMutation(
   const apiUrl = resolveHarhubApiUrl(parsed);
 
   if (!workspaceId) {
-    console.error("A workspace id is required. Pass --workspace <workspace-id>.");
+    console.error("A workspace is required. Run `harhub login` or pass --workspace <workspace-id>.");
     return 1;
   }
 
   if (!token) {
-    console.error("A token is required. Pass --token or set HARHUB_TOKEN.");
+    console.error("Authentication is required. Run `harhub login` or pass --token <token>.");
     return 1;
   }
 

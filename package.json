@@ -1,6 +1,6 @@
 {
   "name": "harhub",
-  "version": "0.1.0-beta.0",
+  "version": "0.1.0-beta.1",
   "description": "Team AI harness management for skills, MCP, rules, and agent instructions.",
   "type": "module",
   "repository": {
@@ -29,9 +29,10 @@
     "build:web": "vite build",
     "build:docs": "vitepress build docs",
     "check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "test": "node --import tsx --test tests/*.test.ts",
     "start": "node dist/server.js",
     "start:cli": "node dist/cli.js",
-    "dev": "concurrently -k \"npm:dev:api\" \"npm:dev:web\"",
+    "dev": "node scripts/dev.mjs",
     "dev:cloud": "node scripts/dev-minio.mjs",
     "dev:minio": "node scripts/dev-minio.mjs",
     "dev:api": "tsx watch src/server.ts",

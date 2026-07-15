@@ -9,9 +9,7 @@ import { AccountView } from "../views/account-view";
 import { AssetsView } from "../views/assets/assets-view";
 import { SkillDetailView } from "../views/assets/skill-detail-view";
 import { WorkspaceView } from "../views/workspace-view";
-import type { AppRoute, View } from "./types";
-
-type AppContentView = Exclude<View, "landing">;
+import type { AppRoute, AppShellView } from "./types";
 
 export function AppContent({
   error,
@@ -36,7 +34,7 @@ export function AppContent({
   onPasswordChanged
 }: {
   error?: string;
-  view: AppContentView;
+  view: AppShellView;
   activeWorkspace?: WorkspaceRecord;
   token: string;
   assets: AssetRecord[];

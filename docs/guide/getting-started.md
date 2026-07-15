@@ -11,7 +11,7 @@ Open the demo environment:
 https://harhub.rcpd.cc
 ```
 
-The CLI also defaults to this hosted endpoint. Set `HARHUB_URL` only when you
+The CLI also defaults to this hosted endpoint. Pass `--url` explicitly when you
 want to target a local or self-hosted API.
 
 ## Local Development

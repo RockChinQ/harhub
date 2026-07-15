@@ -13,7 +13,8 @@ export default defineConfig({
   server: {
     port: 5176,
     proxy: {
-      "/api": process.env.HARHUB_API_TARGET ?? "http://127.0.0.1:3310"
+      "/api": process.env.HARHUB_API_TARGET ?? "http://127.0.0.1:3310",
+      "/.well-known": process.env.HARHUB_API_TARGET ?? "http://127.0.0.1:3310"
     }
   },
   build: {

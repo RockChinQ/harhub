@@ -66,9 +66,32 @@ Password sign-in defaults to enabled. When enabled, submitting a new email to
 `HARHUB_PASSWORD_LOGIN_ENABLED=false` for deployments that should use only
 email codes or OAuth.
 
+Set `HARHUB_PUBLIC_URL` to the browser-visible application origin. It is used
+for OAuth callbacks, OAuth device verification, and invitation links; in the
+combined production server it normally points to the same origin as the API.
+
 OAuth callback URLs:
 
 ```text
 https://harhub.example.com/api/auth/oauth/google/callback
 https://harhub.example.com/api/auth/oauth/github/callback
 ```
+
+## CLI OAuth Device Flow
+
+Harhub exposes an RFC 8628 device authorization grant for the built-in public
+CLI client. No client secret is distributed with the CLI. Discovery and flow
+endpoints are:
+
+```text
+GET  /.well-known/oauth-authorization-server
+POST /api/oauth/device/code
+POST /api/oauth/token
+GET  /api/oauth/device/authorization
+POST /api/oauth/device/authorization
+```
+
+The verification page is served at `/device`. Device codes expire after ten
+minutes, are stored as hashes, and can only be exchanged once. Production
+deployments should expose `HARHUB_PUBLIC_URL` over HTTPS so the metadata issuer,
+verification page, and token endpoint share the public origin.

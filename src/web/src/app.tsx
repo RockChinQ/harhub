@@ -16,7 +16,7 @@ import {
   readRouteFromLocation,
   replaceBrowserRoute
 } from "./app/routing";
-import type { AppRoute } from "./app/types";
+import type { AppRoute, AppShellView } from "./app/types";
 import {
   acceptInvitation,
   getSession,
@@ -26,6 +26,7 @@ import {
   type SessionResponse
 } from "./lib/api";
 import { AuthScreen } from "./views/auth-screen";
+import { DeviceAuthorizationView } from "./views/device-authorization-view";
 import { LandingPage } from "./views/landing-page";
 
 export function App() {
@@ -87,10 +88,10 @@ export function App() {
   );
 
   useEffect(() => {
-    if (!activeWorkspace || !token) return;
+    if (!activeWorkspace || !token || route.view === "device") return;
     localStorage.setItem(WORKSPACE_KEY, activeWorkspace.id);
     void refreshAssets(activeWorkspace.id);
-  }, [activeWorkspace?.id, token]);
+  }, [activeWorkspace?.id, token, route.view]);
 
   useEffect(() => {
     if (routedAsset && routedAsset.id !== selectedId) {
@@ -181,7 +182,9 @@ export function App() {
       setActiveWorkspaceId(workspace.id);
       localStorage.setItem(WORKSPACE_KEY, workspace.id);
     }
-    navigate({ view: "assets" }, { replace: true });
+    if (route.view !== "device") {
+      navigate({ view: "assets" }, { replace: true });
+    }
   }
 
   async function handleLogout() {
@@ -223,7 +226,11 @@ export function App() {
     return <LandingPage isSignedIn={true} />;
   }
 
-  const appView = route.view as Exclude<AppRoute["view"], "landing">;
+  if (route.view === "device") {
+    return <DeviceAuthorizationView token={token} account={session.account} />;
+  }
+
+  const appView = route.view as AppShellView;
 
   return (
     <AppLayout

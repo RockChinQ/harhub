@@ -17,6 +17,7 @@ export function routeFromPath(pathname: string): AppRoute {
 
   if (section === "workspace") return { view: "workspace" };
   if (section === "account") return { view: "account" };
+  if (section === "device") return { view: "device" };
 
   return { view: "assets" };
 }
@@ -34,6 +35,7 @@ export function pathForRoute(route: AppRoute): string {
   }
   if (route.view === "workspace") return "/workspace";
   if (route.view === "account") return "/account";
+  if (route.view === "device") return "/device";
   if (route.view === "landing") return "/";
   return "/skills";
 }
@@ -49,6 +51,7 @@ export function viewTitle(view: View): string {
   if (view === "asset-detail") return "Skill Detail";
   if (view === "workspace") return "Workspace";
   if (view === "account") return "Account";
+  if (view === "device") return "Authorize Device";
   if (view === "landing") return "Home";
   return "Skills";
 }
