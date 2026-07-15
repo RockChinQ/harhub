@@ -1,5 +1,7 @@
 # 需求
 
+> 状态说明：本章描述长期产品需求，不代表所有能力都已实现。当前 beta 只管理 Agent Skills；已实现范围和近期缺口以 [SaaS MVP](./07-saas-mvp.md) 与 [MVP 指标与 TODO](./09-mvp-todo.md) 为准。
+
 ## 目标
 
 Harhub 应帮助团队跨仓库和工作流管理 agent harnesses。

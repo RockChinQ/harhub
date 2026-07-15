@@ -22,10 +22,12 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 - **Tenant model**：workspaces、memberships、workspace roles 和 workspace-scoped asset catalogs。
 - **Workspace invitations**：owner/admin 可邀请邮箱加入 workspace、Resend 发送邀请邮件、pending invitation 可撤销、invite token 可用于登录/注册/OAuth 后进入 workspace。
 - **Skill asset flow**：S3-compatible zip upload、`SKILL.md` extraction、runtime indexing、search/filter、table view、detail view、file tree preview 和 deletion。
-- **Validation foundation**：递归 `SKILL.md` scanning、官方 frontmatter checks、name validation、description checks，以及官方可选字段 checks。
+- **Validation foundation**：local scan 和 uploaded zip 共用官方 frontmatter、name、description 和 optional-field checks；upload 还会拒绝多个 `SKILL.md`、path traversal、absolute paths、drive-letter paths 和 null-byte paths。
 - **CLI foundation**：local scan、validate、list、show、create、asset scan、asset validate、asset create、interactive TUI upload、local Skill directory packaging 和 API-backed zip upload。
-- **Open-source release path**：GitHub Release 触发 npm publish workflow，使用 `NPM_TOKEN` 发布；`0.1.0-beta.0` 已作为 npm beta 版本发布。
+- **Open-source release path**：GitHub Release 触发 npm publish workflow，使用 `NPM_TOKEN` 发布；`0.1.0-beta.1` 已作为当前 npm beta 版本发布。
 - **Cloud-native persistence**：`HARHUB_DATABASE_URL` 存在时，accounts、sessions、workspace metadata、memberships 和 workspace asset indexes 存入 Postgres-compatible database；uploaded zip bytes 存入 S3-compatible object storage。本地 `.harhub` JSON 只作为 fallback。
+- **Deployment surface**：production build 由单一 Express process 提供 Web、API 和 docs；仓库包含 multi-stage Dockerfile、Docker image workflow 和 VitePress 文档站。
+- **Cloud catalog boundary**：服务端已经移除 local path scan/create/update。Local directory discovery 只在 CLI 中执行，hosted workspace catalog 只管理 uploaded immutable zip packages。
 
 如何理解当前实现：
 
@@ -37,13 +39,13 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 目标 MVP 的重要缺口：
 
 - **Quota 尚未建模**：上传大小有 process-level cap，但没有 per-user、per-workspace、per-asset、daily upload 或 total storage quota。
-- **Uploaded zips 需要更强校验**：上传解析会验证 zip 包含 `SKILL.md`，但应运行与 local scans 相同的结构和安全检查，并持久化 validation issues。
+- **Zip resource limits 仍不完整**：上传已经执行官方 Skill 字段校验和路径安全检查，但还没有 zip-entry count 与 uncompressed-size limits，仍需防御 zip bomb 和超大展开内容。
 - **没有 activation/distribution event**：产品有 preview，但没有一等的“download”、“copy install command”、“copy Codex install path”或 usage event 来证明复用。
 - **SaaS persistence 仍需产品化**：Postgres backend 已可用，但还缺 explicit migration runner、normalized reporting schema、backup/export policy 和 production readiness checks。
 - **没有 operations dashboard**：缺少 signups、activated workspaces、asset counts、storage usage、failed uploads、quota hits 或 over-limit users 的 admin view。
 - **Role enforcement 不完整**：很多 asset actions 只要求 workspace access；hosted SaaS 应按角色显式限制 mutation。
 - **没有 hosted onboarding funnel**：signup 还没有引导用户完成上传或导入 3 个有效 Skills 并安装 1 个的激活路径。
-- **开源发布表面仍需补齐**：README、CLI quickstart、release workflow 和 npm beta 发布已可用，但仍需要 deployment docs、environment templates、contributor docs、license clarity 和 SaaS CTA。
+- **开源发布表面仍需补齐**：README、CLI quickstart、deployment guide、`.env.example`、Dockerfile、release workflows 和 npm beta 已存在；仍缺 license、`CONTRIBUTING.md`、`SECURITY.md`、完整 production runbook 和更清晰的 OSS/SaaS 边界说明。
 
 ## 近期已完成
 
@@ -60,6 +62,9 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 - [x] 发布 `harhub@0.1.0-beta.0` 到 npm，并设置 `beta` dist-tag。
 - [x] 添加 Postgres-compatible runtime state backend：accounts、sessions、workspaces、memberships 和 asset catalogs 不再必须依赖本地 JSON。
 - [x] 更新本地云原生开发栈：Docker Compose 启动 Postgres + MinIO，`npm run dev:cloud` 使用同一套环境变量形态。
+- [x] 添加 multi-stage Dockerfile，并通过 GitHub Actions 构建 `latest` 和 commit-SHA image tags。
+- [x] 移除 server-local Skill paths 和 path-based workspace scan/create/update；cloud catalog 只保留 uploaded assets。
+- [x] 统一 password sign-in 与 registration：新邮箱通过同一个 login flow 创建账号和初始 workspace。
 
 更广义 team-harness 产品的重要缺口：
 
@@ -195,13 +200,13 @@ Distribution action 可以是：
 
 ### 4. 上传校验与存储安全
 
-- [ ] 让 uploaded zips 运行与 local scanned Skills 相同的 Skill validation rules。
-- [ ] 在 uploaded assets 上持久化 validation issues。
-- [ ] 根据真实 validation results 将 uploaded assets 标记为 `error`、`warning` 或 `valid`。
-- [ ] 拒绝包含 path traversal entries 或 suspicious absolute paths 的 zips。
+- [x] 让 uploaded zips 运行与 local scanned Skills 相同的官方 `SKILL.md` validation rules。
+- [x] 在 uploaded assets 上持久化 validation issues。
+- [x] 根据真实 validation results 将 uploaded assets 标记为 `error`、`warning` 或 `valid`；新上传中的 error 会直接拒绝。
+- [x] 拒绝 path traversal、absolute path、drive-letter path 和 null-byte zip entries。
 - [ ] 添加 zip-entry count 和 uncompressed-size limits，降低 zip-bomb 风险。
 - [ ] 存储对象默认私有，并通过 authorized API routes 提供 downloads。
-- [ ] 当 S3 object 已经缺失时，使 delete 保持 idempotent。
+- [x] 当 S3 object 已经缺失时，单次 delete 仍可完成 object cleanup 和 catalog removal。
 
 ### 5. 授权与 SaaS 安全
 
@@ -227,7 +232,7 @@ Distribution action 可以是：
 
 - [ ] 添加 license file 并确认预期 OSS license。
 - [x] 添加 `.env.example`，包含 local API、Postgres、S3/R2/MinIO、max upload bytes 和 state adapter。
-- [ ] 添加 self-hosting 的 Docker 或 Docker Compose 路径。
+- [x] 添加 production Dockerfile、image build workflow 和基本 Docker deployment 文档。
 - [ ] 将 README 拆分为 quickstart、self-hosting、hosted SaaS、CLI 和 development sections。
 - [ ] 添加 `CONTRIBUTING.md`，包含 local setup、checks 和 skill-standard expectations。
 - [ ] 添加 `SECURITY.md`，用于 vulnerability reports 和 secret-handling expectations。

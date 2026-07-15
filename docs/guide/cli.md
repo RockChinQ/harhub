@@ -88,6 +88,16 @@ harhub skills upload /path/to/repo --all
 ```bash
 harhub skills scan [paths...]
 harhub skills validate [paths...]
+harhub skills create <name> [--dir skills]
 harhub assets list
 harhub assets show <id|name|slug>
 ```
+
+The scan, validate, list, show, create, and local update commands operate on
+local paths or `.harhub` indexes. The server does not scan paths on its own;
+`skills upload` scans and packages local Skill directories before sending zip
+files to the workspace API.
+
+Uploaded workspace packages are immutable. Change the local Skill and upload
+it again rather than using a remote update command. Use `--remote` for hosted
+delete and revalidation commands; they reuse the saved token and workspace.

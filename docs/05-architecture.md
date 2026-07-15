@@ -2,7 +2,9 @@
 
 ## 概览
 
-Harhub 是 agent harnesses 的控制平面。当前 MVP 从 uploaded zip 或 Git 路径索引 Agent Skills，按 agentskills.io 校验，并保存管理所需的运行态记录。更长期可以扩展到其他外部 harness 文件，但不要求用户采用 Harhub 自定义标准。
+Harhub 是 agent harnesses 的控制平面。当前 MVP 有两条输入路径：CLI 扫描本地目录；Web 或 CLI 将标准 Agent Skill 目录打包成 zip，再上传到 workspace。服务端不再扫描本地文件路径，也尚未接入 Git provider。Uploaded Skills 按 agentskills.io 校验，并保存管理所需的运行态记录。
+
+> 状态说明：本章同时记录当前 beta 的实际拓扑和长期目标架构。Repository Scanner、Artifact Normalizer、Dependency Graph、Composition Engine、Policy Engine、Distribution Service 和独立 worker 仍是规划能力。
 
 系统应将 source ownership 与 harness distribution 分离：
 
@@ -10,7 +12,26 @@ Harhub 是 agent harnesses 的控制平面。当前 MVP 从 uploaded zip 或 Git
 - **Control plane**：catalog、dependency graph、policy、validation、composition 和 rollout。
 - **Consumers**：repositories、agents、CLI、IDE、CI 系统和 platform dashboards。
 
-## 高层架构
+## 当前 MVP 拓扑
+
+```mermaid
+flowchart LR
+  Local["Local Skill directories"] --> CLI["Harhub CLI scan / validate / package"]
+  CLI --> LocalIndex["Local .harhub indexes"]
+  CLI -- "upload zip" --> API["Express workspace API"]
+  Web["React Web UI"] --> API
+  API --> Validate["Agent Skills validation"]
+  API --> Catalog["Workspace asset catalog"]
+  API --> S3["S3-compatible zip storage"]
+  Catalog --> Postgres["Postgres-compatible state"]
+  Catalog -. "local fallback" .-> JSON[".harhub JSON"]
+```
+
+生产构建由一个 Express 进程提供 Web UI、API 和 `/docs/`。开发环境中，Vite Web server 使用 `5176`，API 使用 `3310`，文档站按需单独运行在 `5177`。
+
+## 目标高层架构
+
+下面是长期目标，不是当前部署中已经存在的服务拆分：
 
 ```mermaid
 flowchart LR
@@ -32,6 +53,8 @@ flowchart LR
 ```
 
 ## 核心服务
+
+除 Package Registry、Catalog API、Skill validation 和 object storage 的 MVP 子集外，本节服务均为目标设计。
 
 ### 仓库扫描器（Repository Scanner）
 
@@ -305,9 +328,23 @@ Harhub 不在当前产品中定义任何新的 Skill 标准或用户必须采用
 
 ## API 表面
 
-### Web API
+### 当前 Web API
 
-供 UI 和 integrations 使用。
+当前 API 以 workspace 为租户边界，主要包括：
+
+- `/api/auth/*`：密码、邮件验证码、Google/GitHub OAuth、logout 和认证能力配置。
+- `/api/account`：profile 和 password mutation。
+- `/api/workspaces`：workspace 创建、重命名和当前账号可访问列表。
+- `/api/workspaces/{workspaceId}/members`：成员、角色和 invitations。
+- `/api/workspaces/{workspaceId}/assets`：列表、详情、preview、upload、validate、bulk validate/delete 和 delete。
+- `/api/workspaces/{workspaceId}/skills`：Skills-only compatibility view、validate 和 delete。
+- `/api/skills`：只面向 demo workspace 的 legacy read compatibility route。
+
+完整实现快照见 [SaaS MVP](./07-saas-mvp.md#api-形态)。
+
+### 目标 Web API
+
+以下资源属于长期 package、composition 和 governance 设计，当前尚未实现：
 
 核心资源：
 
@@ -320,9 +357,15 @@ Harhub 不在当前产品中定义任何新的 Skill 标准或用户必须采用
 - `/findings`
 - `/policies`
 
-### CLI
+### 当前 CLI
 
-预期命令：
+CLI 当前支持本地 `skills`/`assets` scan、validate、list、show、create 和 update；支持将本地 Skill 目录打包上传，以及对 workspace 中已上传的 Skill 执行 revalidate 和 delete。服务端不会接收或扫描客户端本地路径。
+
+Uploaded workspace packages 不支持原地修改；修改本地 Skill 后需要重新上传。
+
+### 目标 CLI
+
+长期预期命令：
 
 ```text
 harhub scan
@@ -334,7 +377,7 @@ harhub sync
 harhub findings
 ```
 
-### Runtime API
+### Runtime API（规划）
 
 供 agents 或 local wrappers 使用。
 
@@ -359,7 +402,21 @@ harhub findings
 
 ## 部署模型
 
-MVP deployment 可以是 stateless Web/API service 加 managed storage：
+### 当前部署
+
+当前生产构建是单一 Node.js/Express 服务：
+
+- 提供 workspace API、React Web UI 和 VitePress docs。
+- 设置 `HARHUB_DATABASE_URL` 后，将账号、sessions、workspaces、memberships、invitations、OAuth state 和 workspace asset catalog 持久化到 Postgres-compatible database。
+- Uploaded Skill zip 存储在 S3-compatible object store。
+- 未设置 database URL 时，使用 `.harhub` JSON fallback。
+- 仓库包含 multi-stage `Dockerfile`，GitHub Actions 可构建并发布 `rockchin/harhub` image。
+
+多个 API replicas 可以连接同一 database 和 bucket，但当前 catalog 仍以 JSONB document 存储，尚未具备独立 migration runner、normalized reporting tables、background workers 或 distributed coordination。
+
+### 目标部署
+
+规模扩大后的目标 deployment 可以是 stateless Web/API service 加 managed storage：
 
 - Web/API service。
 - 用于 scanning、validation、composition 和 distribution 的 worker process。
@@ -369,11 +426,9 @@ MVP deployment 可以是 stateless Web/API service 加 managed storage：
 
 如果规模需要，后续可以拆分为独立服务。
 
-当前代码在设置 `HARHUB_DATABASE_URL` 后不依赖本地 state 文件。多个 API replicas 可以连接同一 database 和 bucket。扫描本地路径的开发 import 仍要求对应路径在运行环境中可见；uploaded zip 管理路径已经通过 object storage 和 Postgres 持久化。
-
 ## 集成点
 
-初始集成：
+规划中的集成：
 
 - GitHub 或 Git provider API，用于 scanning、commits 和 pull requests。
 - CI systems，用于 validation checks。

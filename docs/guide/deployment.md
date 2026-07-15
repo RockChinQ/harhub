@@ -25,12 +25,41 @@ serve them under `/docs/`.
 npm run start
 ```
 
-Required ports can be configured with:
+The production server serves the React app, API, and built documentation from a
+single process. With the defaults, use:
+
+```text
+App:  http://127.0.0.1:3310/skills
+API:  http://127.0.0.1:3310/api/health
+Docs: http://127.0.0.1:3310/docs/
+```
+
+The listen address can be configured with:
 
 ```bash
 HOST=0.0.0.0
 PORT=3310
 ```
+
+`5176` is only the Vite development port; it is not used by `npm run start`.
+
+## Docker
+
+The repository includes a multi-stage production `Dockerfile` that builds the
+server, web app, and docs, then runs the combined service on port `3310`:
+
+```bash
+docker build -t harhub .
+docker run --rm --env-file .env.production -p 3310:3310 harhub
+```
+
+The image defaults to `HOST=0.0.0.0` and `PORT=3310`. Database and object
+storage addresses in `.env.production` must be reachable from inside the
+container; containerized deployments normally cannot use `127.0.0.1` to reach
+services running in another container.
+
+The `Build Docker Image` GitHub workflow is configured to publish
+`rockchin/harhub:latest` and a commit-SHA tag from `main`.
 
 ## State And Storage
 
@@ -45,6 +74,11 @@ HARHUB_S3_REGION=us-east-1
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
 ```
+
+Without `HARHUB_DATABASE_URL`, runtime state falls back to `.harhub/state.json`
+and `.harhub/workspaces/<workspace-id>/assets.json`. This fallback is intended
+for local development and small self-managed demos. Skill uploads still require
+S3-compatible object storage.
 
 ## Auth And Invitations
 

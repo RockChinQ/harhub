@@ -17,7 +17,8 @@ Skills contract:
   required `name` and `description`, plus the official optional fields.
 - Harhub must not define competing Skill files or frontmatter conventions.
 - The MVP catalog keeps only runtime state needed to manage standard Skills:
-  validation status, storage, and preview data.
+  extracted standard metadata, validation status/issues, and storage references.
+  File previews are derived from the stored zip on demand.
 - Uploaded Skills are zip files stored in S3 or S3-compatible object storage.
   Local `.harhub` JSON files are runtime indexes only, not the Skill package
   storage backend or a Skill format.
@@ -56,10 +57,14 @@ state, uploaded test packages, `dist/`, or `node_modules/`.
 
 ## Runtime And Ports
 
-Ports are fixed:
+Development ports are fixed:
 
 - API: `http://127.0.0.1:3310`
 - Web: `http://127.0.0.1:5176`
+
+After `npm run build && npm run start`, Express serves the API, built Web app,
+and `/docs/` together on the API port (`3310` by default). Port `5176` is only
+used by the Vite development server.
 
 Do not casually change these ports. If a task requires changing them, update the
 relevant config, docs, and startup instructions together.
@@ -69,6 +74,7 @@ Useful commands:
 ```bash
 npm install
 npm run dev
+npm run dev:cloud
 npm run dev:minio
 npm run check
 npm run build
@@ -76,10 +82,11 @@ npm run cli -- assets list
 npm run cli -- skills validate examples/skills
 ```
 
-`npm run dev:minio` starts the repo MinIO compose service and then starts both
-frontend and backend with the local S3 env vars. The upload flow must be tested
-with S3 configured when a change touches upload, preview, delete, or asset
-storage behavior.
+`npm run dev:cloud` and its legacy alias `npm run dev:minio` start the repo
+Postgres and MinIO compose services, then start both frontend and backend with
+the local database and S3 env vars. The upload flow must be tested with S3
+configured when a change touches upload, preview, delete, or asset storage
+behavior.
 
 ## Architecture Rules
 

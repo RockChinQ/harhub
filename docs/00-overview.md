@@ -4,6 +4,19 @@ Harhub 是面向团队的 agent harness 控制平面。这里的 harness 指让 
 
 多数团队其实已经有这些 harness 材料，但它们分散在不同仓库里，由不同人用不同约定维护。Harhub 的目标是在不强迫团队放弃既有知识所在仓库的前提下，让这一层 harness 资产变得可发现、可复用、可版本化、可校验、可治理。
 
+## 当前实现与目标
+
+当前 `0.1.0-beta.1` MVP 只管理 Agent Skills。已经实现的产品表面包括：
+
+- React Web UI 和 TypeScript CLI。
+- 账号、session、workspace、角色和邀请。
+- 本地 Skill 扫描、官方格式校验和目录打包。
+- Workspace-scoped zip 上传、搜索、详情、文件预览、批量校验和删除。
+- Postgres-compatible 运行态持久化和 S3-compatible zip 存储，以及本地 JSON fallback。
+- Email/password、邮件验证码、Google/GitHub OAuth 登录。
+
+仓库扫描器、多资产 inventory、版本发布、组合引擎、策略引擎、跨工具分发和评估仍是目标设计，不是当前 API 已经提供的能力。本文档集会明确区分“当前实现”和“目标架构”。
+
 ## 文档地图
 
 - [00. 概览](./00-overview.md)：阅读入口、文档地图和 agent harness 工作定义。

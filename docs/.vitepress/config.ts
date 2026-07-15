@@ -52,7 +52,7 @@ export default defineConfig({
       { icon: "github", link: "https://github.com/RockChinQ/harhub" }
     ],
     footer: {
-      message: "Released under the MIT License.",
+      message: "Harhub is currently available as a beta release.",
       copyright: "Copyright © 2026 Harhub contributors"
     }
   }

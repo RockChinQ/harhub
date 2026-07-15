@@ -44,8 +44,10 @@ Harhub 按 agentskills.io spec 执行：
 
 当前 MVP 不维护 Harhub 自定义 catalog 字段。Harhub 只围绕标准 Skill 保存运行时状态：
 
-- validation status
-- object storage reference
-- file preview data
+- 从标准 frontmatter 提取的 name 和 description 等展示信息。
+- validation status 和 validation issues。
+- object storage reference。
+
+文件树和内容 preview 在请求时从 stored zip 中生成，不作为新的 Skill package 数据写回。Uploaded workspace packages 不支持原地 patch；更新源 Skill 后应重新上传 zip。
 
 后续如果需要更多 catalog 或治理能力，必须作为 Harhub 的产品数据单独设计，不能修改或包装 Agent Skills 的格式。

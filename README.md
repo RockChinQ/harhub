@@ -21,8 +21,8 @@
 Harhub is a workspace for managing reusable Agent Skills.
 
 It helps teams upload, validate, preview, and organize Skill packages so coding
-agents can use a shared set of team-approved capabilities instead of scattered
-local files.
+agents can use a shared set of workspace-managed capabilities instead of
+scattered local files.
 
 Harhub currently focuses on Agent Skills as the first supported asset type.
 MCPs, rules, and other agent assets are planned, but the current product surface
@@ -74,7 +74,8 @@ npm run start
 Then open:
 
 ```text
-http://127.0.0.1:5176/skills
+App and API: http://127.0.0.1:3310/skills
+Docs:        http://127.0.0.1:3310/docs/
 ```
 
 Demo account:
@@ -95,11 +96,22 @@ Fixed local ports:
 - Web: `http://127.0.0.1:5176`
 - API: `http://127.0.0.1:3310`
 
+The documentation site runs separately in development:
+
+```bash
+npm run docs:dev
+```
+
+Open `http://127.0.0.1:5177/docs/`.
+
 To start the local cloud-style stack with object storage:
 
 ```bash
 npm run dev:cloud
 ```
+
+The repository also includes a production multi-stage `Dockerfile`. See the
+[deployment guide](./docs/guide/deployment.md) for build and runtime details.
 
 ## CLI
 
@@ -163,11 +175,18 @@ harhub login
 harhub whoami
 harhub skills scan [paths...]
 harhub skills validate [paths...]
+harhub skills create <name>
 harhub skills upload [paths...]
 harhub assets list
 harhub assets show <id|name|slug>
 harhub logout
 ```
+
+`scan`, `validate`, `list`, and `show` operate on local paths and local
+`.harhub` indexes. `skills upload` packages valid local Skills and sends them to
+the configured hosted or self-managed workspace. Uploaded packages are
+immutable; edit the local Skill and upload it again instead of patching it in
+place.
 
 ## Configuration
 

@@ -28,8 +28,15 @@ Default local ports:
 ```text
 Web: http://127.0.0.1:5176
 API: http://127.0.0.1:3310
-Docs: http://127.0.0.1:5177/docs/
 ```
+
+The docs server is a separate development process:
+
+```bash
+npm run docs:dev
+```
+
+It serves the documentation at `http://127.0.0.1:5177/docs/`.
 
 The seeded demo account is:
 
@@ -48,6 +55,23 @@ npm run dev:cloud
 
 This keeps runtime state in Postgres-compatible storage and uploaded Skill zip
 packages in S3-compatible object storage.
+
+## Production Build
+
+Build the API, web app, and documentation, then start the combined server:
+
+```bash
+npm run build
+npm run start
+```
+
+The production server exposes all three surfaces on the API port:
+
+```text
+App:  http://127.0.0.1:3310/skills
+API:  http://127.0.0.1:3310/api/health
+Docs: http://127.0.0.1:3310/docs/
+```
 
 ## Verify The Checkout
 

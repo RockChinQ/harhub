@@ -2,6 +2,8 @@
 
 Harhub 的 SaaS MVP 采用云原生持久化优先，同时保留本地 JSON fallback 方便 self-host demo 和离线开发。Hosted deployment 中，API 进程不依赖本地 `.harhub` 状态文件，可以通过横向扩容连接同一组 managed Postgres 和 S3-compatible object storage。
 
+本文记录当前 `0.1.0-beta.1` 的实现快照。当前 hosted catalog 只接受 uploaded Skill zip；本地目录发现由 CLI 完成，服务端不接收或扫描本地路径。
+
 ## 对象
 
 - **Account**：已登录用户，包含邮箱、显示名、密码哈希和 sessions。
@@ -10,6 +12,9 @@ Harhub 的 SaaS MVP 采用云原生持久化优先，同时保留本地 JSON fal
 - **Membership**：账号与 workspace 之间的角色关系。
 - **Session**：登录或注册后签发的 bearer token。
 - **Workspace Invitation**：workspace-scoped 邀请，包含目标邮箱、角色、token、过期时间和接受状态。
+- **Email Login Code**：短期一次性登录验证码，保存在 runtime state 中并限制尝试次数。
+- **OAuth State**：Google/GitHub OAuth 跳转期间使用的短期 state、redirect path 和可选 invitation token。
+- **Device Authorization**：CLI 使用的 RFC 8628 短期设备授权记录，只保存 device code hash、user code、轮询状态和批准账号。
 
 ## 云原生持久化
 
@@ -83,6 +88,14 @@ https://harhub.example.com/api/auth/oauth/github/callback
 HARHUB_DATABASE_SSL=true
 ```
 
+进程监听和上传大小可通过以下变量调整：
+
+```bash
+HOST=0.0.0.0
+PORT=3310
+HARHUB_MAX_UPLOAD_BYTES=26214400
+```
+
 本地云原生开发可以运行：
 
 ```bash
@@ -93,27 +106,54 @@ npm run dev:cloud
 
 ## API 形态
 
-SaaS routes 按 workspace 作用域组织：
+当前 routes 如下。除 health、auth bootstrap、OAuth callback、invitation lookup 和 legacy demo route 外，业务 routes 都要求 bearer token；资产数据按 workspace 作用域组织。
 
 ```text
+GET  /api/health
+GET  /api/auth/config
 POST /api/auth/login
 POST /api/auth/email-code/request
 POST /api/auth/email-code/verify
 GET  /api/auth/oauth/:provider/start
 GET  /api/auth/oauth/:provider/callback
+POST /api/auth/logout
+GET  /.well-known/oauth-authorization-server
+POST /api/oauth/device/code
+POST /api/oauth/token
+GET  /api/oauth/device/authorization
+POST /api/oauth/device/authorization
 GET  /api/session
+PATCH /api/account
+POST /api/account/password
+GET  /api/invitations/:token
 GET  /api/workspaces
 POST /api/workspaces
 PATCH /api/workspaces/:workspaceId
 GET  /api/workspaces/:workspaceId/members
 POST /api/workspaces/:workspaceId/members
+PATCH /api/workspaces/:workspaceId/members/:membershipId
+DELETE /api/workspaces/:workspaceId/members/:membershipId
 DELETE /api/workspaces/:workspaceId/invitations/:invitationId
 POST /api/invitations/accept
-GET  /api/workspaces/:workspaceId/skills
+
+GET  /api/workspaces/:workspaceId/assets
+GET  /api/workspaces/:workspaceId/assets/:query
+GET  /api/workspaces/:workspaceId/assets/:query/preview
 POST /api/workspaces/:workspaceId/assets/upload
 POST /api/workspaces/:workspaceId/assets/validate
+POST /api/workspaces/:workspaceId/assets/bulk
 POST /api/workspaces/:workspaceId/assets/:query/validate
 DELETE /api/workspaces/:workspaceId/assets/:query
+
+GET  /api/workspaces/:workspaceId/skills
+GET  /api/workspaces/:workspaceId/skills/:query
+POST /api/workspaces/:workspaceId/skills/validate
+POST /api/workspaces/:workspaceId/skills/:query/validate
+DELETE /api/workspaces/:workspaceId/skills/:query
+
+GET  /api/skills
 ```
 
-Legacy `/api/skills` routes 仍作为 demo workspace 的兼容层保留。
+`/api/workspaces/:workspaceId/skills` 是 Assets API 的 Skills-only compatibility view；legacy `/api/skills` 只保留 demo workspace 的 read route。服务端已经移除 path-based scan、create 和 patch routes。Uploaded packages 是 immutable，修改后应重新上传 zip。
+
+当前角色执行范围并不完全一致：workspace 重命名、邀请、成员角色修改和成员移除会执行 owner/admin 检查；资产 upload、validate 和 delete 目前只要求 workspace membership。按角色限制资产 mutation 仍是发布前 TODO。

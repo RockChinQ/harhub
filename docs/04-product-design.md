@@ -1,5 +1,7 @@
 # 产品设计
 
+> 状态说明：本章主要描述目标产品形态。当前 beta 已实现 Skills catalog、上传、校验、预览、workspace 和认证；Package releases、Bundles、Assignments、Findings、仓库接入和治理工作流仍在规划中。
+
 ## 产品形态
 
 Harhub 应该像一个 harness registry 和控制平面，而不是通用文档管理器。
