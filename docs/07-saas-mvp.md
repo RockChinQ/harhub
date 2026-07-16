@@ -2,7 +2,7 @@
 
 Harhub 的 SaaS MVP 采用云原生持久化优先，同时保留本地 JSON fallback 方便 self-host demo 和离线开发。Hosted deployment 中，API 进程不依赖本地 `.harhub` 状态文件，可以通过横向扩容连接同一组 managed Postgres 和 S3-compatible object storage。
 
-本文记录当前 `0.1.0-beta.3` 的实现快照。当前 hosted catalog 只接受 uploaded Skill zip；本地目录发现由 CLI 完成，服务端不接收或扫描本地路径。
+本文记录当前实现快照。Hosted catalog 接受任意 zip：服务端递归发现其中一个或多个 `SKILL.md`，Web 先展示候选供勾选，CLI 默认导入所有合法候选。本地目录发现仍可由 CLI 完成，服务端不会接收客户端本地路径。
 
 ## 对象
 
@@ -33,7 +33,7 @@ harhub_workspace_catalogs
   updated_at
 ```
 
-这些表保存 accounts、sessions、workspaces、memberships、invitations、device authorization、asset shares 和 workspace asset indexes。Uploaded Skill zip bytes 不进数据库，继续存储在 S3/S3-compatible object storage。
+这些表保存 accounts、sessions、workspaces、memberships、invitations、device authorization、asset shares 和 workspace asset indexes。上传源 zip 不进数据库，也不会保留在对象存储中；每个导入后的 Skill 都以独立 S3 prefix 逐文件存储。
 
 本地 JSON fallback 仍然可用：当没有设置 `HARHUB_DATABASE_URL` 时，运行态状态存储在 `.harhub/state.json`，workspace catalog 存储在 `.harhub/workspaces/<workspace-id>/` 下。这只用于 self-host demo 和本地开发，不是 hosted operation 的默认路径。
 
@@ -47,7 +47,7 @@ password: harhub
 workspace: Engineering Platform
 ```
 
-种子 workspace 的 asset catalog 初始为空。Skill package 通过 Web 或 CLI 上传到对象存储后，索引写入当前 backend：Postgres 中的 `harhub_workspace_catalogs`，或本地 fallback 的 `.harhub/workspaces/ws_demo/`。
+种子 workspace 的 asset catalog 初始为空。Skill 通过 Web 或 CLI 导入后，每个候选被拆成独立对象目录，索引写入当前 backend：Postgres 中的 `harhub_workspace_catalogs`，或本地 fallback 的 `.harhub/workspaces/ws_demo/`。详情 preview 直接读取对象文件；分享下载和 discovery 按内容摘要动态生成并短时缓存标准根结构 zip。
 
 ## 配置
 

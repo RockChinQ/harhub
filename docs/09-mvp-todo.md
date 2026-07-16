@@ -26,7 +26,7 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 - **CLI foundation**：local scan、validate、list、show、create、asset scan、asset validate、asset create、interactive TUI upload、local Skill directory packaging 和 API-backed zip upload。
 - **Distribution foundation**：`upload --share`、share/unshare、无需登录的 `/s/:token`、标准化 zip download、Agent Skills discovery、`harhub install` 和 `npx skills add` 已形成基础协作路径。
 - **Open-source release path**：GitHub Release 触发 npm publish workflow，使用 `NPM_TOKEN` 发布；`0.1.0-beta.3` 是当前 npm beta 版本。
-- **Cloud-native persistence**：`HARHUB_DATABASE_URL` 存在时，accounts、sessions、workspace metadata、memberships 和 workspace asset indexes 存入 Postgres-compatible database；uploaded zip bytes 存入 S3-compatible object storage。本地 `.harhub` JSON 只作为 fallback。
+- **Cloud-native persistence**：`HARHUB_DATABASE_URL` 存在时，accounts、sessions、workspace metadata、memberships 和 workspace asset indexes 存入 Postgres-compatible database；每个 imported Skill 的文件存入独立 S3-compatible prefix，源 zip 不保留。本地 `.harhub` JSON 只作为 fallback。
 - **Deployment surface**：production build 由单一 Express process 提供 Web、API 和 docs；仓库包含 multi-stage Dockerfile、Docker image workflow 和 VitePress 文档站。
 - **Cloud catalog boundary**：服务端已经移除 local path scan/create/update。Local directory discovery 只在 CLI 中执行，hosted workspace catalog 只管理 uploaded immutable zip packages。
 
@@ -52,7 +52,7 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 
 - [x] 将 Skills 统一作为 Asset kind 管理，并保留 MCPs、Rules 为 disabled roadmap entries。
 - [x] 将前端固定到 `127.0.0.1:5176`，API 固定到 `127.0.0.1:3310`。
-- [x] 将 Skill zip upload 接到 S3/S3-compatible storage，并提供本地 MinIO 开发路径。
+- [x] 支持任意 zip 多 Skill 发现与勾选导入；每个 Skill 逐文件写入独立 S3 prefix，并提供本地 MinIO 开发路径。
 - [x] 将 Skill detail 做成 URL-addressable 页面，支持 file tree 和 file preview。
 - [x] 将 destructive confirmation 改为 shadcn AlertDialog，避免原生 confirm。
 - [x] 清理 Harhub-only Skill frontmatter，保持 `SKILL.md` 对齐 agentskills.io。
@@ -343,7 +343,7 @@ MVP 满足以下条件时，可以公开免费发布：
 2. 对 workspace count、asset count、asset size、total storage、members 和 daily uploads 执行 quotas。
 3. 团队能看到 activated workspaces、storage usage、quota hits、upload failures 和 distribution actions。
 4. 开源 repo 能根据文档步骤在没有私有基础设施的情况下 self-host。
-5. Uploaded Skill zips 默认私有，只能通过 workspace authorization 或有效且可撤销的 share token 下载。
+5. Imported Skill 文件默认私有；只有 workspace authorization 可预览，或通过有效且可撤销的 share token 下载动态生成的标准 zip。
 6. 已实现产品保持 Skills-only，同时 positioning 清楚解释更大的 team AI harness management 品类。
 7. 在使用或评审 Skills MVP 后，至少 5 个团队明确请求支持 rules、MCP、`AGENTS.md`、Copilot instructions 或 cross-tool distribution。
 

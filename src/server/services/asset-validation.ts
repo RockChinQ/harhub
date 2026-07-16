@@ -1,16 +1,15 @@
 import {
-  createUploadedSkillAsset,
+  createImportedSkillAsset,
   findAsset,
   upsertAsset
 } from "../../features/assets/index.js";
-import { validateSkillArchive } from "../../features/skills/index.js";
 import type { AssetCatalog, AssetRecord, WorkspaceRecord } from "../../shared/types.js";
 import {
   describeWorkspaceCatalogStorage,
   writeWorkspaceAssetCatalog
 } from "../../state/index.js";
-import { readStoredObject } from "../../storage/index.js";
 import { assetListPayload } from "./asset-responses.js";
+import { loadStoredSkill } from "./skill-packages.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
 
 export async function validateWorkspaceAssets(
@@ -110,13 +109,11 @@ async function validateStoredAsset(
 ): Promise<AssetRecord> {
   if (!asset.storage) return asset;
 
-  const archive = await validateSkillArchive(await readStoredObject(asset.storage));
-  const refreshed = await createUploadedSkillAsset({
+  const { skill } = await loadStoredSkill(asset.storage);
+  const refreshed = createImportedSkillAsset({
     workspaceId: workspace.id,
-    fileName: asset.storage.originalName ?? `${asset.name}.zip`,
-    buffer: archive.buffer,
+    skill,
     storage: asset.storage,
-    name: asset.name,
     rejectInvalid: false
   });
 

@@ -39,7 +39,7 @@ export function SkillListTable({
     return (
       <div className="flex min-h-60 min-w-0 flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-card text-sm text-muted-foreground xl:h-full xl:min-h-0">
         <PackageOpen className="h-7 w-7" aria-hidden="true" />
-        No uploaded skill zips matched the current filters.
+        No imported Skills matched the current filters.
       </div>
     );
   }

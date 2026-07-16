@@ -243,7 +243,7 @@ export function AssetsView({
             <PopoverContent
               align="end"
               sideOffset={8}
-              className="max-h-[min(640px,calc(100vh-1.5rem))] w-[min(420px,calc(100vw-2rem))] overflow-hidden p-0"
+              className="max-h-[min(640px,calc(100vh-1.5rem))] w-[min(420px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-hidden p-0"
             >
               <div className="flex items-start gap-3 border-b bg-muted/30 px-4 py-4">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-background text-primary shadow-sm">
@@ -254,7 +254,7 @@ export function AssetsView({
                   <div className="mt-1 text-xs text-muted-foreground">{uploadStatusLabel(storage)}</div>
                 </div>
               </div>
-              <div className="max-h-[calc(100vh-8.5rem)] overflow-y-auto p-4">
+              <div className="max-h-[calc(100vh-8.5rem)] min-w-0 overflow-x-hidden overflow-y-auto p-4">
                 <UploadSkillZipForm
                   workspace={workspace}
                   token={token}
@@ -302,7 +302,7 @@ export function AssetsView({
                   {selectedBulkCount} selected
                 </Badge>
                 <span className="text-sm text-muted-foreground">
-                  Bulk actions apply to uploaded skill packages only.
+                  Bulk actions apply to imported Skills only.
                 </span>
               </div>
             ) : null}
@@ -354,7 +354,7 @@ export function AssetsView({
                   <AlertDialogHeader>
                     <AlertDialogTitle>Delete selected skills?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This removes {selectedBulkCount} uploaded skill package{selectedBulkCount === 1 ? "" : "s"} from this workspace.
+                      This removes {selectedBulkCount} imported Skill{selectedBulkCount === 1 ? "" : "s"} from this workspace.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>

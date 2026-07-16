@@ -147,7 +147,7 @@ export async function runAssetsUpload(parsed: ParsedArgs): Promise<number> {
   const apiUrl = resolveHarhubApiUrl(parsed);
 
   if (!zipPath || !workspaceId) {
-    console.error("Usage: harhub assets upload <skill.zip> [--share] [--workspace <workspace-id>] [--token <token>] [--url <harhub-url>]");
+    console.error("Usage: harhub assets upload <archive.zip> [--share] [--workspace <workspace-id>] [--token <token>] [--url <harhub-url>]");
     return 1;
   }
 
@@ -166,13 +166,18 @@ export async function runAssetsUpload(parsed: ParsedArgs): Promise<number> {
       fileName: path.basename(absolutePath),
       buffer: readFileSync(absolutePath)
     });
+    if (!Array.isArray(data.uploaded) || data.uploaded.length === 0) {
+      throw new Error("Harhub did not import any Skills from this zip.");
+    }
     if (hasBooleanOption(parsed, "share")) {
-      data.share = await createWorkspaceAssetShare({
-        apiUrl,
-        workspaceId,
-        token,
-        assetQuery: data.uploaded.id
-      });
+      data.shares = await Promise.all((data.uploaded as Array<Record<string, any>>).map((asset) =>
+        createWorkspaceAssetShare({
+          apiUrl,
+          workspaceId,
+          token,
+          assetQuery: asset.id
+        })
+      ));
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
@@ -184,9 +189,12 @@ export async function runAssetsUpload(parsed: ParsedArgs): Promise<number> {
     return 0;
   }
 
-  console.log(`Uploaded ${data.uploaded?.displayName ?? path.basename(absolutePath)}`);
-  console.log(`Object: ${data.uploaded?.storage?.key ?? "-"}`);
-  if (data.share?.shareUrl) console.log(`Share: ${data.share.shareUrl}`);
+  for (const [index, asset] of (data.uploaded as Array<Record<string, any>>).entries()) {
+    console.log(`Uploaded ${asset.displayName ?? asset.name}`);
+    console.log(`Object: ${asset.storage?.key ?? "-"}`);
+    const share = data.shares?.[index];
+    if (share?.shareUrl) console.log(`Share: ${share.shareUrl}`);
+  }
   return 0;
 }
 

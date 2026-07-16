@@ -251,10 +251,13 @@ function testCatalog(): AssetCatalog {
       validation: { errors: 0, warnings: 0 },
       storage: {
         provider: "s3",
+        layout: "files",
         bucket: "test-bucket",
-        key: "private/demo.zip",
+        key: "private/demo/",
         size: 128,
-        contentType: "application/zip",
+        fileCount: 1,
+        contentType: "application/vnd.harhub.skill-directory",
+        checksum: "a".repeat(64),
         uploadedAt: new Date().toISOString()
       }
     }]

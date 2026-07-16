@@ -245,12 +245,14 @@ export async function runUpload(parsed: ParsedArgs): Promise<number> {
       fileName: packaged.fileName,
       buffer: packaged.buffer
     });
+    const uploadedAsset = response.uploaded?.[0];
+    if (!uploadedAsset) throw new Error(`Harhub did not import ${skill.name}.`);
     const share = hasBooleanOption(parsed, "share")
       ? await createWorkspaceAssetShare({
           apiUrl,
           workspaceId,
           token,
-          assetQuery: response.uploaded.id
+          assetQuery: uploadedAsset.id
         })
       : undefined;
 
@@ -258,7 +260,7 @@ export async function runUpload(parsed: ParsedArgs): Promise<number> {
       skill: skill.name,
       fileName: packaged.fileName,
       rootDir: packaged.rootDir,
-      asset: response.uploaded,
+      asset: uploadedAsset,
       ...(share ? { share } : {})
     });
 

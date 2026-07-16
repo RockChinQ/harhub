@@ -1,4 +1,7 @@
-import type { AssetPreview } from "../../../../shared/types";
+import type {
+  AssetPreview,
+  SkillImportPreview
+} from "../../../../shared/types";
 import { JSON_HEADERS, request } from "./request";
 import type {
   AssetBulkResponse,
@@ -28,13 +31,32 @@ export async function uploadWorkspaceSkillZip(
   workspaceId: string,
   input: {
     file: File;
+    selectedSkillPaths: string[];
   }
 ): Promise<AssetUploadResponse> {
   const form = new FormData();
   form.set("file", input.file);
+  form.set("selectedSkillPaths", JSON.stringify(input.selectedSkillPaths));
 
   return request<AssetUploadResponse>(
     `/api/workspaces/${workspaceId}/assets/upload`,
+    {
+      token,
+      method: "POST",
+      body: form
+    }
+  );
+}
+
+export async function previewWorkspaceSkillZip(
+  token: string,
+  workspaceId: string,
+  file: File
+): Promise<SkillImportPreview> {
+  const form = new FormData();
+  form.set("file", file);
+  return request<SkillImportPreview>(
+    `/api/workspaces/${workspaceId}/assets/import/preview`,
     {
       token,
       method: "POST",

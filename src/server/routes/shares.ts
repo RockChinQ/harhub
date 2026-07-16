@@ -20,7 +20,7 @@ export function registerShareRoutes(app: Express): void {
         return;
       }
 
-      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("Cache-Control", "public, max-age=300");
       res.json(buildAgentSkillsDiscoveryIndex(
         resolved.response,
         resolved.asset,
@@ -39,7 +39,7 @@ export function registerShareRoutes(app: Express): void {
         return;
       }
 
-      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("Cache-Control", "private, no-store");
       res.json(resolved.response);
     } catch (error) {
       sendError(res, error, 500);
@@ -54,7 +54,13 @@ export function registerShareRoutes(app: Express): void {
         return;
       }
 
-      res.setHeader("Cache-Control", "no-store");
+      const etag = `"sha256-${resolved.checksum}"`;
+      res.setHeader("Cache-Control", "public, max-age=300");
+      res.setHeader("ETag", etag);
+      if (req.headers["if-none-match"] === etag) {
+        res.status(304).end();
+        return;
+      }
       res.setHeader("Content-Type", "application/zip");
       res.setHeader("Content-Length", String(resolved.buffer.byteLength));
       res.setHeader("Content-Disposition", `attachment; filename="${resolved.response.fileName}"`);

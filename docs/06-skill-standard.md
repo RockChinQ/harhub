@@ -48,6 +48,6 @@ Harhub 按 agentskills.io spec 执行：
 - validation status 和 validation issues。
 - object storage reference。
 
-文件树和内容 preview 在请求时从 stored zip 中生成，不作为新的 Skill package 数据写回。Uploaded workspace packages 不支持原地 patch；更新源 Skill 后应重新上传 zip。
+文件树和内容 preview 在请求时从独立 S3 文件 prefix 中生成，不作为新的 Skill package 数据写回。标准 zip 仅在下载和 discovery 时动态生成。Uploaded workspace Skills 不支持原地 patch；更新源 Skill 后应重新导入。
 
 后续如果需要更多 catalog 或治理能力，必须作为 Harhub 的产品数据单独设计，不能修改或包装 Agent Skills 的格式。

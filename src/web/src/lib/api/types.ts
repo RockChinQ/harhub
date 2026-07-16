@@ -67,7 +67,7 @@ export interface AssetBulkResponse extends AssetScanResponse {
 }
 
 export interface AssetUploadResponse extends AssetScanResponse {
-  uploaded: AssetRecord;
+  uploaded: AssetRecord[];
 }
 
 export interface WorkspaceMutationResponse extends SessionResponse {

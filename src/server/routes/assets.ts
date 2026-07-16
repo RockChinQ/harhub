@@ -3,14 +3,17 @@ import {
   filterAssets,
   findAsset
 } from "../../features/assets/index.js";
-import { readStoredObject } from "../../storage/index.js";
 import { requireWorkspaceAccess } from "../auth.js";
 import {
   deleteAsset,
   deleteWorkspaceAssetBatch
 } from "../services/asset-mutations.js";
-import { handleAssetUpload } from "../services/asset-upload.js";
+import {
+  handleAssetImportPreview,
+  handleAssetUpload
+} from "../services/asset-upload.js";
 import { assetListPayload } from "../services/asset-responses.js";
+import { loadStoredSkill } from "../services/skill-packages.js";
 import {
   validateWorkspaceAsset,
   validateWorkspaceAssetBatch,
@@ -56,8 +59,8 @@ export function registerAssetRoutes(
         return;
       }
 
-      const buffer = await readStoredObject(asset.storage);
-      res.json(await buildAssetPreview(asset, buffer, stringQuery(req.query.path)));
+      const { files } = await loadStoredSkill(asset.storage);
+      res.json(buildAssetPreview(asset, files, stringQuery(req.query.path)));
     } catch (error) {
       sendError(res, error, 400);
     }
@@ -127,6 +130,12 @@ function registerAssetMutationRoutes(
     const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
     await handleAssetUpload(req, res, context);
+  });
+
+  app.post("/api/workspaces/:workspaceId/assets/import/preview", upload.single("file"), async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
+    if (!context) return;
+    await handleAssetImportPreview(req, res);
   });
 
   app.post("/api/workspaces/:workspaceId/assets/:query/validate", async (req, res) => {

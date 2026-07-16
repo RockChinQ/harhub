@@ -73,9 +73,9 @@ Catalog 列出 harness packages，并展示：
 
 1. Author 在本地维护标准 Skill directory。
 2. Author 执行 `harhub skills upload <path> --share`。
-3. Harhub 校验并存储 zip，写入 workspace catalog，并创建 revocable public share。
+3. Harhub 校验 zip、提取选中的 Skill，逐个存入独立对象目录，写入 workspace catalog，并创建 revocable public share；源 zip 不保留。
 4. CLI 返回 `/s/:token`；Author 将链接发给协作者。
-5. Collaborator 无需登录即可查看 validation 状态、下载 zip，或复制 `harhub install` / `npx skills add`。
+5. Collaborator 无需登录即可查看 validation 状态、下载动态生成的标准 zip，或复制 `harhub install` / `npx skills add`。
 6. Collaborator 将 Skill 安装到选定 agent；Harhub 记录 distribution outcome。
 7. Author 可以撤销 share，停止 public metadata、discovery 和 download。
 

@@ -154,6 +154,13 @@ local paths or `.harhub` indexes. The server does not scan paths on its own;
 `skills upload` scans and packages local Skill directories before sending zip
 files to the workspace API.
 
-Uploaded workspace packages are immutable. Change the local Skill and upload
-it again rather than using a remote update command. Use `--remote` for hosted
-delete and revalidation commands; they reuse the saved token and workspace.
+`harhub assets upload <zip>` accepts repository exports and other arbitrary zip
+layouts. It recursively finds every `SKILL.md` and imports all valid candidates;
+the Web upload dialog exposes the same scan as a selectable preview.
+
+Harhub separates imported Skills into independent S3 file prefixes and discards
+the source zip. Preview reads the stored files, while downloads are generated as
+standard archives with `SKILL.md` at the root. Uploaded workspace Skills are
+immutable. Change the local Skill and upload it again rather than using a remote
+update command. Use `--remote` for hosted delete and revalidation commands; they
+reuse the saved token and workspace.

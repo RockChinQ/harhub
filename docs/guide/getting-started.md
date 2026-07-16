@@ -53,8 +53,9 @@ For upload flows, start the Postgres + MinIO development stack:
 npm run dev:cloud
 ```
 
-This keeps runtime state in Postgres-compatible storage and uploaded Skill zip
-packages in S3-compatible object storage.
+This keeps runtime state in Postgres-compatible storage and each imported
+Skill's files in an independent S3-compatible object prefix. Source zip files
+are discarded after import.
 
 ## Production Build
 
