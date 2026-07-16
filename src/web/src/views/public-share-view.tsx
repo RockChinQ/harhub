@@ -132,58 +132,45 @@ export function PublicShareView({ shareToken }: { shareToken: string }) {
 
   return (
     <SharePageShell align="start">
-      <div className="mx-auto grid w-full max-w-6xl gap-5">
-        <Card className="overflow-hidden">
-          <CardHeader className="border-b bg-gradient-to-br from-primary/10 via-background to-background p-6 sm:p-8">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="flex min-w-0 items-center gap-4">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border bg-background text-primary shadow-sm">
-                  <PackageOpen className="h-7 w-7" aria-hidden="true" />
-                </div>
-                <div className="min-w-0">
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <Badge variant="outline">Agent Skill</Badge>
-                    <Badge variant="secondary" className={healthBadgeClass(share.asset.health)}>
-                      {share.asset.health}
-                    </Badge>
-                  </div>
-                  <CardTitle className="break-words text-2xl leading-tight sm:text-3xl">
-                    {share.asset.displayName}
-                  </CardTitle>
-                  <div className="mt-2 break-all font-mono text-xs text-muted-foreground">
-                    {share.asset.name}
-                  </div>
-                </div>
-              </div>
+      <div className="mx-auto grid w-full max-w-5xl gap-5">
+        <Card className="overflow-hidden shadow-sm">
+          <CardHeader className="border-b p-6 sm:px-8">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">Agent Skill</Badge>
+              <Badge variant="secondary" className={healthBadgeClass(share.asset.health)}>
+                {share.asset.health}
+              </Badge>
             </div>
-            <CardDescription className="max-w-4xl whitespace-pre-line pt-4 text-sm leading-6 sm:text-base">
+            <CardTitle className="break-words pt-2 text-2xl leading-tight">
+              {share.asset.displayName}
+            </CardTitle>
+            <div className="break-all font-mono text-xs text-muted-foreground">
+              {share.asset.name}
+            </div>
+            <CardDescription className="max-w-4xl whitespace-pre-line pt-2 text-sm leading-6">
               {share.asset.description || share.asset.name}
             </CardDescription>
           </CardHeader>
 
           <CardContent className="grid gap-6 p-6 sm:p-8">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
               <PackageFact icon={FileCode2} label="Standard name" value={share.asset.name} mono />
               <PackageFact icon={Files} label="Files" value={String(share.asset.fileCount)} />
               <PackageFact icon={HardDrive} label="Package size" value={formatBytes(share.asset.size)} />
               <PackageFact icon={CalendarDays} label="Shared" value={formatSharedDate(share.createdAt)} />
             </div>
 
-            <div className={
-              isValidationClean
-                ? "flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-950"
-                : "flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950"
-            }>
+            <div className="flex items-start gap-2 border-y py-3 text-sm text-muted-foreground">
               {isValidationClean ? (
-                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
               ) : (
-                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" aria-hidden="true" />
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
               )}
               <div className="min-w-0">
-                <div className="text-sm font-medium">
+                <div className="font-medium text-foreground">
                   {isValidationClean ? "Validated with no issues" : "Validation findings reported"}
                 </div>
-                <div className="mt-1 text-xs opacity-80">
+                <div className="mt-0.5 text-xs">
                   {validation.errors} error{validation.errors === 1 ? "" : "s"} · {validation.warnings} warning{validation.warnings === 1 ? "" : "s"}
                 </div>
               </div>
@@ -207,7 +194,7 @@ export function PublicShareView({ shareToken }: { shareToken: string }) {
             </div>
           </CardContent>
 
-          <CardFooter className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 p-6 sm:px-8">
+          <CardFooter className="flex flex-wrap items-center justify-between gap-3 border-t p-6 sm:px-8">
             <Button asChild>
               <a href={share.downloadUrl}>
                 <Download aria-hidden="true" />
@@ -226,7 +213,7 @@ export function PublicShareView({ shareToken }: { shareToken: string }) {
           </CardFooter>
         </Card>
 
-        <Card className="min-w-0 overflow-hidden">
+        <Card className="min-w-0 overflow-hidden shadow-sm">
           <div className="flex min-w-0 items-center justify-between gap-4 border-b px-5 py-4 sm:px-6">
             <div className="min-w-0">
               <h2 className="font-semibold">Package contents</h2>
@@ -277,7 +264,7 @@ function SharePageShell({
 }) {
   return (
     <main className={
-      `flex min-h-screen justify-center bg-muted/30 px-4 py-8 sm:px-6 sm:py-12 ${
+      `flex h-full overflow-y-auto justify-center bg-muted/20 px-4 py-6 sm:px-6 sm:py-8 ${
         align === "center" ? "items-center" : "items-start"
       }`
     }>
@@ -298,7 +285,7 @@ function PackageFact({
   mono?: boolean;
 }) {
   return (
-    <div className="flex min-w-0 items-start gap-3 rounded-lg border bg-muted/20 p-3.5">
+    <div className="flex min-w-0 items-start gap-2.5">
       <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       <div className="min-w-0">
         <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
