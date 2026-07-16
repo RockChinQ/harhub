@@ -1,4 +1,5 @@
 export * from "./authoring.js";
+export * from "./archive.js";
 export * from "./catalog.js";
 export * from "./packaging.js";
 export * from "./scanner.js";

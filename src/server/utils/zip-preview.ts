@@ -1,5 +1,6 @@
 import path from "node:path";
 import JSZip, { type JSZipObject } from "jszip";
+import { validateSkillArchive } from "../../features/skills/index.js";
 import {
   MAX_PREVIEW_BYTES,
   MAX_PREVIEW_CHARS
@@ -17,7 +18,8 @@ export async function buildAssetPreview(
   buffer: Buffer,
   requestedPath?: string
 ): Promise<AssetPreview> {
-  const zip = await JSZip.loadAsync(buffer);
+  const archive = await validateSkillArchive(buffer);
+  const zip = await JSZip.loadAsync(archive.buffer);
   const entries = Object.values(zip.files)
     .filter((entry) => !entry.dir)
     .sort((a, b) => a.name.localeCompare(b.name));

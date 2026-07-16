@@ -24,6 +24,7 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 - **Skill asset flow**：S3-compatible zip upload、`SKILL.md` extraction、runtime indexing、search/filter、table view、detail view、file tree preview 和 deletion。
 - **Validation foundation**：local scan 和 uploaded zip 共用官方 frontmatter、name、description 和 optional-field checks；upload 还会拒绝多个 `SKILL.md`、path traversal、absolute paths、drive-letter paths 和 null-byte paths。
 - **CLI foundation**：local scan、validate、list、show、create、asset scan、asset validate、asset create、interactive TUI upload、local Skill directory packaging 和 API-backed zip upload。
+- **Distribution foundation**：`upload --share`、share/unshare、无需登录的 `/s/:token`、标准化 zip download、Agent Skills discovery、`harhub install` 和 `npx skills add` 已形成基础协作路径。
 - **Open-source release path**：GitHub Release 触发 npm publish workflow，使用 `NPM_TOKEN` 发布；`0.1.0-beta.3` 是当前 npm beta 版本。
 - **Cloud-native persistence**：`HARHUB_DATABASE_URL` 存在时，accounts、sessions、workspace metadata、memberships 和 workspace asset indexes 存入 Postgres-compatible database；uploaded zip bytes 存入 S3-compatible object storage。本地 `.harhub` JSON 只作为 fallback。
 - **Deployment surface**：production build 由单一 Express process 提供 Web、API 和 docs；仓库包含 multi-stage Dockerfile、Docker image workflow 和 VitePress 文档站。
@@ -40,7 +41,7 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 
 - **Quota 尚未建模**：上传大小有 process-level cap，但没有 per-user、per-workspace、per-asset、daily upload 或 total storage quota。
 - **Zip resource limits 仍不完整**：上传已经执行官方 Skill 字段校验和路径安全检查，但还没有 zip-entry count 与 uncompressed-size limits，仍需防御 zip bomb 和超大展开内容。
-- **没有 activation/distribution event**：产品已有 public share、download 和 copy install command，但还没有 usage event 或 copy Codex install path 来证明复用。
+- **没有 activation/distribution event**：产品已有 public share、verified download、Harhub install 和通用 Agent Skills CLI install，但还没有 usage event 来证明实际复用。
 - **SaaS persistence 仍需产品化**：Postgres backend 已可用，但还缺 explicit migration runner、normalized reporting schema、backup/export policy 和 production readiness checks。
 - **没有 operations dashboard**：缺少 signups、activated workspaces、asset counts、storage usage、failed uploads、quota hits 或 over-limit users 的 admin view。
 - **Role enforcement 不完整**：很多 asset actions 只要求 workspace access；hosted SaaS 应按角色显式限制 mutation。
@@ -65,7 +66,7 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 - [x] 添加 multi-stage Dockerfile，并通过 GitHub Actions 构建 `latest` 和 commit-SHA image tags。
 - [x] 移除 server-local Skill paths 和 path-based workspace scan/create/update；cloud catalog 只保留 uploaded assets。
 - [x] 统一 password sign-in 与 registration：新邮箱通过同一个 login flow 创建账号和初始 workspace。
-- [x] 添加可撤销 public share 页面、公开 zip download、CLI `--share` 和下载到当前目录的 `harhub install`。
+- [x] 添加可撤销 public share 页面、标准化 zip download、Agent Skills discovery、CLI `--share` 和目标 Agent 安装。
 
 更广义 team-harness 产品的重要缺口：
 
@@ -87,10 +88,11 @@ Workspace 在创建后 7 天内满足以下条件即为 activated：
 
 Distribution action 可以是：
 
-- Download skill zip。
+- Create public share。
+- Open public share page。
+- Download Skill zip。
 - Copy install command。
-- Copy target install path。
-- Copy hosted asset URL，如果后续启用 public sharing。
+- Complete Harhub or Agent Skills CLI install。
 
 这个指标比 signup count 更准确，因为它证明核心闭环：harness supply、validation trust、catalog discovery 和 practical reuse。
 
@@ -107,7 +109,9 @@ Distribution action 可以是：
 5. Pass validation。
 6. Reach 3 valid Skills。
 7. Preview a Skill。
-8. Perform first distribution action。
+8. Create a public share。
+9. A collaborator opens the share。
+10. Perform first download or successful install。
 
 ### 供给与质量
 
@@ -175,10 +179,14 @@ Distribution action 可以是：
 
 ### 1. 产品激活闭环
 
+- [x] 支持 `harhub skills upload --share`，在 upload 后立即返回 share URL。
+- [x] 支持已上传 Asset 的 CLI/Web share、unshare 和 revocable public page。
+- [x] Public page 提供 validation state、zip download、`harhub install` 和 `npx skills add`。
+- [x] 提供 Agent Skills discovery index、archive digest 和目标 Agent 安装路径。
+- [ ] 增加 immutable `AssetRelease`，让 share 固定到具体 upload snapshot，而不是 logical asset。
+- [ ] 追踪 share view、download、install success/failure 和 revoke events，让 activation 可衡量。
 - [ ] 在 Skills 页面添加 onboarding checklist：upload/import 3 Skills、fix validation、preview one、copy install/download once。
 - [ ] 添加清晰 empty states，包含 sample Skill zip 和可复制 CLI upload 示例。
-- [x] 在 Skill detail 上添加一等 distribution action：public share、download zip 和 copy install instructions。
-- [ ] 追踪 distribution events，让 activation 可衡量。
 - [ ] 在 workspace 级展示 activation progress。
 
 ### 2. Quota 与用量执行
@@ -331,11 +339,11 @@ Distribution action 可以是：
 
 MVP 满足以下条件时，可以公开免费发布：
 
-1. 一个新的外部用户能在 10 分钟内创建 hosted account、创建 workspace、上传 3 个有效 Skills、预览其中一个，并完成一次 distribution action。
+1. 用户 A 能在 10 分钟内创建 workspace、上传有效 Skill 并生成 share；未登录的用户 B 能打开 share page，并完成一次 download 或 install。
 2. 对 workspace count、asset count、asset size、total storage、members 和 daily uploads 执行 quotas。
 3. 团队能看到 activated workspaces、storage usage、quota hits、upload failures 和 distribution actions。
 4. 开源 repo 能根据文档步骤在没有私有基础设施的情况下 self-host。
-5. Uploaded Skill zips 默认私有，并且只能通过 authorized routes 下载。
+5. Uploaded Skill zips 默认私有，只能通过 workspace authorization 或有效且可撤销的 share token 下载。
 6. 已实现产品保持 Skills-only，同时 positioning 清楚解释更大的 team AI harness management 品类。
 7. 在使用或评审 Skills MVP 后，至少 5 个团队明确请求支持 rules、MCP、`AGENTS.md`、Copilot instructions 或 cross-tool distribution。
 
@@ -366,5 +374,5 @@ MVP 满足以下条件时，可以公开免费发布：
 - [ ] MVP 使用 auth provider 还是 built-in auth。
 - [ ] OSS license。
 - [ ] Public signup 时机：open signup、invite code 或 waitlist。
-- [ ] 第一个 distribution target：Codex local skills path、Claude-compatible path 或 generic zip download。
+- [ ] Immutable release model：share pin 到 Harhub release snapshot，还是映射到 Git tag/commit。
 - [ ] 第一个 non-Skill expansion target：Cursor rules、`AGENTS.md`、Copilot instructions 或 MCP registry/governance。

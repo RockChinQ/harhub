@@ -95,7 +95,7 @@ link immediately:
 harhub skills upload /path/to/repo --all --share
 ```
 
-## Share And Download
+## Share, Install, And Download
 
 Share or revoke an existing uploaded Skill using its id, name, or slug. These
 commands reuse the saved login and workspace:
@@ -106,17 +106,34 @@ harhub unshare <id|name|slug>
 ```
 
 The public page can be opened without a Harhub account. It exposes the Skill's
-public metadata, a revocable zip download, and a copyable install command. The
-current CLI install behavior only downloads the zip into the current directory;
-it does not extract or activate the Skill yet:
+public metadata, a revocable zip download, and copyable commands for Harhub and
+the open Agent Skills CLI. Harhub downloads and verifies the package, then uses
+its pinned `skills` installer to place it in the selected Agent directory:
 
 ```bash
 harhub install https://harhub.rcpd.cc/s/<share-token>
 ```
 
-If the target filename already exists, the CLI writes a numbered filename such
-as `my-skill-2.zip` instead of overwriting it. A raw share token can also be
-used; it targets `https://harhub.rcpd.cc` unless `--url` is explicitly passed.
+Select one or more comma-separated Agents, global scope, copy mode, and
+non-interactive confirmation when needed:
+
+```bash
+harhub install <share-url|token> --agent codex,claude-code --global --copy --yes
+```
+
+The public share is also an Agent Skills discovery source:
+
+```bash
+npx skills add https://harhub.rcpd.cc/s/<share-token>
+npx skills add https://harhub.rcpd.cc/s/<share-token> -a codex -g -y
+```
+
+A raw share token targets `https://harhub.rcpd.cc` unless `--url` is explicitly
+passed.
+
+The product decisions, release-pinning requirement, and acceptance criteria for
+this flow are documented in the
+[Agent Skill Sharing And Installation Loop](../10-sharing-and-installation-loop.md).
 
 ## Useful Commands
 
@@ -125,7 +142,7 @@ harhub skills scan [paths...]
 harhub skills validate [paths...]
 harhub skills create <name> [--dir skills]
 harhub skills upload [paths...] [--share]
-harhub install <share-url|token>
+harhub install <share-url|token> [--agent <name[,name]>] [--global] [--copy] [--yes]
 harhub share <id|name|slug>
 harhub unshare <id|name|slug>
 harhub assets list

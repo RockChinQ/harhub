@@ -124,6 +124,19 @@ Harhub 应支持这些 artifact 类型：
 - 追踪 pinned 到每个版本的 consumers。
 - 支持运行态分发记录，以便可复现地解析 harness。
 
+### Skills-first 发布闭环
+
+在完整版本和 Bundle 系统之前，MVP 必须先完成 [Agent Skill 发布、分享与安装闭环](./10-sharing-and-installation-loop.md)：
+
+- Upload 默认保持 workspace-private，只有显式 `--share` 或 Share action 才创建 public link。
+- CLI upload 成功后可以立即返回 share page 和 install command。
+- Share page 对持有 unlisted token 的协作者开放，不要求加入 workspace。
+- Public page 展示标准 Skill metadata、validation state、download 和 install actions，但不暴露 object storage details。
+- Share 最终必须固定到不可变 uploaded release；重新上传不得悄悄改变旧链接内容。
+- 支持 direct zip download、Agent Skills discovery 和至少一条一键安装命令。
+- Share 可以撤销；asset 删除后相关 share 必须失效。
+- 记录 share view、download 和 install outcome，形成可衡量的 distribution funnel。
+
 ### 组合
 
 - 将多个 assets 组合成面向 repo、team、workflow 或 agent profile 的 resolved harness bundle。
@@ -134,6 +147,7 @@ Harhub 应支持这些 artifact 类型：
 
 ### 分发与同步
 
+- 先支持单个 Agent Skill 的 public share、download 和 CLI install，再扩展到 Bundle distribution。
 - 提供 CLI，用于拉取、校验和 materialize harness bundles。
 - 支持 CI checks，用于 drift、policy violations 和 invalid distribution records。
 - 支持为 harness upgrades 生成 pull requests。

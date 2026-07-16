@@ -1,16 +1,36 @@
 import type { Express } from "express";
 
-import { readStoredObject } from "../../storage/index.js";
 import { requireWorkspaceAccess } from "../auth.js";
 import {
+  buildAgentSkillsDiscoveryIndex,
   getWorkspaceAssetShare,
   resolvePublicAssetShare,
+  resolvePublicAssetShareArchive,
   shareWorkspaceAsset,
   unshareWorkspaceAsset
 } from "../services/asset-shares.js";
 import { sendError } from "../utils/http.js";
 
 export function registerShareRoutes(app: Express): void {
+  app.get("/s/:token/.well-known/agent-skills/index.json", async (req, res) => {
+    try {
+      const resolved = await resolvePublicAssetShareArchive(req, req.params.token);
+      if (!resolved) {
+        res.status(404).json({ error: "Share not found or no longer available." });
+        return;
+      }
+
+      res.setHeader("Cache-Control", "no-store");
+      res.json(buildAgentSkillsDiscoveryIndex(
+        resolved.response,
+        resolved.asset,
+        resolved.checksum
+      ));
+    } catch (error) {
+      sendError(res, error, 500);
+    }
+  });
+
   app.get("/api/public/shares/:token", async (req, res) => {
     try {
       const resolved = await resolvePublicAssetShare(req, req.params.token);
@@ -28,19 +48,18 @@ export function registerShareRoutes(app: Express): void {
 
   app.get("/api/public/shares/:token/download", async (req, res) => {
     try {
-      const resolved = await resolvePublicAssetShare(req, req.params.token);
-      if (!resolved?.asset.storage) {
+      const resolved = await resolvePublicAssetShareArchive(req, req.params.token);
+      if (!resolved) {
         res.status(404).json({ error: "Share not found or no longer available." });
         return;
       }
 
-      const buffer = await readStoredObject(resolved.asset.storage);
       res.setHeader("Cache-Control", "no-store");
       res.setHeader("Content-Type", "application/zip");
-      res.setHeader("Content-Length", String(buffer.byteLength));
+      res.setHeader("Content-Length", String(resolved.buffer.byteLength));
       res.setHeader("Content-Disposition", `attachment; filename="${resolved.response.fileName}"`);
       res.setHeader("X-Content-Type-Options", "nosniff");
-      res.send(buffer);
+      res.send(resolved.buffer);
     } catch (error) {
       sendError(res, error, 500);
     }

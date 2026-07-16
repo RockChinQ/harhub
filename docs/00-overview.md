@@ -29,6 +29,7 @@ Harhub 是面向团队的 agent harness 控制平面。这里的 harness 指让 
 - [07. SaaS MVP](./07-saas-mvp.md)：本地优先应用中的账号、会话和 workspace 租户模型。
 - [08. 路线图](./08-roadmap.md)：分阶段交付计划、MVP 边界和开放问题。
 - [09. MVP 指标与 TODO](./09-mvp-todo.md)：开源加 SaaS MVP 指标、免费版限制、发布清单和实现 backlog。
+- [10. Skills 发布与安装闭环](./10-sharing-and-installation-loop.md)：CLI 上传、public share page、下载、一键安装、撤销和分发指标。
 
 ## 工作定义
 

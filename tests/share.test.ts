@@ -5,10 +5,14 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import JSZip from "jszip";
 
 import { runInstall, resolveShareReference } from "../src/cli/commands/share.js";
 import { closeHarhubHttp } from "../src/cli/http.js";
-import type { AssetCatalog } from "../src/shared/types.js";
+import { installSkillDirectory } from "../src/cli/skills-installer.js";
+import { contentHash } from "../src/shared/markdown.js";
+import { buildAgentSkillsDiscoveryIndex } from "../src/server/services/asset-shares.js";
+import type { AssetCatalog, AssetShareResponse } from "../src/shared/types.js";
 
 test("creates and revokes a public asset share without exposing storage", async () => {
   const temporaryDirectory = mkdtempSync(path.join(tmpdir(), "harhub-share-api-"));
@@ -48,6 +52,7 @@ test("creates and revokes a public asset share without exposing storage", async 
     assert.equal(share.asset.displayName, "Demo Skill");
     assert.equal(share.fileName, "demo-skill.zip");
     assert.equal(share.cliCommand, `harhub install ${share.shareUrl}`);
+    assert.equal(share.skillsCliCommand, `npx skills add ${share.shareUrl}`);
     assert.equal("storage" in share.asset, false);
     assert.equal(JSON.stringify(share).includes("test-bucket"), false);
 
@@ -83,33 +88,16 @@ test("creates and revokes a public asset share without exposing storage", async 
   }
 });
 
-test("installs a shared zip into the current directory", async () => {
-  const temporaryDirectory = mkdtempSync(path.join(tmpdir(), "harhub-share-cli-"));
+test("installs a shared Skill through the bundled skills CLI", async () => {
+  const temporaryDirectory = mkdtempSync(path.join(tmpdir(), "harhub-share-install-"));
   const originalDirectory = process.cwd();
-  const zip = Buffer.from("PK\u0003\u0004shared-skill");
+  const zip = await sharedSkillZip();
   const server = createServer((request, response) => {
     const address = server.address() as AddressInfo;
     const baseUrl = `http://127.0.0.1:${address.port}`;
     if (request.url === "/api/public/shares/test-token") {
       response.setHeader("Content-Type", "application/json");
-      response.end(JSON.stringify({
-        token: "test-token",
-        createdAt: new Date().toISOString(),
-        shareUrl: `${baseUrl}/s/test-token`,
-        downloadUrl: `${baseUrl}/download`,
-        cliCommand: `harhub install ${baseUrl}/s/test-token`,
-        fileName: "shared-skill.zip",
-        asset: {
-          id: "asset:skill:test",
-          kind: "skill",
-          name: "shared-skill",
-          displayName: "Shared Skill",
-          slug: "shared-skill",
-          description: "Shared",
-          health: "valid",
-          validation: { errors: 0, warnings: 0 }
-        }
-      }));
+      response.end(JSON.stringify(testShareResponse(baseUrl)));
       return;
     }
     if (request.url === "/download") {
@@ -130,10 +118,15 @@ test("installs a shared zip into the current directory", async () => {
       apiUrl: `http://127.0.0.1:${address.port}`,
       token: "test-token"
     });
-    assert.equal(await runInstall({ positionals: [shareUrl], options: {} }), 0);
-    assert.deepEqual(readFileSync(path.join(temporaryDirectory, "shared-skill.zip")), zip);
-    assert.equal(await runInstall({ positionals: [shareUrl], options: {} }), 0);
-    assert.deepEqual(readFileSync(path.join(temporaryDirectory, "shared-skill-2.zip")), zip);
+    assert.equal(await runInstall({
+      positionals: [shareUrl],
+      options: { agent: "codex", copy: true, yes: true }
+    }), 0);
+    const installed = readFileSync(
+      path.join(temporaryDirectory, ".agents", "skills", "shared-skill", "SKILL.md"),
+      "utf8"
+    );
+    assert.match(installed, /name: shared-skill/);
   } finally {
     process.chdir(originalDirectory);
     await closeHarhubHttp();
@@ -143,6 +136,103 @@ test("installs a shared zip into the current directory", async () => {
     rmSync(temporaryDirectory, { recursive: true, force: true });
   }
 });
+
+test("builds an Agent Skills discovery index for a public share", () => {
+  const share = testShareResponse("https://harhub.example");
+  const asset = testCatalog().assets[0];
+  const index = buildAgentSkillsDiscoveryIndex(share, asset, "a".repeat(64));
+  assert.deepEqual(index, {
+    $schema: "https://schemas.agentskills.io/discovery/0.2.0/schema.json",
+    skills: [{
+      name: "demo-skill",
+      type: "archive",
+      description: "A shared demo skill.",
+      url: "https://harhub.example/download",
+      digest: `sha256:${"a".repeat(64)}`
+    }]
+  });
+});
+
+test("installs directly from a Harhub share URL through Agent Skills discovery", async () => {
+  const temporaryDirectory = mkdtempSync(path.join(tmpdir(), "harhub-well-known-install-"));
+  const zip = await sharedSkillZip();
+  const server = createServer((request, response) => {
+    const address = server.address() as AddressInfo;
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    if (request.url === "/s/test-token/.well-known/agent-skills/index.json") {
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({
+        $schema: "https://schemas.agentskills.io/discovery/0.2.0/schema.json",
+        skills: [{
+          name: "shared-skill",
+          type: "archive",
+          description: "Shared test Skill.",
+          url: `${baseUrl}/api/public/shares/test-token/download`,
+          digest: `sha256:${contentHash(zip)}`
+        }]
+      }));
+      return;
+    }
+    if (request.url === "/api/public/shares/test-token/download") {
+      response.setHeader("Content-Type", "application/zip");
+      response.end(zip);
+      return;
+    }
+    response.statusCode = 404;
+    response.end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address() as AddressInfo;
+  const shareUrl = `http://127.0.0.1:${address.port}/s/test-token`;
+
+  try {
+    const result = await installSkillDirectory(shareUrl, {
+      agents: ["codex"],
+      copy: true,
+      yes: true,
+      json: true,
+      cwd: temporaryDirectory
+    });
+    assert.equal(result.exitCode, 0, result.stderr || result.stdout);
+    assert.match(
+      readFileSync(path.join(temporaryDirectory, ".agents", "skills", "shared-skill", "SKILL.md"), "utf8"),
+      /name: shared-skill/
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve()))
+    );
+    rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+async function sharedSkillZip(): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file("SKILL.md", "---\nname: shared-skill\ndescription: Shared test Skill.\n---\n\n# Shared Skill\n");
+  return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+}
+
+function testShareResponse(baseUrl: string): AssetShareResponse {
+  return {
+    token: "test-token",
+    createdAt: new Date().toISOString(),
+    shareUrl: `${baseUrl}/s/test-token`,
+    downloadUrl: `${baseUrl}/download`,
+    cliCommand: `harhub install ${baseUrl}/s/test-token`,
+    skillsCliCommand: `npx skills add ${baseUrl}/s/test-token`,
+    fileName: "shared-skill.zip",
+    asset: {
+      id: "asset:skill:test",
+      kind: "skill",
+      name: "shared-skill",
+      displayName: "Shared Skill",
+      slug: "shared-skill",
+      description: "Shared",
+      health: "valid",
+      validation: { errors: 0, warnings: 0 }
+    }
+  };
+}
 
 function testCatalog(): AssetCatalog {
   return {

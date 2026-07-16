@@ -3,6 +3,7 @@ import {
   findAsset,
   upsertAsset
 } from "../../features/assets/index.js";
+import { validateSkillArchive } from "../../features/skills/index.js";
 import type { AssetCatalog, AssetRecord, WorkspaceRecord } from "../../shared/types.js";
 import {
   describeWorkspaceCatalogStorage,
@@ -109,11 +110,11 @@ async function validateStoredAsset(
 ): Promise<AssetRecord> {
   if (!asset.storage) return asset;
 
-  const buffer = await readStoredObject(asset.storage);
+  const archive = await validateSkillArchive(await readStoredObject(asset.storage));
   const refreshed = await createUploadedSkillAsset({
     workspaceId: workspace.id,
     fileName: asset.storage.originalName ?? `${asset.name}.zip`,
-    buffer,
+    buffer: archive.buffer,
     storage: asset.storage,
     name: asset.name,
     rejectInvalid: false
