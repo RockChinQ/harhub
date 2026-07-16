@@ -1,6 +1,7 @@
 import type { Request } from "express";
 
 import { findAsset } from "../../features/assets/index.js";
+import { validateSkillArchive } from "../../features/skills/index.js";
 import {
   createAssetShare,
   findAssetShare,
@@ -9,11 +10,13 @@ import {
   revokeAssetShare
 } from "../../state/index.js";
 import type {
+  AgentSkillsDiscoveryIndex,
   AssetRecord,
   AssetShareRecord,
   AssetShareResponse,
   WorkspaceRecord
 } from "../../shared/types.js";
+import { readStoredObject } from "../../storage/index.js";
 import type { WorkspaceContext } from "../../state/types.js";
 import { publicAppUrl } from "./oauth.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
@@ -70,6 +73,46 @@ export async function resolvePublicAssetShare(
   };
 }
 
+export async function resolvePublicAssetShareArchive(
+  req: Request,
+  token: string
+): Promise<
+  | {
+      response: AssetShareResponse;
+      asset: AssetRecord;
+      buffer: Buffer;
+      checksum: string;
+    }
+  | undefined
+> {
+  const resolved = await resolvePublicAssetShare(req, token);
+  if (!resolved?.asset.storage) return undefined;
+
+  const archive = await validateSkillArchive(await readStoredObject(resolved.asset.storage));
+  return {
+    ...resolved,
+    buffer: archive.buffer,
+    checksum: archive.checksum
+  };
+}
+
+export function buildAgentSkillsDiscoveryIndex(
+  response: AssetShareResponse,
+  asset: AssetRecord,
+  checksum: string
+): AgentSkillsDiscoveryIndex {
+  return {
+    $schema: "https://schemas.agentskills.io/discovery/0.2.0/schema.json",
+    skills: [{
+      name: asset.name,
+      type: "archive",
+      description: asset.description,
+      url: response.downloadUrl,
+      digest: `sha256:${checksum}`
+    }]
+  };
+}
+
 function buildAssetShareResponse(
   req: Request,
   share: AssetShareRecord,
@@ -84,6 +127,7 @@ function buildAssetShareResponse(
     shareUrl,
     downloadUrl: `${baseUrl}/api/public/shares/${token}/download`,
     cliCommand: `harhub install ${shareUrl}`,
+    skillsCliCommand: `npx skills add ${shareUrl}`,
     fileName: `${asset.slug || "skill"}.zip`,
     asset: {
       id: asset.id,

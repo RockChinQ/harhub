@@ -1,4 +1,5 @@
-import { existsSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
@@ -12,6 +13,8 @@ import {
   revokeWorkspaceAssetShare
 } from "../api.js";
 import type { ParsedArgs } from "../types.js";
+import { optionString } from "../args.js";
+import { extractSkillArchive, installSkillDirectory } from "../skills-installer.js";
 
 export async function runInstall(parsed: ParsedArgs): Promise<number> {
   const reference = parsed.positionals[0];
@@ -23,15 +26,38 @@ export async function runInstall(parsed: ParsedArgs): Promise<number> {
   const target = resolveShareReference(reference, resolveHarhubApiUrl(parsed));
   const share = await getPublicAssetShare(target.apiUrl, target.token);
   const buffer = await downloadPublicAssetShare(share.downloadUrl);
-  const outputPath = availableDownloadPath(process.cwd(), share.fileName);
-  writeFileSync(outputPath, buffer, { flag: "wx" });
 
-  if (parsed.options.json) {
-    console.log(JSON.stringify({ share, path: outputPath, bytes: buffer.byteLength }, null, 2));
-  } else {
-    console.log(`Downloaded ${share.asset.displayName} to ${outputPath}`);
+  const temporaryDirectory = mkdtempSync(path.join(tmpdir(), "harhub-install-"));
+  try {
+    await extractSkillArchive(buffer, temporaryDirectory);
+    const result = await installSkillDirectory(temporaryDirectory, {
+      agents: parseAgents(optionString(parsed, "agent")),
+      global: hasBooleanOption(parsed, "global"),
+      copy: hasBooleanOption(parsed, "copy"),
+      yes: hasBooleanOption(parsed, "yes"),
+      all: hasBooleanOption(parsed, "all"),
+      json: hasBooleanOption(parsed, "json")
+    });
+    if (result.exitCode !== 0) {
+      throw new Error(
+        result.stderr.trim() || result.stdout.trim() || `skills installer exited with code ${result.exitCode}.`
+      );
+    }
+
+    if (hasBooleanOption(parsed, "json")) {
+      console.log(JSON.stringify({
+        share,
+        installed: true,
+        installer: "skills",
+        output: result.stdout.trim()
+      }, null, 2));
+    } else {
+      console.log(`Installed ${share.asset.displayName}.`);
+    }
+    return 0;
+  } finally {
+    rmSync(temporaryDirectory, { recursive: true, force: true });
   }
-  return 0;
 }
 
 export async function runShare(parsed: ParsedArgs): Promise<number> {
@@ -50,9 +76,20 @@ export async function runShare(parsed: ParsedArgs): Promise<number> {
   } else {
     console.log(`Shared ${share.asset.displayName}`);
     console.log(`URL: ${share.shareUrl}`);
-    console.log(`CLI: ${share.cliCommand}`);
+    console.log(`Harhub CLI: ${share.cliCommand}`);
+    console.log(`Skills CLI: ${share.skillsCliCommand}`);
   }
   return 0;
+}
+
+function parseAgents(value: string | undefined): string[] | undefined {
+  const agents = value?.split(",").map((agent) => agent.trim()).filter(Boolean);
+  return agents && agents.length > 0 ? agents : undefined;
+}
+
+function hasBooleanOption(parsed: ParsedArgs, name: string): boolean {
+  const value = parsed.options[name];
+  return value === true || value === "true";
 }
 
 export async function runUnshare(parsed: ParsedArgs): Promise<number> {
@@ -111,24 +148,4 @@ function authenticatedConnection(parsed: ParsedArgs): {
     return undefined;
   }
   return { apiUrl, workspaceId, token };
-}
-
-function availableDownloadPath(directory: string, requestedName: string): string {
-  const safeName = safeZipName(requestedName);
-  const extension = path.extname(safeName);
-  const stem = path.basename(safeName, extension);
-  let candidate = path.join(directory, safeName);
-  let suffix = 2;
-  while (existsSync(candidate)) {
-    candidate = path.join(directory, `${stem}-${suffix}${extension}`);
-    suffix += 1;
-  }
-  return candidate;
-}
-
-function safeZipName(value: string): string {
-  const baseName = path.basename(value.replaceAll("\\", "/"));
-  const cleaned = baseName.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
-  const name = cleaned || "skill.zip";
-  return name.toLowerCase().endsWith(".zip") ? name : `${name}.zip`;
 }

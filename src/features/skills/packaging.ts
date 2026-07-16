@@ -16,10 +16,9 @@ export async function packageSkillDirectory(skill: SkillRecord): Promise<{
   rootDir: string;
 }> {
   const rootDir = path.dirname(skill.source.absolutePath);
-  const rootName = path.basename(rootDir);
   const zip = new JSZip();
 
-  addDirectory(zip, rootDir, rootName);
+  addDirectory(zip, rootDir, "");
 
   return {
     buffer: await zip.generateAsync({

@@ -34,7 +34,8 @@ is intentionally Skills-first.
 - Validate packages against the Agent Skills `SKILL.md` format.
 - Search and browse Skills in a workspace.
 - Preview Skill metadata and package files.
-- Publish revocable public share pages with zip downloads and CLI install commands.
+- Publish revocable public share pages with verified zip downloads and Harhub or
+  Agent Skills CLI install commands.
 - Manage Skills from the web UI or CLI.
 - Run Harhub locally with S3-compatible object storage and optional Postgres
   persistence.
@@ -182,13 +183,20 @@ harhub share <id|name|slug>
 harhub unshare <id|name|slug>
 ```
 
-Every public share page includes a direct zip download and a one-line CLI
-command. The current install command downloads the zip into the current
-directory and chooses a numbered filename instead of overwriting an existing
-file:
+Every public share page includes a direct zip download and one-line commands for
+both Harhub and the open Agent Skills CLI. `harhub install` delegates placement
+to the bundled `skills` installer, which supports Codex, Claude Code, Cursor,
+OpenCode, and other compatible Agents:
 
 ```bash
 harhub install https://harhub.rcpd.cc/s/<share-token>
+npx skills add https://harhub.rcpd.cc/s/<share-token>
+```
+
+Target Codex explicitly and install globally without prompts:
+
+```bash
+harhub install https://harhub.rcpd.cc/s/<share-token> --agent codex --global --yes
 ```
 
 Useful commands:

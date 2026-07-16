@@ -131,5 +131,6 @@ deployments should expose `HARHUB_PUBLIC_URL` over HTTPS so the metadata issuer,
 verification page, and token endpoint share the public origin.
 
 The same public origin is used to generate `/s/:token` share links, public zip
-download URLs, and the `harhub install` command shown on share pages. Set it to
-the real browser-visible HTTPS origin in production.
+download URLs, the share-relative Agent Skills discovery index, and the
+`harhub install` / `npx skills add` commands shown on share pages. Set it to the
+real browser-visible HTTPS origin in production.

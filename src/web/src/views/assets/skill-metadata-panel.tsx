@@ -63,7 +63,7 @@ export function SkillOverviewPanel({
   const [isValidating, setIsValidating] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [share, setShare] = useState<AssetShareResponse | undefined>();
-  const [copied, setCopied] = useState<"url" | "cli" | undefined>();
+  const [copied, setCopied] = useState<"url" | "cli" | "skills" | undefined>();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -174,7 +174,7 @@ export function SkillOverviewPanel({
     }
   }
 
-  async function copyShareValue(kind: "url" | "cli", value: string) {
+  async function copyShareValue(kind: "url" | "cli" | "skills", value: string) {
     try {
       await navigator.clipboard.writeText(value);
       setCopied(kind);
@@ -291,6 +291,12 @@ export function SkillOverviewPanel({
                 <Input readOnly value={share.cliCommand} className="min-w-0 font-mono text-xs" />
                 <Button type="button" variant="outline" size="icon" onClick={() => copyShareValue("cli", share.cliCommand)} aria-label="Copy CLI install command">
                   {copied === "cli" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Input readOnly value={share.skillsCliCommand} className="min-w-0 font-mono text-xs" />
+                <Button type="button" variant="outline" size="icon" onClick={() => copyShareValue("skills", share.skillsCliCommand)} aria-label="Copy Agent Skills CLI install command">
+                  {copied === "skills" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
                 </Button>
               </div>
             </div>

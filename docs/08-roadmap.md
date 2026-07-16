@@ -1,6 +1,6 @@
 # 路线图
 
-> 状态更新时间：2026-07-15。Phase 0 的 Skills-first 基础已完成；Phase 1 和 Phase 2 已部分完成；Phase 3 至 Phase 5 尚未开始。当前 beta 已经包含 Web UI、多租户 workspace、认证、Postgres/S3 持久化和 hosted API，这些不再列为“MVP 后再做”。
+> 状态更新时间：2026-07-16。Phase 0 的 Skills-first 基础已完成；Phase 1 和 Phase 2 已部分完成；Phase 4 的单 Skill share/install 子集已经落地，Bundle distribution 仍未开始；Phase 3 和 Phase 5 尚未开始。
 
 ## MVP 原则
 
@@ -16,6 +16,25 @@ MVP 应先证明 Harhub 能把散落的 Agent Skills 转化为可管理、可复
 - 至少一种可衡量的 download/install distribution action。
 
 显式 versions、Git provider import、非 Skill inventory、composition、lockfile、policy 和 cross-tool distribution 在 Skills 激活闭环之后推进。
+
+## 当前优先里程碑：发布、分享与安装闭环
+
+当前最高优先级是完成 [Agent Skill 发布、分享与安装闭环](./10-sharing-and-installation-loop.md)。基础路径已经存在：
+
+- `harhub skills upload --share` 在上传成功后生成 public share URL。
+- 已上传 Asset 可以通过 CLI 或 Web share/unshare。
+- `/s/:token` 提供无需登录的 metadata、validation、download 和 install commands。
+- Public share 提供 Agent Skills discovery index 和 SHA-256 archive digest。
+- `harhub install` 可以下载并通过 Agent Skills CLI 安装到选择的 agent。
+
+闭环仍需补齐：
+
+- 用不可变 `AssetRelease` 固定 share 内容，避免同名重新上传改变旧链接。
+- 记录 share view、download、install success/failure 和 revoke events。
+- 收紧 share mutation 的 role enforcement，并为 public endpoints 添加 rate limiting。
+- 在 workspace 中展示 activation 和 distribution progress。
+
+退出标准：用户 A 用一次 CLI upload 得到链接，未登录的用户 B 能打开、下载或安装；A 撤销后所有 public access 同时失效，Harhub 能看到这次分发是否成功。
 
 ## Phase 0：基础
 
@@ -93,7 +112,7 @@ MVP 应先证明 Harhub 能把散落的 Agent Skills 转化为可管理、可复
 
 ## Phase 4：分发与仓库采用（Distribution And Repo Adoption）
 
-状态：**规划中**。
+状态：**单 Skill distribution 子集已部分完成**。Public share、download、discovery 和 CLI install 已存在；Bundle materialization、repository adoption、drift 和 PR automation 仍在规划中。
 
 目的：从管理走向实际使用。
 
@@ -137,7 +156,7 @@ MVP 应先证明 Harhub 能把散落的 Agent Skills 转化为可管理、可复
 - Agent Skills 本地 scan、create、validate、package 和 interactive upload。
 - Workspace-scoped Skill catalog、搜索、详情、文件树 preview、批量校验和删除。
 - Postgres-compatible state、S3-compatible zip storage 和本地 JSON fallback。
-- 可撤销 public share 页面、zip download，以及下载到当前目录的 `harhub install`。
+- 可撤销 public share 页面、标准化 zip download、Agent Skills discovery，以及可安装到目标 Agent 的 `harhub install`。
 - Production build、VitePress docs、multi-stage Dockerfile、npm beta 和 release workflows。
 
 公开 MVP 前的主要边界：
@@ -145,7 +164,7 @@ MVP 应先证明 Harhub 能把散落的 Agent Skills 转化为可管理、可复
 - 产品仍只管理 Skills，不管理 Rules、MCP definitions 或通用 harness files。
 - Hosted workspace catalog 只来自 zip upload；服务端不扫描本地路径，也没有 Git provider import。
 - Uploaded package 没有显式 version history、release、diff 或 approval lifecycle。
-- 已有基础 public share/download/install action，但没有 adoption event、目标目录安装或 usage analytics。
+- 已有 public share/download、目标 Agent 安装和通用 `skills` CLI 互通，但没有 immutable release pinning、adoption event 或 usage analytics。
 - 没有 quota、usage reporting、admin operations dashboard 或完整 asset mutation RBAC。
 - 没有 composition、lockfile、policy、drift、PR automation 或 evaluation infrastructure。
 
@@ -162,7 +181,7 @@ MVP 应先证明 Harhub 能把散落的 Agent Skills 转化为可管理、可复
 
 ## 建议的下一步决策
 
-1. 在已完成的 generic zip download 上选择第一个自动安装 target：Codex local skills path 或 Claude-compatible path。
+1. 确定 immutable `AssetRelease` 模型，并把现有 share 从 asset pinning 迁移到 release pinning。
 2. 确认 hosted free limits，并实现 quota 与 usage event schema。
 3. 在公开注册前补齐 asset mutation RBAC、rate limiting 和 production operations checks。
 4. 决定第一个导入来源：GitHub repository path、zip URL 或 connected repository scan。

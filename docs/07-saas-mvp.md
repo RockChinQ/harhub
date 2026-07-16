@@ -15,6 +15,7 @@ Harhub 的 SaaS MVP 采用云原生持久化优先，同时保留本地 JSON fal
 - **Email Login Code**：短期一次性登录验证码，保存在 runtime state 中并限制尝试次数。
 - **OAuth State**：Google/GitHub OAuth 跳转期间使用的短期 state、redirect path 和可选 invitation token。
 - **Device Authorization**：CLI 使用的 RFC 8628 短期设备授权记录，只保存 device code hash、user code、轮询状态和批准账号。
+- **Asset Share**：workspace member 为 uploaded Asset 创建的可撤销 public bearer link；当前引用 logical asset，后续应引用 immutable release。
 
 ## 云原生持久化
 
@@ -32,7 +33,7 @@ harhub_workspace_catalogs
   updated_at
 ```
 
-这些表保存 accounts、sessions、workspaces、memberships 和 workspace asset indexes。Uploaded Skill zip bytes 不进数据库，继续存储在 S3/S3-compatible object storage。
+这些表保存 accounts、sessions、workspaces、memberships、invitations、device authorization、asset shares 和 workspace asset indexes。Uploaded Skill zip bytes 不进数据库，继续存储在 S3/S3-compatible object storage。
 
 本地 JSON fallback 仍然可用：当没有设置 `HARHUB_DATABASE_URL` 时，运行态状态存储在 `.harhub/state.json`，workspace catalog 存储在 `.harhub/workspaces/<workspace-id>/` 下。这只用于 self-host demo 和本地开发，不是 hosted operation 的默认路径。
 
@@ -106,7 +107,7 @@ npm run dev:cloud
 
 ## API 形态
 
-当前 routes 如下。除 health、auth bootstrap、OAuth callback、invitation lookup 和 legacy demo route 外，业务 routes 都要求 bearer token；资产数据按 workspace 作用域组织。
+当前 routes 如下。除 health、auth bootstrap、OAuth callback、device flow、invitation lookup、public share 和 legacy demo route 外，业务 routes 都要求 bearer token；资产数据按 workspace 作用域组织。
 
 ```text
 GET  /api/health
@@ -150,6 +151,7 @@ DELETE /api/workspaces/:workspaceId/assets/:query/share
 
 GET  /api/public/shares/:token
 GET  /api/public/shares/:token/download
+GET  /s/:token/.well-known/agent-skills/index.json
 
 GET  /api/workspaces/:workspaceId/skills
 GET  /api/workspaces/:workspaceId/skills/:query
@@ -160,6 +162,10 @@ DELETE /api/workspaces/:workspaceId/skills/:query
 GET  /api/skills
 ```
 
-`/api/workspaces/:workspaceId/skills` 是 Assets API 的 Skills-only compatibility view；legacy `/api/skills` 只保留 demo workspace 的 read route。公开 share token 是可撤销 bearer link；公开响应不会暴露 S3 bucket 或 object key，asset 删除时对应 share 也会失效。服务端已经移除 path-based scan、create 和 patch routes。Uploaded packages 是 immutable，修改后应重新上传 zip。
+`/api/workspaces/:workspaceId/skills` 是 Assets API 的 Skills-only compatibility view；legacy `/api/skills` 只保留 demo workspace 的 read route。公开 share token 是可撤销 bearer link；公开响应不会暴露 S3 bucket 或 object key，asset 删除时对应 share 也会失效。Discovery response 使用 archive URL 和 SHA-256 digest，让兼容 Agent Skills CLI 可以直接消费 share URL。
+
+当前 share 通过 `assetId` 查找 workspace catalog 中的当前对象，还没有 immutable release snapshot。闭环完成前需要让 share pin 到具体 upload release，避免同名重新上传改变旧链接内容。详细设计见 [Agent Skill 发布、分享与安装闭环](./10-sharing-and-installation-loop.md)。
+
+服务端已经移除 path-based scan、create 和 patch routes。Uploaded packages 不支持原地 patch，修改后应重新上传 zip。
 
 当前角色执行范围并不完全一致：workspace 重命名、邀请、成员角色修改和成员移除会执行 owner/admin 检查；资产 upload、validate 和 delete 目前只要求 workspace membership。按角色限制资产 mutation 仍是发布前 TODO。

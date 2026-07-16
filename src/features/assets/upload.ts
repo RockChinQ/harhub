@@ -12,6 +12,7 @@ import type {
   ValidationIssue
 } from "../../shared/types.js";
 import { displayNameFromSkillFrontmatter } from "../skills/utils.js";
+import { validateSkillArchive } from "../skills/archive.js";
 import { validateSkillMarkdown } from "../skills/validation.js";
 
 export async function createUploadedSkillAsset(input: {
@@ -26,11 +27,8 @@ export async function createUploadedSkillAsset(input: {
     throw new Error("Only .zip skill uploads are supported.");
   }
 
-  if (input.buffer.byteLength === 0) {
-    throw new Error("Uploaded skill zip is empty.");
-  }
-
-  const zip = await JSZip.loadAsync(input.buffer);
+  const archive = await validateSkillArchive(input.buffer);
+  const zip = await JSZip.loadAsync(archive.buffer);
   const entries = Object.values(zip.files);
   const packageIssues = validateZipStructure(entries);
   const skillEntries = entries.filter(
@@ -44,7 +42,7 @@ export async function createUploadedSkillAsset(input: {
 
   const skillMarkdown = await skillEntry.async("string");
   const parsed = parseMarkdown(skillMarkdown);
-  const zipHash = contentHash(input.buffer);
+  const zipHash = contentHash(archive.buffer);
   const name =
     stringValue(parsed.frontmatter.name) ||
     slugify(input.name ?? "") ||

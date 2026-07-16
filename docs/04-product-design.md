@@ -67,6 +67,20 @@ Catalog 列出 harness packages，并展示：
 - Repo harness 所需 MCP permissions。
 - 推荐 upgrades 或 deduplication actions。
 
+## Skills-first 初期闭环
+
+当前优先工作流不是完整 Bundle composition，而是 [Agent Skill 发布、分享与安装闭环](./10-sharing-and-installation-loop.md)：
+
+1. Author 在本地维护标准 Skill directory。
+2. Author 执行 `harhub skills upload <path> --share`。
+3. Harhub 校验并存储 zip，写入 workspace catalog，并创建 revocable public share。
+4. CLI 返回 `/s/:token`；Author 将链接发给协作者。
+5. Collaborator 无需登录即可查看 validation 状态、下载 zip，或复制 `harhub install` / `npx skills add`。
+6. Collaborator 将 Skill 安装到选定 agent；Harhub 记录 distribution outcome。
+7. Author 可以撤销 share，停止 public metadata、discovery 和 download。
+
+Upload 与 share 必须分开：普通 upload 保持 private，只有 `--share` 或显式 Share action 才对外分发。Share 最终应固定到不可变 release，而不是跟随可变 asset record。
+
 ## 核心工作流
 
 ### 1. 发现已有 Harness
@@ -79,6 +93,8 @@ Catalog 列出 harness packages，并展示：
 结果：组织获得 inventory，而不需要立即迁移。
 
 ### 2. 发布 Harness Package
+
+这是版本化、评审和 composition 阶段的长期工作流。当前 Skills-first 发布路径以上述 share/install 闭环为准。
 
 1. Author 在 Git 中创建或更新 harness package。
 2. 发布内容引用外部标准文件、docs、artifacts 和可选 validation fixtures。

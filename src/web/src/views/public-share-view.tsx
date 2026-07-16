@@ -19,7 +19,7 @@ import { getPublicAssetShare } from "../lib/api";
 export function PublicShareView({ shareToken }: { shareToken: string }) {
   const [share, setShare] = useState<AssetShareResponse | undefined>();
   const [error, setError] = useState<string | undefined>();
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"harhub" | "skills" | undefined>();
 
   useEffect(() => {
     let active = true;
@@ -37,11 +37,10 @@ export function PublicShareView({ shareToken }: { shareToken: string }) {
     };
   }, [shareToken]);
 
-  async function copyInstallCommand() {
-    if (!share) return;
-    await navigator.clipboard.writeText(share.cliCommand);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
+  async function copyInstallCommand(kind: "harhub" | "skills", command: string) {
+    await navigator.clipboard.writeText(command);
+    setCopied(kind);
+    window.setTimeout(() => setCopied(undefined), 1800);
   }
 
   return (
@@ -97,13 +96,28 @@ export function PublicShareView({ shareToken }: { shareToken: string }) {
                 <div>
                   <div className="text-sm font-medium">Install with the Harhub CLI</div>
                   <div className="text-xs text-muted-foreground">
-                    The current CLI downloads the zip into your current directory.
+                    Downloads the verified package and installs it into your selected Agent.
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <Input readOnly value={share.cliCommand} className="font-mono text-xs" />
-                  <Button type="button" variant="outline" size="icon" onClick={copyInstallCommand} aria-label="Copy CLI command">
-                    {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+                  <Button type="button" variant="outline" size="icon" onClick={() => copyInstallCommand("harhub", share.cliCommand)} aria-label="Copy Harhub CLI command">
+                    {copied === "harhub" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <div>
+                  <div className="text-sm font-medium">Install with the Agent Skills CLI</div>
+                  <div className="text-xs text-muted-foreground">
+                    Works with Codex, Claude Code, Cursor, OpenCode, and other compatible Agents.
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Input readOnly value={share.skillsCliCommand} className="font-mono text-xs" />
+                  <Button type="button" variant="outline" size="icon" onClick={() => copyInstallCommand("skills", share.skillsCliCommand)} aria-label="Copy Agent Skills CLI command">
+                    {copied === "skills" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
                   </Button>
                 </div>
               </div>

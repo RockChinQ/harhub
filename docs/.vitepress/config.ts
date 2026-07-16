@@ -41,7 +41,8 @@ export default defineConfig({
           { text: "06 Skill Standard", link: "/06-skill-standard" },
           { text: "07 SaaS MVP", link: "/07-saas-mvp" },
           { text: "08 Roadmap", link: "/08-roadmap" },
-          { text: "09 MVP TODO", link: "/09-mvp-todo" }
+          { text: "09 MVP TODO", link: "/09-mvp-todo" },
+          { text: "10 Sharing and Installation Loop", link: "/10-sharing-and-installation-loop" }
         ]
       }
     ],

@@ -5,7 +5,7 @@ import {
   upsertAsset,
   validateUploadedSkillZip
 } from "../../features/assets/index.js";
-import { contentHash } from "../../shared/markdown.js";
+import { validateSkillArchive } from "../../features/skills/index.js";
 import type { AssetRecord } from "../../shared/types.js";
 import { writeWorkspaceAssetCatalog } from "../../state/index.js";
 import {
@@ -31,11 +31,12 @@ export async function handleAssetUpload(
   let uploaded: AssetRecord["storage"] | undefined;
   try {
     const requestedName = requestedAssetName(file.originalname);
-    const checksum = contentHash(file.buffer);
+    const archive = await validateSkillArchive(file.buffer);
+    const checksum = archive.checksum;
     await validateUploadedSkillZip({
       workspaceId: context.workspace.id,
       fileName: file.originalname,
-      buffer: file.buffer,
+      buffer: archive.buffer,
       name: requestedName
     });
 
@@ -43,7 +44,7 @@ export async function handleAssetUpload(
       workspaceId: context.workspace.id,
       objectName: requestedName,
       originalName: file.originalname,
-      body: file.buffer,
+      body: archive.buffer,
       contentType: file.mimetype || "application/zip",
       checksum
     });
@@ -51,7 +52,7 @@ export async function handleAssetUpload(
     const asset = await createUploadedSkillAsset({
       workspaceId: context.workspace.id,
       fileName: file.originalname,
-      buffer: file.buffer,
+      buffer: archive.buffer,
       storage: uploaded,
       name: requestedName
     });

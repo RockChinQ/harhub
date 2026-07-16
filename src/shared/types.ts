@@ -165,8 +165,20 @@ export interface AssetShareResponse {
   shareUrl: string;
   downloadUrl: string;
   cliCommand: string;
+  skillsCliCommand: string;
   fileName: string;
   asset: PublicSharedAsset;
+}
+
+export interface AgentSkillsDiscoveryIndex {
+  $schema: "https://schemas.agentskills.io/discovery/0.2.0/schema.json";
+  skills: Array<{
+    name: string;
+    type: "archive";
+    description: string;
+    url: string;
+    digest: `sha256:${string}`;
+  }>;
 }
 
 export interface AssetCatalog {

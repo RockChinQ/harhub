@@ -7,7 +7,7 @@ Usage:
   harhub login [--url ${DEFAULT_HARHUB_API_URL}] [--workspace <id|slug|name>] [--no-browser] [--json]
   harhub logout [--json]
   harhub whoami [--json]
-  harhub install <share-url|token> [--url ${DEFAULT_HARHUB_API_URL}] [--json]
+  harhub install <share-url|token> [--agent <name[,name]>] [--global] [--copy] [--yes] [--all] [--url ${DEFAULT_HARHUB_API_URL}] [--json]
   harhub share <asset-id|name|slug> [--workspace <workspace-id>] [--url ${DEFAULT_HARHUB_API_URL}] [--json]
   harhub unshare <asset-id|name|slug> [--workspace <workspace-id>] [--url ${DEFAULT_HARHUB_API_URL}] [--json]
   harhub assets <command> [options]
