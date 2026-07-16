@@ -5,6 +5,7 @@ import type {
   AssetFilePreview,
   AssetFileSummary,
   AssetFileTreeNode,
+  AssetContentPreview,
   AssetPreview,
   AssetRecord
 } from "../../shared/types.js";
@@ -18,12 +19,21 @@ export function buildAssetPreview(
   inputFiles: SkillPackageFile[],
   requestedPath?: string
 ): AssetPreview {
+  return {
+    asset,
+    ...buildAssetContentPreview(inputFiles, requestedPath)
+  };
+}
+
+export function buildAssetContentPreview(
+  inputFiles: SkillPackageFile[],
+  requestedPath?: string
+): AssetContentPreview {
   const files = inputFiles.slice().sort((left, right) => left.path.localeCompare(right.path));
   const fallbackPath = files.find((file) => file.path === "SKILL.md")?.path ?? files[0]?.path;
   const selectedFile = files.find((file) => file.path === (requestedPath || fallbackPath));
 
   return {
-    asset,
     tree: buildFileTree(files),
     files: files.map(fileSummary),
     selectedFile: selectedFile ? filePreview(selectedFile) : undefined

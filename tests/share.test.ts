@@ -12,6 +12,7 @@ import { closeHarhubHttp } from "../src/cli/http.js";
 import { installSkillDirectory } from "../src/cli/skills-installer.js";
 import { contentHash } from "../src/shared/markdown.js";
 import { buildAgentSkillsDiscoveryIndex } from "../src/server/services/asset-shares.js";
+import { buildAssetContentPreview } from "../src/server/utils/zip-preview.js";
 import type { AssetCatalog, AssetShareResponse } from "../src/shared/types.js";
 
 test("creates and revokes a public asset share without exposing storage", async () => {
@@ -53,6 +54,8 @@ test("creates and revokes a public asset share without exposing storage", async 
     assert.equal(share.fileName, "demo-skill.zip");
     assert.equal(share.cliCommand, `harhub install ${share.shareUrl}`);
     assert.equal(share.skillsCliCommand, `npx skills add ${share.shareUrl}`);
+    assert.equal(share.asset.fileCount, 1);
+    assert.equal(share.asset.size, 128);
     assert.equal("storage" in share.asset, false);
     assert.equal(JSON.stringify(share).includes("test-bucket"), false);
 
@@ -86,6 +89,25 @@ test("creates and revokes a public asset share without exposing storage", async 
     process.chdir(originalDirectory);
     rmSync(temporaryDirectory, { recursive: true, force: true });
   }
+});
+
+test("builds a public file preview without asset or storage metadata", () => {
+  const preview = buildAssetContentPreview([
+    {
+      path: "SKILL.md",
+      content: Buffer.from("---\nname: shared-skill\ndescription: Shared test Skill.\n---\n")
+    },
+    {
+      path: "references/guide.md",
+      content: Buffer.from("# Guide\n")
+    }
+  ], "references/guide.md");
+
+  assert.equal(preview.files.length, 2);
+  assert.equal(preview.selectedFile?.path, "references/guide.md");
+  assert.equal(preview.selectedFile?.content, "# Guide\n");
+  assert.equal("asset" in preview, false);
+  assert.equal("storage" in preview, false);
 });
 
 test("installs a shared Skill through the bundled skills CLI", async () => {
@@ -229,7 +251,9 @@ function testShareResponse(baseUrl: string): AssetShareResponse {
       slug: "shared-skill",
       description: "Shared",
       health: "valid",
-      validation: { errors: 0, warnings: 0 }
+      validation: { errors: 0, warnings: 0 },
+      fileCount: 1,
+      size: 128
     }
   };
 }

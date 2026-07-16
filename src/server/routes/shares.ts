@@ -9,7 +9,9 @@ import {
   shareWorkspaceAsset,
   unshareWorkspaceAsset
 } from "../services/asset-shares.js";
-import { sendError } from "../utils/http.js";
+import { loadStoredSkill } from "../services/skill-packages.js";
+import { buildAssetContentPreview } from "../utils/zip-preview.js";
+import { sendError, stringQuery } from "../utils/http.js";
 
 export function registerShareRoutes(app: Express): void {
   app.get("/s/:token/.well-known/agent-skills/index.json", async (req, res) => {
@@ -41,6 +43,22 @@ export function registerShareRoutes(app: Express): void {
 
       res.setHeader("Cache-Control", "private, no-store");
       res.json(resolved.response);
+    } catch (error) {
+      sendError(res, error, 500);
+    }
+  });
+
+  app.get("/api/public/shares/:token/preview", async (req, res) => {
+    try {
+      const resolved = await resolvePublicAssetShare(req, req.params.token);
+      if (!resolved?.asset.storage) {
+        res.status(404).json({ error: "Share not found or no longer available." });
+        return;
+      }
+
+      const { files } = await loadStoredSkill(resolved.asset.storage);
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json(buildAssetContentPreview(files, stringQuery(req.query.path)));
     } catch (error) {
       sendError(res, error, 500);
     }

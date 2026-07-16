@@ -1,6 +1,6 @@
-import type { AssetPreview } from "../../../../shared/types";
+import type { AssetFilePreview } from "../../../../shared/types";
 
-export function FilePreviewPane({ file }: { file?: AssetPreview["selectedFile"] }) {
+export function FilePreviewPane({ file }: { file?: AssetFilePreview }) {
   if (!file) {
     return (
       <div className="flex min-h-[360px] min-w-0 items-center justify-center text-sm text-muted-foreground lg:min-h-0">

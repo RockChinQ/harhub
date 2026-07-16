@@ -136,7 +136,9 @@ function buildAssetShareResponse(
       slug: asset.slug,
       description: asset.description,
       health: asset.health,
-      validation: asset.validation
+      validation: asset.validation,
+      fileCount: asset.storage?.fileCount ?? 0,
+      size: asset.storage?.size ?? 0
     }
   };
 }

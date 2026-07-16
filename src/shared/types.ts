@@ -158,6 +158,8 @@ export interface PublicSharedAsset {
   description: string;
   health: AssetHealth;
   validation: AssetRecord["validation"];
+  fileCount: number;
+  size: number;
 }
 
 export interface AssetShareResponse {
@@ -214,11 +216,14 @@ export interface AssetFilePreview {
   content?: string;
 }
 
-export interface AssetPreview {
-  asset: AssetRecord;
+export interface AssetContentPreview {
   tree: AssetFileTreeNode[];
   files: AssetFileSummary[];
   selectedFile?: AssetFilePreview;
+}
+
+export interface AssetPreview extends AssetContentPreview {
+  asset: AssetRecord;
 }
 
 export interface SkillImportCandidate {

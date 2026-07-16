@@ -1,8 +1,23 @@
-import type { AssetShareResponse } from "../../../../shared/types";
+import type {
+  AssetContentPreview,
+  AssetShareResponse
+} from "../../../../shared/types";
 import { request } from "./request";
 
 export async function getPublicAssetShare(token: string): Promise<AssetShareResponse> {
   return request<AssetShareResponse>(`/api/public/shares/${encodeURIComponent(token)}`);
+}
+
+export async function getPublicAssetSharePreview(
+  token: string,
+  filePath?: string
+): Promise<AssetContentPreview> {
+  const params = new URLSearchParams();
+  if (filePath) params.set("path", filePath);
+  const query = params.toString();
+  return request<AssetContentPreview>(
+    `/api/public/shares/${encodeURIComponent(token)}/preview${query ? `?${query}` : ""}`
+  );
 }
 
 export async function getWorkspaceAssetShare(
