@@ -12,17 +12,18 @@ export type StorageProvider = "s3";
 
 export interface StoredObject {
   provider: StorageProvider;
+  layout: "files";
   bucket: string;
+  /** S3 prefix containing one object per canonical Skill file. */
   key: string;
   region?: string;
   endpoint?: string;
-  url?: string;
   size: number;
-  contentType: string;
-  checksum?: string;
-  etag?: string;
+  fileCount: number;
+  contentType: "application/vnd.harhub.skill-directory";
+  /** Digest of the sorted file paths and contents, used to key generated zip caches. */
+  checksum: string;
   uploadedAt: string;
-  originalName?: string;
 }
 
 export interface StorageStatus {
@@ -218,6 +219,25 @@ export interface AssetPreview {
   tree: AssetFileTreeNode[];
   files: AssetFileSummary[];
   selectedFile?: AssetFilePreview;
+}
+
+export interface SkillImportCandidate {
+  skillPath: string;
+  rootPath: string;
+  name: string;
+  displayName: string;
+  description: string;
+  health: AssetHealth;
+  validation: AssetRecord["validation"];
+  validationIssues: ValidationIssue[];
+  fileCount: number;
+  size: number;
+}
+
+export interface SkillImportPreview {
+  fileName: string;
+  fileSize: number;
+  candidates: SkillImportCandidate[];
 }
 
 export interface ValidationIssue {

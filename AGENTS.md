@@ -18,10 +18,13 @@ Skills contract:
 - Harhub must not define competing Skill files or frontmatter conventions.
 - The MVP catalog keeps only runtime state needed to manage standard Skills:
   extracted standard metadata, validation status/issues, and storage references.
-  File previews are derived from the stored zip on demand.
-- Uploaded Skills are zip files stored in S3 or S3-compatible object storage.
-  Local `.harhub` JSON files are runtime indexes only, not the Skill package
-  storage backend or a Skill format.
+  File previews are derived from the stored S3 file prefix on demand.
+- Source uploads may be arbitrary zip layouts containing one or more nested
+  Skills. After selection, each Skill is stored as its own file prefix in S3 or
+  S3-compatible object storage; the source zip is not retained. Standard
+  single-Skill zip packages are generated on download. Local `.harhub` JSON
+  files are runtime indexes only, not the Skill package storage backend or a
+  Skill format.
 
 If a task depends on the latest Agent Skills definition, verify the official
 standard before changing validation or package semantics.

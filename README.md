@@ -30,7 +30,7 @@ is intentionally Skills-first.
 
 ## What You Can Do
 
-- Upload Skill zip packages.
+- Import one or many nested Skills from arbitrary zip packages.
 - Validate packages against the Agent Skills `SKILL.md` format.
 - Search and browse Skills in a workspace.
 - Preview Skill metadata and package files.
@@ -170,6 +170,16 @@ Upload every valid discovered Skill without the selector:
 harhub skills upload /path/to/repo --all
 ```
 
+You can also upload an arbitrary zip containing one or more Skills. The CLI
+imports every valid `SKILL.md` it finds, including files in nested directories:
+
+```bash
+harhub assets upload /path/to/repository-export.zip
+```
+
+The Web upload dialog previews every discovered Skill and lets you choose which
+ones to import.
+
 Upload and immediately create a public share link:
 
 ```bash
@@ -219,9 +229,11 @@ harhub logout
 
 `scan`, `validate`, `list`, and `show` operate on local paths and local
 `.harhub` indexes. `skills upload` packages valid local Skills and sends them to
-the configured hosted or self-managed workspace. Uploaded packages are
-immutable; edit the local Skill and upload it again instead of patching it in
-place.
+the configured hosted or self-managed workspace. During import, Harhub stores
+each Skill as an independent S3 file prefix and does not retain the source zip.
+Preview reads those objects directly; download and discovery generate a standard
+root-level Skill zip on demand. Uploaded Skills are immutable; edit the local
+Skill and upload it again instead of patching it in place.
 
 ## Configuration
 

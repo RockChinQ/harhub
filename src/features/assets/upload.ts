@@ -1,162 +1,43 @@
-import path from "node:path";
-import JSZip, { type JSZipObject } from "jszip";
-import {
-  contentHash,
-  parseMarkdown,
-  slugify,
-  stringValue
-} from "../../shared/markdown.js";
 import type {
   AssetRecord,
   StoredObject,
   ValidationIssue
 } from "../../shared/types.js";
-import { displayNameFromSkillFrontmatter } from "../skills/utils.js";
-import { validateSkillArchive } from "../skills/archive.js";
-import { validateSkillMarkdown } from "../skills/validation.js";
+import type { DiscoveredSkill } from "../skills/archive.js";
 
-export async function createUploadedSkillAsset(input: {
+export function createImportedSkillAsset(input: {
   workspaceId: string;
-  fileName: string;
-  buffer: Buffer;
+  skill: DiscoveredSkill;
   storage: StoredObject;
-  name?: string;
   rejectInvalid?: boolean;
-}): Promise<AssetRecord> {
-  if (!input.fileName.toLowerCase().endsWith(".zip")) {
-    throw new Error("Only .zip skill uploads are supported.");
+}): AssetRecord {
+  if (input.skill.validation.errors > 0 && input.rejectInvalid !== false) {
+    throw new Error(importValidationError(input.skill.validationIssues));
   }
 
-  const archive = await validateSkillArchive(input.buffer);
-  const zip = await JSZip.loadAsync(archive.buffer);
-  const entries = Object.values(zip.files);
-  const packageIssues = validateZipStructure(entries);
-  const skillEntries = entries.filter(
-    (entry) => !entry.dir && entry.name.split("/").pop() === "SKILL.md"
-  );
-  const skillEntry = skillEntries[0];
-
-  if (!skillEntry) {
-    throw new Error("Skill zip must contain a SKILL.md file.");
-  }
-
-  const skillMarkdown = await skillEntry.async("string");
-  const parsed = parseMarkdown(skillMarkdown);
-  const zipHash = contentHash(archive.buffer);
-  const name =
-    stringValue(parsed.frontmatter.name) ||
-    slugify(input.name ?? "") ||
-    slugify(path.basename(input.fileName, path.extname(input.fileName))) ||
-    `uploaded-${zipHash.slice(0, 8)}`;
-  const assetId = `asset:skill:${input.workspaceId}:${name}`;
-  const validationIssues = [
-    ...packageIssues.map((issue) => ({ ...issue, assetId })),
-    ...validateSkillMarkdown({
-      content: skillMarkdown,
-      path: `zip:${skillEntry.name}`,
-      assetId,
-      skillDirName: skillEntryDirName(skillEntry.name)
-    })
-  ];
-  const errors = validationIssues.filter((issue) => issue.severity === "error").length;
-  const warnings = validationIssues.filter((issue) => issue.severity === "warning").length;
-
-  if (errors > 0 && input.rejectInvalid !== false) {
-    throw new Error(uploadValidationError(validationIssues));
-  }
+  const assetId = `asset:skill:${input.workspaceId}:${input.skill.name}`;
+  const validationIssues = input.skill.validationIssues.map((issue) => ({
+    ...issue,
+    assetId
+  }));
 
   return {
     id: assetId,
     kind: "skill",
-    name,
-    displayName: displayNameFromSkillFrontmatter({
-      frontmatter: parsed.frontmatter,
-      title: parsed.title,
-      slug: name
-    }),
-    slug: name,
-    description:
-      stringValue(parsed.frontmatter.description) ||
-      parsed.description ||
-      "Uploaded skill asset.",
-    health: errors > 0 ? "error" : warnings > 0 ? "warning" : "valid",
+    name: input.skill.name,
+    displayName: input.skill.displayName,
+    slug: input.skill.name,
+    description: input.skill.description,
+    health: input.skill.health,
     storage: input.storage,
-    validation: {
-      errors,
-      warnings
-    },
+    validation: input.skill.validation,
     validationIssues
   };
 }
 
-export async function validateUploadedSkillZip(input: {
-  workspaceId: string;
-  fileName: string;
-  buffer: Buffer;
-  name?: string;
-}): Promise<void> {
-  await createUploadedSkillAsset({
-    ...input,
-    storage: {
-      provider: "s3",
-      bucket: "validation-only",
-      key: "validation-only",
-      size: input.buffer.byteLength,
-      contentType: "application/zip",
-      uploadedAt: new Date().toISOString(),
-      originalName: input.fileName
-    },
-  });
-}
-
-function validateZipStructure(entries: JSZipObject[]): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  const skillEntries = entries.filter(
-    (entry) => !entry.dir && entry.name.split("/").pop() === "SKILL.md"
-  );
-
-  for (const entry of entries) {
-    if (isUnsafeZipPath(entry.name)) {
-      issues.push({
-        severity: "error",
-        code: "unsafe-zip-path",
-        message: `Zip entry has an unsafe path: ${entry.name}`,
-        path: `zip:${entry.name}`
-      });
-    }
-  }
-
-  if (skillEntries.length > 1) {
-    issues.push({
-      severity: "error",
-      code: "multiple-skill-files",
-      message: "Skill zip must contain exactly one SKILL.md file.",
-      path: "zip:SKILL.md"
-    });
-  }
-
-  return issues;
-}
-
-function isUnsafeZipPath(entryName: string): boolean {
-  const parts = entryName.split("/");
-  return (
-    entryName.startsWith("/") ||
-    /^[A-Za-z]:/.test(entryName) ||
-    entryName.includes("\0") ||
-    parts.includes("..")
-  );
-}
-
-function skillEntryDirName(entryName: string): string | undefined {
-  const dir = path.posix.dirname(entryName);
-  if (!dir || dir === ".") return undefined;
-  return path.posix.basename(dir);
-}
-
-function uploadValidationError(issues: ValidationIssue[]): string {
+function importValidationError(issues: ValidationIssue[]): string {
   const firstError = issues.find((issue) => issue.severity === "error");
   return firstError
-    ? `Skill package validation failed: ${firstError.code}: ${firstError.message}`
-    : "Skill package validation failed.";
+    ? `Skill validation failed: ${firstError.code}: ${firstError.message}`
+    : "Skill validation failed.";
 }

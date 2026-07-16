@@ -1,7 +1,6 @@
 import type { Request } from "express";
 
 import { findAsset } from "../../features/assets/index.js";
-import { validateSkillArchive } from "../../features/skills/index.js";
 import {
   createAssetShare,
   findAssetShare,
@@ -16,9 +15,9 @@ import type {
   AssetShareResponse,
   WorkspaceRecord
 } from "../../shared/types.js";
-import { readStoredObject } from "../../storage/index.js";
 import type { WorkspaceContext } from "../../state/types.js";
 import { publicAppUrl } from "./oauth.js";
+import { getStoredSkillArchive } from "./skill-packages.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
 
 export async function getWorkspaceAssetShare(
@@ -88,7 +87,7 @@ export async function resolvePublicAssetShareArchive(
   const resolved = await resolvePublicAssetShare(req, token);
   if (!resolved?.asset.storage) return undefined;
 
-  const archive = await validateSkillArchive(await readStoredObject(resolved.asset.storage));
+  const archive = await getStoredSkillArchive(resolved.asset);
   return {
     ...resolved,
     buffer: archive.buffer,

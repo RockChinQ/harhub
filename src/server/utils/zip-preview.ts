@@ -1,10 +1,6 @@
 import path from "node:path";
-import JSZip, { type JSZipObject } from "jszip";
-import { validateSkillArchive } from "../../features/skills/index.js";
-import {
-  MAX_PREVIEW_BYTES,
-  MAX_PREVIEW_CHARS
-} from "../config.js";
+
+import type { SkillPackageFile } from "../../features/skills/index.js";
 import type {
   AssetFilePreview,
   AssetFileSummary,
@@ -12,36 +8,34 @@ import type {
   AssetPreview,
   AssetRecord
 } from "../../shared/types.js";
+import {
+  MAX_PREVIEW_BYTES,
+  MAX_PREVIEW_CHARS
+} from "../config.js";
 
-export async function buildAssetPreview(
+export function buildAssetPreview(
   asset: AssetRecord,
-  buffer: Buffer,
+  inputFiles: SkillPackageFile[],
   requestedPath?: string
-): Promise<AssetPreview> {
-  const archive = await validateSkillArchive(buffer);
-  const zip = await JSZip.loadAsync(archive.buffer);
-  const entries = Object.values(zip.files)
-    .filter((entry) => !entry.dir)
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const fallbackPath =
-    entries.find((entry) => entry.name.split("/").pop() === "SKILL.md")?.name ??
-    entries[0]?.name;
-  const selectedEntry = entries.find((entry) => entry.name === (requestedPath || fallbackPath));
+): AssetPreview {
+  const files = inputFiles.slice().sort((left, right) => left.path.localeCompare(right.path));
+  const fallbackPath = files.find((file) => file.path === "SKILL.md")?.path ?? files[0]?.path;
+  const selectedFile = files.find((file) => file.path === (requestedPath || fallbackPath));
 
   return {
     asset,
-    tree: buildZipTree(entries),
-    files: entries.map(zipEntrySummary),
-    selectedFile: selectedEntry ? await zipEntryPreview(selectedEntry) : undefined
+    tree: buildFileTree(files),
+    files: files.map(fileSummary),
+    selectedFile: selectedFile ? filePreview(selectedFile) : undefined
   };
 }
 
-function buildZipTree(entries: JSZipObject[]): AssetFileTreeNode[] {
+function buildFileTree(files: SkillPackageFile[]): AssetFileTreeNode[] {
   type MutableNode = AssetFileTreeNode & { childMap?: Map<string, MutableNode> };
   const roots = new Map<string, MutableNode>();
 
-  for (const entry of entries) {
-    const parts = entry.name.split("/").filter(Boolean);
+  for (const file of files) {
+    const parts = file.path.split("/").filter(Boolean);
     let level = roots;
     let currentPath = "";
 
@@ -55,7 +49,7 @@ function buildZipTree(entries: JSZipObject[]): AssetFileTreeNode[] {
           name: part,
           path: currentPath,
           type: isFile ? "file" : "directory",
-          ...(isFile ? { size: zipEntrySize(entry) } : { children: [], childMap: new Map() })
+          ...(isFile ? { size: file.content.byteLength } : { children: [], childMap: new Map() })
         };
         level.set(part, node);
       }
@@ -69,92 +63,64 @@ function buildZipTree(entries: JSZipObject[]): AssetFileTreeNode[] {
     });
   }
 
-  return finalizeZipTree(roots.values());
+  return finalizeFileTree(roots.values());
 }
 
-function finalizeZipTree(
+function finalizeFileTree(
   nodes: Iterable<AssetFileTreeNode & { childMap?: Map<string, AssetFileTreeNode> }>
 ): AssetFileTreeNode[] {
   return Array.from(nodes)
-    .sort((a, b) =>
-      a.type === b.type ? a.name.localeCompare(b.name) : a.type === "directory" ? -1 : 1
+    .sort((left, right) =>
+      left.type === right.type
+        ? left.name.localeCompare(right.name)
+        : left.type === "directory" ? -1 : 1
     )
     .map((node) => ({
       name: node.name,
       path: node.path,
       type: node.type,
       size: node.size,
-      children: node.childMap ? finalizeZipTree(node.childMap.values()) : undefined
+      children: node.childMap ? finalizeFileTree(node.childMap.values()) : undefined
     }));
 }
 
-function zipEntrySummary(entry: JSZipObject): AssetFileSummary {
+function fileSummary(file: SkillPackageFile): AssetFileSummary {
   return {
-    path: entry.name,
-    name: path.posix.basename(entry.name),
-    size: zipEntrySize(entry),
-    isText: isTextZipEntry(entry.name)
+    path: file.path,
+    name: path.posix.basename(file.path),
+    size: file.content.byteLength,
+    isText: isTextFile(file.path)
   };
 }
 
-async function zipEntryPreview(entry: JSZipObject): Promise<AssetFilePreview> {
-  const size = zipEntrySize(entry);
-  const isText = isTextZipEntry(entry.name);
+function filePreview(file: SkillPackageFile): AssetFilePreview {
+  const isText = isTextFile(file.path);
   const base = {
-    path: entry.name,
-    name: path.posix.basename(entry.name),
-    size,
+    path: file.path,
+    name: path.posix.basename(file.path),
+    size: file.content.byteLength,
     isText
   };
 
-  if (!isText) {
-    return {
-      ...base,
-      truncated: false
-    };
-  }
+  if (!isText) return { ...base, truncated: false };
 
-  const content = await entry.async("string");
+  const content = file.content.toString("utf8");
   return {
     ...base,
-    truncated: size > MAX_PREVIEW_BYTES || content.length > MAX_PREVIEW_CHARS,
+    truncated: file.content.byteLength > MAX_PREVIEW_BYTES || content.length > MAX_PREVIEW_CHARS,
     content: content.slice(0, MAX_PREVIEW_CHARS)
   };
 }
 
-function zipEntrySize(entry: JSZipObject): number {
-  const data = (entry as unknown as { _data?: { uncompressedSize?: number } })._data;
-  return data?.uncompressedSize ?? 0;
-}
-
-function isTextZipEntry(filePath: string): boolean {
+function isTextFile(filePath: string): boolean {
   const name = filePath.toLowerCase();
   const extension = path.posix.extname(name);
   return (
     name.endsWith("skill.md") ||
     [
-      ".md",
-      ".mdx",
-      ".txt",
-      ".json",
-      ".yaml",
-      ".yml",
-      ".csv",
-      ".tsv",
-      ".xml",
-      ".html",
-      ".css",
-      ".js",
-      ".jsx",
-      ".ts",
-      ".tsx",
-      ".py",
-      ".sh",
-      ".toml",
-      ".ini",
-      ".env",
-      ".gitignore",
-      ".license"
+      ".md", ".mdx", ".txt", ".json", ".yaml", ".yml", ".csv", ".tsv",
+      ".xml", ".html", ".css", ".js", ".jsx", ".ts", ".tsx", ".py",
+      ".sh", ".toml", ".ini", ".env", ".gitignore", ".license"
     ].includes(extension)
   );
 }

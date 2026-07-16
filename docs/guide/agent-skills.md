@@ -15,9 +15,10 @@ code-review/
   assets/
 ```
 
-Harhub stores the uploaded package and runtime management state, extracts
-standard metadata, and reads preview files from the stored zip on demand.
-Stored and downloaded archives follow the
+Harhub scans arbitrary uploaded zip layouts for every `SKILL.md`, lets the user
+choose candidates, then stores each selected Skill as an independent file tree.
+It extracts standard metadata and reads preview files directly from those S3
+objects. Generated downloads follow the
 [Agent Skills discovery v0.2.0](https://github.com/cloudflare/agent-skills-discovery-rfc)
 archive shape: the contents of the Skill directory are placed directly at the
 archive root.
@@ -29,8 +30,9 @@ scripts/
 assets/
 ```
 
-Harhub rejects archives that wrap the Skill in another directory. CLI-generated
-packages use the required root structure from the start.
+Uploaded source zips may use wrapper directories and may contain multiple or
+nested Skills. Harhub discards the source zip after separation. CLI-generated
+single-Skill packages use the required root structure from the start.
 
 ## Validation
 
@@ -41,9 +43,9 @@ validation:
 - `description`
 - official optional fields
 
-Uploaded packages must contain exactly one `SKILL.md`. Harhub also rejects zip
-entries with absolute paths, drive-letter paths, null bytes, or `..` path
-segments. Harhub-specific registry metadata must stay outside `SKILL.md`.
+Every imported candidate must contain one root `SKILL.md`. Harhub also rejects
+zip entries with absolute paths, drive-letter paths, null bytes, links, or `..`
+path segments. Harhub-specific registry metadata must stay outside `SKILL.md`.
 
 ## Public Discovery
 
