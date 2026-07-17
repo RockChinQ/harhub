@@ -1,9 +1,14 @@
 import JSZip from "jszip";
+import { randomUUID } from "node:crypto";
 
 import type {
   AssetCatalog,
   AssetRecord,
+  ForgeAiFailureCode,
+  ForgeAiOperation,
+  ForgeAiOperationFailure,
   HarnessFollowUpComponent,
+  HarnessFollowUpQuestion,
   HarnessFollowUpRequest,
   HarnessFollowUpResponse,
   HarnessTemplateFile,
@@ -13,14 +18,38 @@ import type {
   HarnessWorkspaceAssetSummary,
   WorkspaceAiConnectionTestResult
 } from "../../shared/types.js";
+import {
+  MAX_FORGE_FOLLOW_UP_QUESTIONS,
+  MAX_FORGE_INTERVIEW_ANSWERS,
+  MIN_FORGE_INTERVIEW_ANSWERS
+} from "../../shared/forge.js";
 import { loadStoredSkill } from "./skill-packages.js";
 
-const MAX_FOLLOW_UPS = 3;
 const MAX_LIST_ITEMS = 6;
 const MAX_SELECTED_ASSETS = 4;
 const MAX_ARCHIVE_SKILL_BYTES = 25 * 1024 * 1024;
-const AI_REQUEST_ATTEMPTS = 3;
-const AI_RETRY_DELAYS_MS = [250, 750];
+
+const FOLLOW_UP_AI_POLICY: ForgeAiOperationPolicy = {
+  maxAttempts: 3,
+  attemptTimeoutMs: 30_000,
+  totalTimeoutMs: 70_000,
+  retryDelaysMs: [300, 900]
+};
+
+const GENERATE_AI_POLICY: ForgeAiOperationPolicy = {
+  maxAttempts: 3,
+  attemptTimeoutMs: 75_000,
+  minimumAttemptTimeoutMs: 45_000,
+  totalTimeoutMs: 240_000,
+  retryDelaysMs: [750, 1_500]
+};
+
+const CONNECTION_TEST_AI_POLICY: ForgeAiOperationPolicy = {
+  maxAttempts: 2,
+  attemptTimeoutMs: 20_000,
+  totalTimeoutMs: 45_000,
+  retryDelaysMs: [500]
+};
 
 interface ForgeTemplateSpec {
   name: string;
@@ -46,93 +75,267 @@ export interface ForgeAiConfiguration {
   apiKey: string;
 }
 
+export interface ForgeAiOperationPolicy {
+  maxAttempts: number;
+  /** Maximum provider inactivity before an attempt is aborted. */
+  attemptTimeoutMs: number;
+  /** Do not start a retry when the total deadline cannot provide this useful window. */
+  minimumAttemptTimeoutMs?: number;
+  totalTimeoutMs: number;
+  retryDelaysMs: number[];
+}
+
+export interface ForgeAiLogEntry {
+  timestamp: string;
+  event:
+    | "forge.ai.attempt.started"
+    | "forge.ai.attempt.failed"
+    | "forge.ai.retry.scheduled"
+    | "forge.ai.response.started"
+    | "forge.ai.response.completed"
+    | "forge.ai.operation.succeeded"
+    | "forge.ai.operation.failed";
+  operationId: string;
+  operation: ForgeAiOperation;
+  workspaceId?: string;
+  sessionId?: string;
+  model?: string;
+  attempt?: number;
+  maxAttempts?: number;
+  timeoutMs?: number;
+  durationMs?: number;
+  delayMs?: number;
+  code?: ForgeAiFailureCode;
+  retryable?: boolean;
+  providerStatus?: number;
+  outputChars?: number;
+}
+
+export type ForgeAiLogLevel = "info" | "warn" | "error";
+
+export interface ForgeAiOperationContext {
+  operationId: string;
+  operation: ForgeAiOperation;
+  workspaceId?: string;
+  sessionId?: string;
+  model?: string;
+  logger?: (level: ForgeAiLogLevel, entry: ForgeAiLogEntry) => void;
+  onAttempt?: (attempt: number, maxAttempts: number) => void | Promise<void>;
+  onDelta?: (attempt: number, delta: string) => void;
+}
+
+interface ForgeAiAttemptContext {
+  attempt: number;
+  signal: AbortSignal;
+  timeoutMs: number;
+  reportActivity: () => void;
+}
+
+interface ForgeAiRequestErrorOptions {
+  code: ForgeAiFailureCode;
+  retryable: boolean;
+  providerStatus?: number;
+  retryAfterMs?: number;
+}
+
+export class ForgeAiRequestError extends Error {
+  readonly code: ForgeAiFailureCode;
+  readonly retryable: boolean;
+  readonly providerStatus?: number;
+  readonly retryAfterMs?: number;
+
+  constructor(message: string, options: ForgeAiRequestErrorOptions) {
+    super(message);
+    this.name = "ForgeAiRequestError";
+    this.code = options.code;
+    this.retryable = options.retryable;
+    this.providerStatus = options.providerStatus;
+    this.retryAfterMs = options.retryAfterMs;
+  }
+}
+
+export class ForgeAiOperationError extends Error {
+  readonly failure: ForgeAiOperationFailure;
+
+  constructor(failure: ForgeAiOperationFailure) {
+    super(failure.message);
+    this.name = "ForgeAiOperationError";
+    this.failure = failure;
+  }
+}
+
+export function createObservedForgeAiOperation(
+  operation: ForgeAiOperation,
+  fields: {
+    operationId?: string;
+    workspaceId?: string;
+    sessionId?: string;
+    model?: string;
+  } = {}
+): ForgeAiOperationContext {
+  return {
+    operationId: fields.operationId ?? randomUUID(),
+    operation,
+    ...fields,
+    logger: (level, entry) => {
+      const output = JSON.stringify(entry);
+      if (level === "error") console.error(output);
+      else if (level === "warn") console.warn(output);
+      else console.info(output);
+    }
+  };
+}
+
+export function isForgeAiOperationError(error: unknown): error is ForgeAiOperationError {
+  return error instanceof ForgeAiOperationError;
+}
+
+export function forgeAiFailureHttpStatus(code: ForgeAiFailureCode): number {
+  if (code === "configuration") return 409;
+  if (code === "rate_limited") return 429;
+  if (code === "timeout") return 504;
+  return 502;
+}
+
 export async function testForgeAiConnection(
-  configuration: ForgeAiConfiguration
+  configuration: ForgeAiConfiguration,
+  operationContext?: ForgeAiOperationContext
 ): Promise<WorkspaceAiConnectionTestResult> {
   const startedAt = Date.now();
-  try {
-    const payload = await requestJson({
-      ...configuration,
-      maxTokens: 700,
-      system: "This is a connection test. Return only the JSON object {\"ok\":true}.",
-      user: "Confirm that this model can complete an OpenAI-compatible JSON chat request."
-    });
-    if (payload.ok !== true) {
-      throw new Error("AI provider responded, but did not follow the required JSON response format.");
-    }
-    return {
-      ok: true,
-      model: configuration.model,
-      latencyMs: Math.max(0, Date.now() - startedAt)
-    };
-  } catch (error) {
-    if (error instanceof Error && error.name === "TimeoutError") {
-      throw new Error("AI provider did not respond within 30 seconds.");
-    }
-    if (error instanceof TypeError && error.message === "fetch failed") {
-      throw new Error("Could not connect to the AI provider. Check the Base URL and server network access.");
-    }
-    throw error;
-  }
+  const context = resolveForgeAiOperationContext(
+    "connection-test",
+    configuration.model,
+    operationContext
+  );
+  await runForgeAiOperation(
+    async ({ signal, attempt, reportActivity }) => {
+      const payload = await requestJson({
+        ...configuration,
+        maxTokens: 700,
+        system: "This is a connection test. Return only the JSON object {\"ok\":true}.",
+        user: "Confirm that this model can complete an OpenAI-compatible JSON chat request.",
+        signal,
+        onActivity: reportActivity,
+        observability: { context, attempt },
+        onDelta: (delta) => context.onDelta?.(attempt, delta)
+      });
+      if (payload.ok !== true) {
+        throw new ForgeAiRequestError(
+          "AI provider responded, but did not follow the required JSON response format.",
+          { code: "invalid_response", retryable: true }
+        );
+      }
+    },
+    context,
+    CONNECTION_TEST_AI_POLICY
+  );
+  return {
+    ok: true,
+    model: configuration.model,
+    latencyMs: Math.max(0, Date.now() - startedAt)
+  };
 }
 
 export async function createHarnessFollowUp(
   input: HarnessFollowUpRequest,
   workspaceAssets: HarnessWorkspaceAssetSummary[],
-  aiConfiguration?: ForgeAiConfiguration
+  aiConfiguration?: ForgeAiConfiguration,
+  operationContext?: ForgeAiOperationContext
 ): Promise<HarnessFollowUpResponse> {
-  if (input.answers.length >= MAX_FOLLOW_UPS) return { mode: "llm", ready: true };
-  const configuration = requireForgeAiConfiguration(aiConfiguration);
+  if (input.answers.length >= MAX_FORGE_INTERVIEW_ANSWERS) {
+    return { mode: "llm", ready: true };
+  }
+  const context = resolveForgeAiOperationContext(
+    "follow-up",
+    aiConfiguration?.model,
+    operationContext
+  );
+  const configuration = requireForgeAiConfiguration(aiConfiguration, context);
+  const maxQuestions = Math.min(
+    MAX_FORGE_FOLLOW_UP_QUESTIONS,
+    MAX_FORGE_INTERVIEW_ANSWERS - input.answers.length
+  );
 
-  return withAiRetries(async () => {
+  return runForgeAiOperation(async ({ signal, attempt, reportActivity }) => {
     const payload = await requestJson({
       ...configuration,
-      maxTokens: 700,
+      maxTokens: 1_200,
       system: [
         "You run a concise project discovery interview for an agent harness template.",
-        "Ask exactly one useful follow-up in the same language as the user's requirement.",
+        "Decide whether the current requirement and answers are sufficient to generate a useful starter framework.",
+        "Always return sessionTitle: a concise semantic project name in the same language as the requirement. Use a 2 to 6 word noun phrase, not a request sentence, and keep the core name stable across interview rounds.",
+        `The first ${MIN_FORGE_INTERVIEW_ANSWERS} answered follow-ups are required. Before then, always set ready to false and ask another question.`,
+        "Required questions must be essential rather than generic setup questions.",
+        "Rank unresolved information by its expected impact on the framework, asset selection, core workflow, constraints, and delivery risk. Put the highest-impact unresolved questions first.",
+        `Once at least ${MIN_FORGE_INTERVIEW_ANSWERS} essential answers are recorded, set ready to true as soon as the available context is sufficient. There is no target number beyond that minimum.`,
+        `When more context would materially change the result, set ready to false and return a questions array containing between 1 and ${maxQuestions} useful follow-ups in the same language as the user's requirement.`,
+        "Choose the question count yourself. Prefer 1 or 2; use 3 only when the questions are independently answerable, essential, and useful to ask together. Do not create a large questionnaire.",
         "Clarify target users, must-work workflow, constraints, success criteria, or technical context.",
-        "Do not repeat answered questions. Do not ask for information that is already explicit.",
-        `There can be at most ${MAX_FOLLOW_UPS} answered follow-ups.`,
-        "Return only JSON with keys ready, question, and component.",
-        "When ready is false, component.type is single-select, multi-select, or text.",
+        "Do not repeat answered questions, ask for information that is already explicit, or continue merely to reach a question quota.",
+        "Return only JSON with sessionTitle, ready and, when ready is false, questions. Each questions item contains question and component.",
+        "When ready is true, omit questions.",
+        "Each component.type is single-select, multi-select, or text.",
         "Use single-select for one mutually exclusive answer, multi-select when several choices may apply, and text when presets would hide important nuance.",
-        "Choice components contain 3 to 6 options with short label and optional description, plus allowCustom and optional maxSelections.",
-        "Text components contain a useful placeholder and an empty options array.",
-        "On the first round ready must be false."
+        "Choice components contain 3 to 6 options with short label and optional description, plus allowCustom.",
+        "For each multi-select, decide maxSelections from the question's meaning. Include maxSelections only when there is a real maximum; otherwise omit it so every relevant option may be selected. Never use a fixed default such as 3.",
+        "Text components contain a useful placeholder and an empty options array."
       ].join(" "),
       user: JSON.stringify({
         ...input,
         workspaceSkills: workspaceAssets.map(assetPromptSummary)
-      }, null, 2)
+      }, null, 2),
+      signal,
+      onActivity: reportActivity,
+      observability: { context, attempt },
+      onDelta: (delta) => context.onDelta?.(attempt, delta)
     });
-    const question = readString(payload.question);
-    const component = readFollowUpComponent(payload.component);
-    const ready = input.answers.length > 0 && payload.ready === true;
+    const sessionTitle = readSemanticSessionTitle(payload.sessionTitle);
+    const ready = input.answers.length >= MIN_FORGE_INTERVIEW_ANSWERS && payload.ready === true;
+    const questions = ready
+      ? []
+      : readFollowUpQuestions(payload.questions, maxQuestions);
+    if (!ready && questions.length === 0) {
+      const legacyQuestion = readString(payload.question);
+      const legacyComponent = readFollowUpComponent(payload.component);
+      if (legacyQuestion && legacyComponent) {
+        questions.push({ question: legacyQuestion, component: legacyComponent });
+      }
+    }
 
-    if (!ready && (!question || !component)) {
+    if (!ready && questions.length === 0) {
       throw new Error("AI follow-up did not match the expected shape");
     }
 
     return {
       mode: "llm",
+      sessionTitle,
       ready,
-      question: ready ? undefined : question,
-      component: ready ? undefined : component
+      ...(ready ? {} : { questions })
     };
-  });
+  }, context, FOLLOW_UP_AI_POLICY);
 }
 
 export async function createHarnessTemplate(
   input: HarnessFollowUpRequest,
   workspaceAssets: HarnessWorkspaceAssetSummary[],
-  aiConfiguration?: ForgeAiConfiguration
+  aiConfiguration?: ForgeAiConfiguration,
+  operationContext?: ForgeAiOperationContext
 ): Promise<HarnessTemplateResponse> {
-  const configuration = requireForgeAiConfiguration(aiConfiguration);
-  return withAiRetries(async () => {
+  if (input.answers.length < MIN_FORGE_INTERVIEW_ANSWERS) {
+    throw new Error(
+      `Answer at least ${MIN_FORGE_INTERVIEW_ANSWERS} essential follow-up questions before generating a framework.`
+    );
+  }
+  const context = resolveForgeAiOperationContext(
+    "generate",
+    aiConfiguration?.model,
+    operationContext
+  );
+  const configuration = requireForgeAiConfiguration(aiConfiguration, context);
+  return runForgeAiOperation(async ({ signal, attempt, reportActivity }) => {
     const payload = await requestJson({
       ...configuration,
-      maxTokens: 2400,
+      maxTokens: 1_600,
       system: [
         "You turn a project discovery interview into a structured project harness brief.",
         "Stay faithful to the user. Put unknown details in constraints or stackNotes instead of inventing facts.",
@@ -154,17 +357,23 @@ export async function createHarnessTemplate(
             verification: ["verification evidence"]
           }
         }),
-        "Select at most 4 Skills. Use only exact assetId values from workspaceSkills.",
+        "availableSkills contains selection metadata only. Select at most 4 Skills and use only exact assetId values from that list.",
         "Select a Skill only when its description materially supports the requirement or delivery workflow.",
+        "Never reproduce, summarize, rewrite, or generate Skill instructions or Skill files. Return only each selected assetId and a short reason; Harhub copies the original stored Skill package later.",
+        "Keep the blueprint concise: use 1 to 4 items for each list and 3 to 6 workflow steps. Do not add prose outside the JSON fields.",
         "Use the same language as the user's requirement."
       ].join("\n"),
       user: JSON.stringify({
         ...input,
-        workspaceSkills: workspaceAssets.map(assetPromptSummary)
-      }, null, 2)
+        availableSkills: workspaceAssets.map(generationAssetPromptSummary)
+      }, null, 2),
+      signal,
+      onActivity: reportActivity,
+      observability: { context, attempt },
+      onDelta: (delta) => context.onDelta?.(attempt, delta)
     });
     return buildHarnessTemplate(readTemplateSpec(payload, workspaceAssets), workspaceAssets);
-  });
+  }, context, GENERATE_AI_POLICY);
 }
 
 export function buildHarnessTemplate(
@@ -242,6 +451,14 @@ function assetPromptSummary(asset: HarnessWorkspaceAssetSummary) {
   };
 }
 
+function generationAssetPromptSummary(asset: HarnessWorkspaceAssetSummary) {
+  return {
+    id: asset.id,
+    name: asset.name,
+    description: asset.description
+  };
+}
+
 export function workspaceAssetSummaries(assets: AssetRecord[]): HarnessWorkspaceAssetSummary[] {
   return assets
     .filter((asset) => asset.kind === "skill" && asset.health !== "error" && Boolean(asset.storage))
@@ -261,7 +478,7 @@ export function workspaceAssetSummaries(assets: AssetRecord[]): HarnessWorkspace
 export async function createHarnessTemplateArchive(
   catalog: AssetCatalog,
   input: {
-    slug: string;
+    name: string;
     files: HarnessTemplateFile[];
     selectedAssetIds: string[];
   }
@@ -292,7 +509,7 @@ export async function createHarnessTemplateArchive(
 
   return {
     buffer: await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }),
-    fileName: `${slugify(input.slug) || "project-harness"}-harness.zip`
+    fileName: `${safeArchiveName(input.name)}-harness.zip`
   };
 }
 
@@ -340,7 +557,11 @@ async function requestJson({
   model,
   maxTokens,
   system,
-  user
+  user,
+  signal,
+  onActivity,
+  observability,
+  onDelta
 }: {
   apiKey: string;
   baseUrl: string;
@@ -348,7 +569,12 @@ async function requestJson({
   maxTokens: number;
   system: string;
   user: string;
+  signal: AbortSignal;
+  onActivity?: () => void;
+  observability?: { context: ForgeAiOperationContext; attempt: number };
+  onDelta?: (delta: string) => void;
 }): Promise<Record<string, unknown>> {
+  const startedAt = Date.now();
   const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/chat/completions`, {
     method: "POST",
     headers: {
@@ -358,65 +584,479 @@ async function requestJson({
     body: JSON.stringify({
       model,
       max_completion_tokens: maxTokens,
+      stream: true,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: system },
         { role: "user", content: user }
       ]
     }),
-    signal: AbortSignal.timeout(30_000)
+    signal
   });
 
   if (!response.ok) {
     const detail = await readProviderError(response);
-    throw new Error(
-      `AI provider returned HTTP ${response.status}${detail ? `: ${detail}` : ""}`
+    const classification = classifyProviderStatus(response.status);
+    throw new ForgeAiRequestError(
+      `AI provider returned HTTP ${response.status}${detail ? `: ${detail}` : ""}`,
+      {
+        ...classification,
+        providerStatus: response.status,
+        retryAfterMs: readRetryAfterMs(response.headers.get("retry-after"))
+      }
     );
   }
-  const body = await response.json() as unknown;
-  const content = extractMessageContent(body);
-  if (!content) throw new Error("AI response did not contain JSON text");
-  const parsed = JSON.parse(stripCodeFence(content)) as unknown;
-  if (!isRecord(parsed)) throw new Error("AI response was not a JSON object");
+  onActivity?.();
+  if (observability) {
+    logForgeAiEvent(
+      observability.context,
+      "info",
+      "forge.ai.response.started",
+      {
+        attempt: observability.attempt,
+        durationMs: Math.max(0, Date.now() - startedAt)
+      }
+    );
+  }
+  const content = await readStreamingResponseContent(response, onDelta, onActivity);
+  if (observability) {
+    logForgeAiEvent(
+      observability.context,
+      "info",
+      "forge.ai.response.completed",
+      {
+        attempt: observability.attempt,
+        durationMs: Math.max(0, Date.now() - startedAt),
+        outputChars: content.length
+      }
+    );
+  }
+  if (!content) {
+    throw new ForgeAiRequestError("AI response did not contain JSON text.", {
+      code: "invalid_response",
+      retryable: true
+    });
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripCodeFence(content)) as unknown;
+  } catch {
+    throw new ForgeAiRequestError("AI response JSON could not be parsed.", {
+      code: "invalid_response",
+      retryable: true
+    });
+  }
+  if (!isRecord(parsed)) {
+    throw new ForgeAiRequestError("AI response was not a JSON object.", {
+      code: "invalid_response",
+      retryable: true
+    });
+  }
   return parsed;
 }
 
 function requireForgeAiConfiguration(
-  configuration: ForgeAiConfiguration | undefined
+  configuration: ForgeAiConfiguration | undefined,
+  context: ForgeAiOperationContext
 ): ForgeAiConfiguration {
   if (!configuration) {
-    throw new Error(
-      "Forge AI is not configured for this workspace. Configure and test it in Workspace Settings, then retry."
+    const error = new ForgeAiRequestError(
+      "Forge AI is not configured for this workspace. Configure and test it in Workspace Settings, then retry.",
+      { code: "configuration", retryable: false }
     );
+    const operationError = operationFailureFromRequestError(error, context, 0, 0);
+    logForgeAiEvent(context, "error", "forge.ai.operation.failed", {
+      durationMs: 0,
+      code: error.code,
+      retryable: error.retryable
+    });
+    throw operationError;
   }
   return configuration;
 }
 
-async function withAiRetries<T>(request: () => Promise<T>): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= AI_REQUEST_ATTEMPTS; attempt += 1) {
+export async function runForgeAiOperation<T>(
+  request: (context: ForgeAiAttemptContext) => Promise<T>,
+  operation: ForgeAiOperationContext,
+  policy: ForgeAiOperationPolicy
+): Promise<T> {
+  const startedAt = Date.now();
+  const deadlineAt = startedAt + policy.totalTimeoutMs;
+  const minimumAttemptTimeoutMs = Math.max(1, policy.minimumAttemptTimeoutMs ?? 1);
+  let attempts = 0;
+  let lastError: ForgeAiRequestError | undefined;
+
+  for (let attempt = 1; attempt <= policy.maxAttempts; attempt += 1) {
+    const elapsedMs = Math.max(0, Date.now() - startedAt);
+    const remainingMs = policy.totalTimeoutMs - elapsedMs;
+    if (remainingMs <= 0) break;
+    if (attempt > 1 && remainingMs < minimumAttemptTimeoutMs) break;
+    const timeoutMs = Math.max(1, Math.min(policy.attemptTimeoutMs, remainingMs));
+    attempts = attempt;
     try {
-      return await request();
-    } catch (error) {
-      lastError = error;
-      if (attempt < AI_REQUEST_ATTEMPTS) {
-        await new Promise((resolve) => setTimeout(resolve, AI_RETRY_DELAYS_MS[attempt - 1]));
+      await operation.onAttempt?.(attempt, policy.maxAttempts);
+    } catch {
+      // A disconnected observer must not cancel the server-side operation.
+    }
+    logForgeAiEvent(operation, "info", "forge.ai.attempt.started", {
+      attempt,
+      maxAttempts: policy.maxAttempts,
+      timeoutMs
+    });
+
+    try {
+      const watchdog = createForgeAiActivityWatchdog(
+        policy.attemptTimeoutMs,
+        deadlineAt
+      );
+      let result: T;
+      try {
+        result = await request({
+          attempt,
+          timeoutMs,
+          signal: watchdog.signal,
+          reportActivity: watchdog.reportActivity
+        });
+      } finally {
+        watchdog.dispose();
       }
+      logForgeAiEvent(operation, "info", "forge.ai.operation.succeeded", {
+        attempt,
+        maxAttempts: policy.maxAttempts,
+        durationMs: Math.max(0, Date.now() - startedAt)
+      });
+      return result;
+    } catch (caught) {
+      lastError = normalizeForgeAiRequestError(caught);
+      logForgeAiEvent(operation, "warn", "forge.ai.attempt.failed", {
+        attempt,
+        maxAttempts: policy.maxAttempts,
+        durationMs: Math.max(0, Date.now() - startedAt),
+        code: lastError.code,
+        retryable: lastError.retryable,
+        providerStatus: lastError.providerStatus
+      });
+      if (!lastError.retryable || attempt >= policy.maxAttempts) break;
+
+      const configuredDelay = policy.retryDelaysMs[attempt - 1] ?? 0;
+      const delayMs = Math.max(configuredDelay, lastError.retryAfterMs ?? 0);
+      const remainingAfterAttempt = policy.totalTimeoutMs - Math.max(0, Date.now() - startedAt);
+      if (delayMs + minimumAttemptTimeoutMs > remainingAfterAttempt) break;
+      logForgeAiEvent(operation, "info", "forge.ai.retry.scheduled", {
+        attempt,
+        maxAttempts: policy.maxAttempts,
+        delayMs,
+        code: lastError.code,
+        retryable: true
+      });
+      if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
-  throw new Error(
-    `AI request failed after ${AI_REQUEST_ATTEMPTS} attempts: ${aiErrorMessage(lastError)}`
+
+  const finalError = lastError ?? new ForgeAiRequestError(
+    "AI operation exceeded its total time limit.",
+    { code: "timeout", retryable: true }
+  );
+  const durationMs = Math.max(0, Date.now() - startedAt);
+  const operationError = operationFailureFromRequestError(
+    finalError,
+    operation,
+    attempts,
+    durationMs
+  );
+  logForgeAiEvent(operation, "error", "forge.ai.operation.failed", {
+    maxAttempts: policy.maxAttempts,
+    durationMs,
+    code: finalError.code,
+    retryable: finalError.retryable,
+    providerStatus: finalError.providerStatus
+  });
+  throw operationError;
+}
+
+function createForgeAiActivityWatchdog(
+  inactivityTimeoutMs: number,
+  deadlineAt: number
+): {
+  signal: AbortSignal;
+  reportActivity: () => void;
+  dispose: () => void;
+} {
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  const dispose = () => {
+    if (timeout) clearTimeout(timeout);
+    timeout = undefined;
+  };
+  const reportActivity = () => {
+    if (controller.signal.aborted) return;
+    dispose();
+    const remainingMs = deadlineAt - Date.now();
+    if (remainingMs <= 0) {
+      controller.abort(new DOMException("Forge AI exceeded its total deadline.", "TimeoutError"));
+      return;
+    }
+    timeout = setTimeout(() => {
+      controller.abort(new DOMException("Forge AI became inactive.", "TimeoutError"));
+    }, Math.max(1, Math.min(inactivityTimeoutMs, remainingMs)));
+  };
+
+  reportActivity();
+  return {
+    signal: controller.signal,
+    reportActivity,
+    dispose
+  };
+}
+
+function resolveForgeAiOperationContext(
+  operation: ForgeAiOperation,
+  model: string | undefined,
+  context: ForgeAiOperationContext | undefined
+): ForgeAiOperationContext {
+  return {
+    operationId: context?.operationId ?? randomUUID(),
+    operation,
+    workspaceId: context?.workspaceId,
+    sessionId: context?.sessionId,
+    model: context?.model ?? model,
+    logger: context?.logger,
+    onAttempt: context?.onAttempt,
+    onDelta: context?.onDelta
+  };
+}
+
+function normalizeForgeAiRequestError(error: unknown): ForgeAiRequestError {
+  if (error instanceof ForgeAiRequestError) return error;
+  if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+    return new ForgeAiRequestError("The AI provider did not respond before the request timed out.", {
+      code: "timeout",
+      retryable: true
+    });
+  }
+  if (error instanceof TypeError) {
+    return new ForgeAiRequestError(
+      "Could not connect to the AI provider. Check the Base URL and server network access.",
+      { code: "network", retryable: true }
+    );
+  }
+  return new ForgeAiRequestError(
+    error instanceof Error ? error.message : "AI provider returned an unusable response.",
+    { code: "invalid_response", retryable: true }
   );
 }
 
-function aiErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.name === "TimeoutError") {
-    return "The AI provider did not respond before the request timed out.";
+function operationFailureFromRequestError(
+  error: ForgeAiRequestError,
+  context: ForgeAiOperationContext,
+  attempts: number,
+  durationMs: number
+): ForgeAiOperationError {
+  return new ForgeAiOperationError({
+    operationId: context.operationId,
+    operation: context.operation,
+    code: error.code,
+    message: forgeAiFailureMessage(error, attempts),
+    retryable: error.retryable,
+    attempts,
+    durationMs,
+    occurredAt: new Date().toISOString()
+  });
+}
+
+function forgeAiFailureMessage(error: ForgeAiRequestError, attempts: number): string {
+  const attemptText = attempts === 1 ? "1 attempt" : `${attempts} attempts`;
+  if (error.code === "configuration") return error.message;
+  if (error.code === "timeout") {
+    return `The AI provider timed out after ${attemptText}. Retry the operation or review the provider settings.`;
   }
-  if (error instanceof TypeError && error.message === "fetch failed") {
-    return "Could not connect to the AI provider. Check the Base URL and server network access.";
+  if (error.code === "network") {
+    return `Could not reach the AI provider after ${attemptText}. Check provider availability and network access.`;
   }
-  return error instanceof Error ? error.message : String(error);
+  if (error.code === "rate_limited") {
+    return `The AI provider is rate limiting Forge after ${attemptText}. Wait briefly, then retry.`;
+  }
+  if (error.code === "provider_auth") {
+    return "The AI provider rejected the workspace credentials. Check the API key and provider permissions.";
+  }
+  if (error.code === "provider_rejected") {
+    return `The AI provider rejected this request: ${error.message}`;
+  }
+  if (error.code === "provider_unavailable") {
+    return `The AI provider remained unavailable after ${attemptText}. Retry when the provider recovers.`;
+  }
+  if (error.code === "invalid_response") {
+    return `The AI provider returned an unusable response after ${attemptText}. Retry or try another model.`;
+  }
+  return `Forge AI failed after ${attemptText}: ${error.message}`;
+}
+
+function classifyProviderStatus(status: number): {
+  code: ForgeAiFailureCode;
+  retryable: boolean;
+} {
+  if (status === 401 || status === 403) return { code: "provider_auth", retryable: false };
+  if (status === 429) return { code: "rate_limited", retryable: true };
+  if (status === 408 || status === 425 || status >= 500) {
+    return { code: "provider_unavailable", retryable: true };
+  }
+  return { code: "provider_rejected", retryable: false };
+}
+
+function readRetryAfterMs(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1_000);
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) return undefined;
+  return Math.max(0, timestamp - Date.now());
+}
+
+function logForgeAiEvent(
+  context: ForgeAiOperationContext,
+  level: ForgeAiLogLevel,
+  event: ForgeAiLogEntry["event"],
+  fields: Omit<
+    ForgeAiLogEntry,
+    "timestamp" | "event" | "operationId" | "operation" | "workspaceId" | "sessionId" | "model"
+  >
+): void {
+  if (!context.logger) return;
+  try {
+    context.logger(level, {
+      timestamp: new Date().toISOString(),
+      event,
+      operationId: context.operationId,
+      operation: context.operation,
+      workspaceId: context.workspaceId,
+      sessionId: context.sessionId,
+      model: context.model,
+      ...fields
+    });
+  } catch {
+    // Observability must never break the user operation.
+  }
+}
+
+async function readStreamingResponseContent(
+  response: Response,
+  onDelta?: (delta: string) => void,
+  onActivity?: () => void
+): Promise<string> {
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  if (contentType.includes("application/json")) {
+    onActivity?.();
+    const body = await response.json().catch(() => undefined) as unknown;
+    onActivity?.();
+    const content = extractMessageContent(body);
+    if (content) emitForgeAiDelta(onDelta, content);
+    return content ?? "";
+  }
+  if (!response.body) {
+    throw new ForgeAiRequestError("AI provider did not return a response stream.", {
+      code: "invalid_response",
+      retryable: true
+    });
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  let dataLines: string[] = [];
+  let content = "";
+  let completeJson = false;
+
+  const dispatchEvent = () => {
+    if (dataLines.length === 0) return;
+    const data = dataLines.join("\n").trim();
+    dataLines = [];
+    if (!data || data === "[DONE]") return;
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(data) as unknown;
+    } catch {
+      throw new ForgeAiRequestError("AI provider emitted an invalid stream event.", {
+        code: "invalid_response",
+        retryable: true
+      });
+    }
+    if (isRecord(payload) && payload.error) {
+      const providerError = isRecord(payload.error) ? payload.error : payload;
+      throw new ForgeAiRequestError(
+        readString(providerError.message) ?? "AI provider reported a streaming error.",
+        { code: "provider_unavailable", retryable: true }
+      );
+    }
+    const delta = extractStreamDeltaContent(payload);
+    if (!delta) return;
+    content += delta;
+    completeJson = completeJson || isCompleteJsonObject(content);
+    emitForgeAiDelta(onDelta, delta);
+  };
+
+  const processLines = (flush = false) => {
+    const lines = pending.split("\n");
+    pending = flush ? "" : (lines.pop() ?? "");
+    for (const rawLine of lines) {
+      const line = rawLine.replace(/\r$/, "");
+      if (!line) {
+        dispatchEvent();
+      } else if (line.startsWith("data:")) {
+        dataLines.push(line.slice(5).trimStart());
+      }
+    }
+    if (flush) dispatchEvent();
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value.byteLength > 0) onActivity?.();
+    pending += decoder.decode(value, { stream: true });
+    processLines();
+    if (completeJson) {
+      await reader.cancel().catch(() => undefined);
+      return content;
+    }
+  }
+  pending += decoder.decode();
+  if (pending) pending += "\n";
+  processLines(true);
+  return content;
+}
+
+function isCompleteJsonObject(value: string): boolean {
+  const normalized = stripCodeFence(value);
+  if (!normalized.startsWith("{") || !normalized.endsWith("}")) return false;
+  try {
+    return isRecord(JSON.parse(normalized) as unknown);
+  } catch {
+    return false;
+  }
+}
+
+function extractStreamDeltaContent(value: unknown): string | undefined {
+  if (!isRecord(value) || !Array.isArray(value.choices)) return undefined;
+  const choice = value.choices[0];
+  if (!isRecord(choice)) return undefined;
+  if (isRecord(choice.delta) && typeof choice.delta.content === "string") {
+    return choice.delta.content || undefined;
+  }
+  if (isRecord(choice.message) && typeof choice.message.content === "string") {
+    return choice.message.content || undefined;
+  }
+  return undefined;
+}
+
+function emitForgeAiDelta(onDelta: ((delta: string) => void) | undefined, delta: string): void {
+  if (!onDelta) return;
+  try {
+    onDelta(delta);
+  } catch {
+    // A disconnected observer must not cancel the server-side operation.
+  }
 }
 
 async function readProviderError(response: Response): Promise<string | undefined> {
@@ -439,7 +1079,8 @@ function extractMessageContent(value: unknown): string | undefined {
   if (!isRecord(value) || !Array.isArray(value.choices)) return undefined;
   const choice = value.choices[0];
   if (!isRecord(choice) || !isRecord(choice.message)) return undefined;
-  return readString(choice.message.content) ?? undefined;
+  const content = choice.message.content;
+  return typeof content === "string" && content.trim() ? content.slice(0, 200_000) : undefined;
 }
 
 function stripCodeFence(value: string): string {
@@ -490,10 +1131,35 @@ function readFollowUpComponent(value: unknown): HarnessFollowUpComponent | undef
   };
 }
 
+function readFollowUpQuestions(
+  value: unknown,
+  maxQuestions: number
+): HarnessFollowUpQuestion[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const questions: HarnessFollowUpQuestion[] = [];
+  for (const item of value) {
+    if (questions.length >= maxQuestions) break;
+    if (!isRecord(item)) continue;
+    const question = readString(item.question);
+    const component = readFollowUpComponent(item.component);
+    if (!question || !component || seen.has(question)) continue;
+    seen.add(question);
+    questions.push({ question, component });
+  }
+  return questions;
+}
+
 function readRequiredAiString(value: unknown, label: string): string {
   const result = readString(value);
   if (!result) throw new Error(`AI template ${label} is required`);
   return result;
+}
+
+function readSemanticSessionTitle(value: unknown): string {
+  const title = readString(value)?.replace(/\s+/g, " ").trim();
+  if (!title) throw new Error("AI follow-up sessionTitle is required");
+  return title.length <= 72 ? title : `${title.slice(0, 69).trimEnd()}…`;
 }
 
 function readAiStringList(value: unknown, label: string): string[] {
@@ -523,6 +1189,17 @@ function slugify(value: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 64);
+}
+
+function safeArchiveName(value: string): string {
+  const normalized = value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[.\-_]+|[.\-_]+$/g, "");
+  return Array.from(normalized).slice(0, 80).join("") || "project-harness";
 }
 
 function validateFrameworkFiles(files: HarnessTemplateFile[]): void {

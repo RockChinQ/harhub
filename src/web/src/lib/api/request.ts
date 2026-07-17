@@ -2,6 +2,18 @@ export const JSON_HEADERS = {
   "Content-Type": "application/json"
 };
 
+export class ApiRequestError extends Error {
+  readonly status: number;
+  readonly data: unknown;
+
+  constructor(message: string, status: number, data: unknown) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+    this.data = data;
+  }
+}
+
 export async function request<T>(
   url: string,
   init: RequestInit & { token?: string } = {}
@@ -27,7 +39,7 @@ export async function request<T>(
       typeof data?.error === "string"
         ? data.error
         : `Request failed with ${response.status}`;
-    throw new Error(message);
+    throw new ApiRequestError(message, response.status, data);
   }
 
   return data as T;

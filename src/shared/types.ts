@@ -310,6 +310,11 @@ export interface HarnessFollowUpComponent {
   maxSelections?: number;
 }
 
+export interface HarnessFollowUpQuestion {
+  question: string;
+  component: HarnessFollowUpComponent;
+}
+
 export interface HarnessFollowUpRequest {
   requirement: string;
   answers: HarnessInterviewAnswer[];
@@ -318,7 +323,11 @@ export interface HarnessFollowUpRequest {
 
 export interface HarnessFollowUpResponse {
   mode: HarnessBuilderMode;
+  /** AI-generated semantic name for the session. Optional for legacy persisted sessions. */
+  sessionTitle?: string;
   ready: boolean;
+  questions?: HarnessFollowUpQuestion[];
+  /** Legacy single-question fields retained for persisted sessions created before question batches. */
   question?: string;
   component?: HarnessFollowUpComponent;
 }
@@ -364,7 +373,96 @@ export interface HarnessTemplateResponse {
   files: HarnessTemplateFile[];
 }
 
-export type ForgeSessionStatus = "interviewing" | "complete";
+export type ForgeAiOperation = "connection-test" | "follow-up" | "generate";
+
+export type ForgeAiFailureCode =
+  | "configuration"
+  | "timeout"
+  | "network"
+  | "rate_limited"
+  | "provider_auth"
+  | "provider_rejected"
+  | "provider_unavailable"
+  | "invalid_response"
+  | "unknown";
+
+export interface ForgeAiOperationFailure {
+  operationId: string;
+  operation: ForgeAiOperation;
+  code: ForgeAiFailureCode;
+  message: string;
+  retryable: boolean;
+  attempts: number;
+  durationMs: number;
+  occurredAt: string;
+}
+
+export interface ForgeSessionOperation {
+  operationId: string;
+  operation: Exclude<ForgeAiOperation, "connection-test">;
+  startedAt: string;
+  attempt: number;
+}
+
+export type ForgeGenerationProgressStep = "context" | "assets" | "compose" | "save";
+export type ForgeGenerationProgressStatus = "active" | "complete";
+
+export type ForgeOperationStreamEvent =
+  | {
+      type: "operation";
+      operationId: string;
+      operation: Exclude<ForgeAiOperation, "connection-test">;
+    }
+  | {
+      type: "attempt";
+      operationId: string;
+      operation: Exclude<ForgeAiOperation, "connection-test">;
+      attempt: number;
+      maxAttempts: number;
+    }
+  | {
+      type: "session";
+      operationId: string;
+      operation: Exclude<ForgeAiOperation, "connection-test">;
+      session: ForgeSessionDetail;
+    }
+  | {
+      type: "progress";
+      operationId: string;
+      operation: "generate";
+      step: ForgeGenerationProgressStep;
+      status: ForgeGenerationProgressStatus;
+    }
+  | {
+      type: "delta";
+      operationId: string;
+      operation: Exclude<ForgeAiOperation, "connection-test">;
+      attempt: number;
+      delta: string;
+    }
+  | {
+      type: "complete";
+      operationId: string;
+      operation: "follow-up";
+      followUp: HarnessFollowUpResponse;
+      session: ForgeSessionDetail;
+    }
+  | {
+      type: "complete";
+      operationId: string;
+      operation: "generate";
+      template: HarnessTemplateResponse;
+      session: ForgeSessionDetail;
+    }
+  | {
+      type: "error";
+      operationId: string;
+      operation: Exclude<ForgeAiOperation, "connection-test">;
+      failure: ForgeAiOperationFailure;
+      session?: ForgeSessionDetail;
+    };
+
+export type ForgeSessionStatus = "interviewing" | "working" | "failed" | "complete";
 
 export interface ForgeSessionSummary {
   id: string;
@@ -381,6 +479,8 @@ export interface ForgeSessionDetail extends ForgeSessionSummary {
   answers: HarnessInterviewAnswer[];
   followUp?: HarnessFollowUpResponse;
   template?: HarnessTemplateResponse;
+  failure?: ForgeAiOperationFailure;
+  activeOperation?: ForgeSessionOperation;
 }
 
 export interface ForgeSessionListResponse {

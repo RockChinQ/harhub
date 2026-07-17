@@ -18,7 +18,7 @@ export function parseMarkdown(content: string): ParsedMarkdown {
   const headings = Array.from(body.matchAll(/^#{1,6}\s+(.+)$/gm)).map((match) =>
     match[1]?.trim() ?? ""
   );
-  const title = headings[0];
+  const title = body.match(/^#\s+(.+)$/m)?.[1]?.trim();
   const description =
     stringValue(frontmatter.description) ?? firstParagraphAfterTitle(body);
   const links = Array.from(body.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)).map(

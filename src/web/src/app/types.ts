@@ -13,5 +13,6 @@ export type AppShellView = Exclude<View, "landing" | "device" | "share">;
 export interface AppRoute {
   view: View;
   assetQuery?: string;
+  forgeSessionId?: string;
   shareToken?: string;
 }

@@ -125,6 +125,17 @@ export async function getWorkspaceAssetPreview(
   const query = params.toString();
   return request<AssetPreview>(
     `/api/workspaces/${workspaceId}/assets/${encodeURIComponent(assetId)}/preview${query ? `?${query}` : ""}`,
-    { token }
+    { token, cache: "no-store" }
+  );
+}
+
+export async function getWorkspaceAssetTree(
+  token: string,
+  workspaceId: string,
+  assetId: string
+): Promise<AssetPreview> {
+  return request<AssetPreview>(
+    `/api/workspaces/${workspaceId}/assets/${encodeURIComponent(assetId)}/preview?treeOnly=true`,
+    { token, cache: "no-store" }
   );
 }

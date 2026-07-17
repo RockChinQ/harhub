@@ -34,6 +34,18 @@ test("discovers multiple Skills at arbitrary nested paths", async () => {
   );
 });
 
+test("does not use a section heading as the Skill display name", async () => {
+  const zip = new JSZip();
+  zip.file(
+    "product-discovery/SKILL.md",
+    `---\nname: product-discovery\ndescription: Discover product opportunities.\n---\n\n## Purpose\n\nUnderstand the customer problem.\n`
+  );
+
+  const candidates = await discoverSkillsInArchive(await zip.generateAsync({ type: "nodebuffer" }));
+
+  assert.equal(candidates[0]?.displayName, "Product Discovery");
+});
+
 test("keeps a nested Skill out of its parent Skill file tree", async () => {
   const zip = new JSZip();
   zip.file("SKILL.md", validSkillMarkdown("parent"));

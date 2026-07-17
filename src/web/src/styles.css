@@ -2,6 +2,91 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .markdown-preview {
+    @apply mx-auto w-full max-w-4xl break-words text-sm leading-7 text-zinc-900;
+  }
+
+  .markdown-preview h1 {
+    @apply mb-5 mt-1 border-b pb-3 text-2xl font-semibold leading-tight tracking-tight;
+  }
+
+  .markdown-preview h2 {
+    @apply mb-3 mt-8 border-b pb-2 text-xl font-semibold leading-tight tracking-tight;
+  }
+
+  .markdown-preview h3 {
+    @apply mb-2 mt-6 text-lg font-semibold leading-tight;
+  }
+
+  .markdown-preview h4,
+  .markdown-preview h5,
+  .markdown-preview h6 {
+    @apply mb-2 mt-5 font-semibold leading-tight;
+  }
+
+  .markdown-preview p {
+    @apply my-3;
+  }
+
+  .markdown-preview ul {
+    @apply my-3 list-disc space-y-1 pl-6;
+  }
+
+  .markdown-preview ol {
+    @apply my-3 list-decimal space-y-1 pl-6;
+  }
+
+  .markdown-preview li > ul,
+  .markdown-preview li > ol {
+    @apply my-1;
+  }
+
+  .markdown-preview blockquote {
+    @apply my-4 border-l-4 border-zinc-300 pl-4 text-zinc-600;
+  }
+
+  .markdown-preview a {
+    @apply font-medium text-blue-700 underline underline-offset-4 hover:text-blue-900;
+  }
+
+  .markdown-preview :not(pre) > code {
+    @apply rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[0.9em] text-zinc-900;
+  }
+
+  .markdown-preview pre {
+    @apply my-4 overflow-auto rounded-lg border bg-zinc-50 p-4 text-xs leading-5 text-zinc-950;
+  }
+
+  .markdown-preview pre code {
+    @apply bg-transparent p-0 font-mono text-inherit;
+  }
+
+  .markdown-preview table {
+    @apply my-4 w-full border-collapse text-left text-sm;
+  }
+
+  .markdown-preview th {
+    @apply border bg-zinc-50 px-3 py-2 font-semibold;
+  }
+
+  .markdown-preview td {
+    @apply border px-3 py-2 align-top;
+  }
+
+  .markdown-preview hr {
+    @apply my-7 border-zinc-200;
+  }
+
+  .markdown-preview img {
+    @apply my-4 max-w-full rounded-md border;
+  }
+
+  .markdown-preview input[type="checkbox"] {
+    @apply mr-2 align-middle;
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

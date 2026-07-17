@@ -1,11 +1,10 @@
 import type {
+  ForgeOperationStreamEvent,
   ForgeSessionDetail,
   ForgeSessionListResponse,
-  HarnessFollowUpRequest,
-  HarnessFollowUpResponse,
-  HarnessTemplateResponse
+  HarnessInterviewAnswer
 } from "../../../../shared/types";
-import { JSON_HEADERS, request } from "./request";
+import { ApiRequestError, JSON_HEADERS, request } from "./request";
 
 export function listForgeSessions(
   token: string,
@@ -53,39 +52,75 @@ export function deleteForgeSession(
   );
 }
 
-export function getForgeFollowUp(
+export async function streamForgeOperation(
   token: string,
   workspaceId: string,
-  input: HarnessFollowUpRequest
-): Promise<HarnessFollowUpResponse> {
-  return request(`/api/workspaces/${encodeURIComponent(workspaceId)}/forge/follow-up`, {
-    method: "POST",
-    headers: JSON_HEADERS,
-    body: JSON.stringify(input),
-    cache: "no-store",
-    token
-  });
-}
+  sessionId: string,
+  operation: "follow-up" | "generate",
+  answers: HarnessInterviewAnswer[] | undefined,
+  onEvent: (event: ForgeOperationStreamEvent) => void
+): Promise<void> {
+  const response = await fetch(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/forge/sessions/${encodeURIComponent(sessionId)}/${operation}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...JSON_HEADERS
+      },
+      body: JSON.stringify(answers?.length ? { answers } : {}),
+      cache: "no-store"
+    }
+  );
+  if (!response.ok) {
+    const data = await response.json().catch(() => undefined);
+    throw new ApiRequestError(
+      typeof data?.error === "string"
+        ? data.error
+        : `Forge operation failed with ${response.status}`,
+      response.status,
+      data
+    );
+  }
+  if (!response.body) throw new Error("Forge operation did not return a response stream.");
 
-export function generateForgeTemplate(
-  token: string,
-  workspaceId: string,
-  input: HarnessFollowUpRequest
-): Promise<HarnessTemplateResponse> {
-  return request(`/api/workspaces/${encodeURIComponent(workspaceId)}/forge/generate`, {
-    method: "POST",
-    headers: JSON_HEADERS,
-    body: JSON.stringify(input),
-    cache: "no-store",
-    token
-  });
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  let terminal = false;
+
+  const processLines = (flush = false) => {
+    const lines = pending.split("\n");
+    pending = flush ? "" : (lines.pop() ?? "");
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      const event = JSON.parse(line) as ForgeOperationStreamEvent;
+      onEvent(event);
+      if (event.type === "complete" || event.type === "error") terminal = true;
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    pending += decoder.decode(value, { stream: true });
+    if (pending.length > 1_000_000) {
+      throw new Error("Forge operation returned an oversized stream event.");
+    }
+    processLines();
+  }
+  pending += decoder.decode();
+  if (pending) pending += "\n";
+  processLines(true);
+  if (!terminal) throw new Error("Forge operation stream ended before a final result was saved.");
 }
 
 export async function downloadForgeTemplate(
   token: string,
   workspaceId: string,
-  template: HarnessTemplateResponse
-): Promise<Blob> {
+  sessionId: string
+): Promise<{ blob: Blob; fileName: string }> {
   const response = await fetch(
     `/api/workspaces/${encodeURIComponent(workspaceId)}/forge/archive`,
     {
@@ -95,11 +130,7 @@ export async function downloadForgeTemplate(
         ...JSON_HEADERS
       },
       cache: "no-store",
-      body: JSON.stringify({
-        slug: template.profile.slug,
-        files: template.files,
-        selectedAssetIds: template.selectedAssets.map((asset) => asset.id)
-      })
+      body: JSON.stringify({ sessionId })
     }
   );
 
@@ -110,5 +141,25 @@ export async function downloadForgeTemplate(
     );
   }
 
-  return response.blob();
+  return {
+    blob: await response.blob(),
+    fileName: forgeArchiveFileName(response.headers.get("content-disposition"))
+  };
+}
+
+export function forgeArchiveFileName(contentDisposition: string | null): string {
+  const encoded = contentDisposition?.match(/filename\*\s*=\s*UTF-8''([^;]+)/i)?.[1];
+  if (encoded) {
+    try {
+      return safeDownloadName(decodeURIComponent(encoded));
+    } catch {
+      // Use the basic filename when an intermediary returns malformed encoding.
+    }
+  }
+  const basic = contentDisposition?.match(/filename\s*=\s*"?([^";]+)"?/i)?.[1];
+  return safeDownloadName(basic ?? "project-harness.zip");
+}
+
+function safeDownloadName(value: string): string {
+  return value.split(/[\\/]/).pop()?.trim() || "project-harness.zip";
 }

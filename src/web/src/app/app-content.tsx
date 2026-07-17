@@ -15,6 +15,7 @@ import type { AppRoute, AppShellView } from "./types";
 export function AppContent({
   error,
   view,
+  forgeSessionId,
   activeWorkspace,
   token,
   assets,
@@ -36,6 +37,7 @@ export function AppContent({
 }: {
   error?: string;
   view: AppShellView;
+  forgeSessionId?: string;
   activeWorkspace?: WorkspaceRecord;
   token: string;
   assets: AssetRecord[];
@@ -94,6 +96,11 @@ export function AppContent({
             token={token}
             workspace={activeWorkspace}
             assets={assets}
+            routedSessionId={forgeSessionId}
+            onNavigateSession={(sessionId) => onNavigate({
+              view: "forge",
+              ...(sessionId ? { forgeSessionId: sessionId } : {})
+            })}
             onOpenWorkspaceSettings={() => onNavigate({ view: "workspace" })}
           />
         ) : null}
