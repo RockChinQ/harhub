@@ -30,6 +30,7 @@ import type {
   ForgeSessionListResponse,
   ForgeSessionSummary,
   HarnessFollowUpComponent,
+  HarnessFollowUpQuestion,
   HarnessFollowUpResponse,
   HarnessInterviewAnswer,
   HarnessTemplateResponse,
@@ -89,6 +90,11 @@ type GenerationProgressState = Record<
   ForgeGenerationProgressStatus | "pending"
 >;
 
+interface FollowUpAnswerDraft {
+  selectedOptions: string[];
+  customAnswer: string;
+}
+
 const GENERATION_STEPS: Array<{
   id: ForgeGenerationProgressStep;
   title: string;
@@ -138,8 +144,7 @@ export function ForgeView({
   const [requirement, setRequirement] = useState("");
   const [answers, setAnswers] = useState<HarnessInterviewAnswer[]>([]);
   const [followUp, setFollowUp] = useState<HarnessFollowUpResponse>();
-  const [answer, setAnswer] = useState("");
-  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
+  const [answerDrafts, setAnswerDrafts] = useState<FollowUpAnswerDraft[]>([]);
   const [template, setTemplate] = useState<HarnessTemplateResponse>();
   const [selectedPath, setSelectedPath] = useState<string>();
   const [workingLabel, setWorkingLabel] = useState("");
@@ -176,6 +181,7 @@ export function ForgeView({
     () => templateFilePreview(template, selectedPath),
     [template, selectedPath]
   );
+  const currentQuestions = useMemo(() => followUpQuestions(followUp), [followUp]);
   const streamingText = useMemo(
     () => workingOperation === "generate"
       ? extractFirstPartialJsonString(liveOutput, ["name", "summary"])
@@ -218,22 +224,21 @@ export function ForgeView({
   }, [activeSessionId, routedSessionId, token, workspace.id]);
 
   useEffect(() => {
-    if (phase !== "question" || !followUp?.question) return;
+    if (phase !== "question" || currentQuestions.length === 0) return;
     const animationFrame = window.requestAnimationFrame(() => {
       const panel = discoveryScrollRef.current;
       if (!panel) return;
       panel.scrollTo({ top: panel.scrollHeight, behavior: "smooth" });
     });
     return () => window.cancelAnimationFrame(animationFrame);
-  }, [answers.length, followUp?.question, phase]);
+  }, [answers.length, currentQuestions, phase]);
 
   useEffect(() => {
     setPhase("idle");
     setRequirement("");
     setAnswers([]);
     setFollowUp(undefined);
-    setAnswer("");
-    setSelectedOptions([]);
+    setAnswerDrafts([]);
     setTemplate(undefined);
     setSelectedPath(undefined);
     setError(undefined);
@@ -262,8 +267,7 @@ export function ForgeView({
     setRetryAction(undefined);
     setTemplate(undefined);
     setAnswers([]);
-    setAnswer("");
-    setSelectedOptions([]);
+    setAnswerDrafts([]);
     setWorkingLabel("Reviewing the requirement and workspace Skills…");
     setPhase("working");
     let session: ForgeSessionDetail;
@@ -280,31 +284,26 @@ export function ForgeView({
     await requestOperation(session.id, "follow-up");
   }
 
-  async function submitAnswer() {
-    const question = followUp?.question;
-    const normalized = composeAnswer(followUp?.component, selectedOptions, answer);
-    if (!activeSessionId || !question || !normalized) return;
-    await requestOperation(activeSessionId, "follow-up", {
-      question,
-      answer: normalized
-    });
+  async function submitAnswers() {
+    const submittedAnswers = composeFollowUpAnswers(currentQuestions, answerDrafts);
+    if (
+      !activeSessionId ||
+      currentQuestions.length === 0 ||
+      submittedAnswers.length !== currentQuestions.length
+    ) return;
+    await requestOperation(activeSessionId, "follow-up", submittedAnswers);
   }
 
   async function generateFromCurrentContext() {
     if (!activeSessionId) return;
-    const question = followUp?.question;
-    const draftAnswer = composeAnswer(followUp?.component, selectedOptions, answer);
-    await requestOperation(
-      activeSessionId,
-      "generate",
-      question && draftAnswer ? { question, answer: draftAnswer } : undefined
-    );
+    const draftAnswers = composeFollowUpAnswers(currentQuestions, answerDrafts);
+    await requestOperation(activeSessionId, "generate", draftAnswers);
   }
 
   async function requestOperation(
     sessionId: string,
     operation: "follow-up" | "generate",
-    submittedAnswer?: HarnessInterviewAnswer,
+    submittedAnswers?: HarnessInterviewAnswer[],
     reconnectAttempt = 0
   ) {
     setError(undefined);
@@ -313,8 +312,8 @@ export function ForgeView({
     setWorkingOperation(operation);
     setWorkingLabel(operation === "generate"
       ? "Selecting workspace Skills and composing the project harness…"
-      : answers.length || submittedAnswer
-        ? "Finding the next useful question…"
+      : answers.length || submittedAnswers?.length
+        ? "Finding the next useful questions…"
         : "Reviewing the requirement and workspace Skills…");
     setLiveOutput("");
     setLiveAttempt(undefined);
@@ -332,7 +331,7 @@ export function ForgeView({
         workspace.id,
         sessionId,
         operation,
-        submittedAnswer,
+        submittedAnswers,
         (event) => {
           if (activeSessionIdRef.current !== sessionId) return;
           if (event.type === "attempt") {
@@ -372,10 +371,9 @@ export function ForgeView({
       if (history) void refreshHistory();
       return;
     }
-    if (!terminalEvent.followUp.ready && terminalEvent.followUp.question) {
+    if (!terminalEvent.followUp.ready && followUpQuestions(terminalEvent.followUp).length > 0) {
       setFollowUp(terminalEvent.followUp);
-      setAnswer("");
-      setSelectedOptions([]);
+      setAnswerDrafts([]);
       setPhase("question");
       setWorkingOperation(undefined);
       return;
@@ -449,7 +447,10 @@ export function ForgeView({
       }
       if (session.status === "interviewing" && session.followUp) {
         if (session.followUp.ready) await requestOperation(sessionId, "generate");
-        else setPhase("question");
+        else {
+          setAnswerDrafts([]);
+          setPhase("question");
+        }
         return;
       }
     } catch {
@@ -513,8 +514,7 @@ export function ForgeView({
     setRequirement("");
     setAnswers([]);
     setFollowUp(undefined);
-    setAnswer("");
-    setSelectedOptions([]);
+    setAnswerDrafts([]);
     setTemplate(undefined);
     setSelectedPath(undefined);
     setWorkingLabel("Loading Forge session…");
@@ -524,8 +524,7 @@ export function ForgeView({
       if (routedSessionIdRef.current !== sessionId) return;
       activeSessionIdRef.current = session.id;
       applyServerSession(session);
-      setAnswer("");
-      setSelectedOptions([]);
+      setAnswerDrafts([]);
       setHistoryOpen(false);
 
       if (session.status === "complete" && session.template?.mode === "llm") {
@@ -541,7 +540,7 @@ export function ForgeView({
         return;
       }
       const storedFollowUp = session.followUp?.mode === "llm" ? session.followUp : undefined;
-      if (storedFollowUp && !storedFollowUp.ready && storedFollowUp.question) {
+      if (storedFollowUp && !storedFollowUp.ready && followUpQuestions(storedFollowUp).length > 0) {
         setPhase("question");
         return;
       }
@@ -611,8 +610,7 @@ export function ForgeView({
     setRequirement("");
     setAnswers([]);
     setFollowUp(undefined);
-    setAnswer("");
-    setSelectedOptions([]);
+    setAnswerDrafts([]);
     setTemplate(undefined);
     setSelectedPath(undefined);
     setError(undefined);
@@ -828,7 +826,7 @@ export function ForgeView({
                       <div>
                         <p className="text-sm font-medium text-blue-950">Enough essential context to start</p>
                         <p className="mt-1 text-xs leading-5 text-blue-800">
-                          You can generate now or answer the current question for a more specific framework.
+                          You can generate now or answer the current questions for a more specific framework.
                         </p>
                       </div>
                     </div>
@@ -863,15 +861,13 @@ export function ForgeView({
                     </p>
                   </div>
                 ) : null}
-                {phase === "question" && followUp?.question && followUp.component ? (
-                  <FollowUpQuestion
+                {phase === "question" && currentQuestions.length > 0 ? (
+                  <FollowUpQuestions
                     step={answers.length + 1}
-                    response={followUp}
-                    selectedOptions={selectedOptions}
-                    customAnswer={answer}
-                    onSelectedOptionsChange={setSelectedOptions}
-                    onCustomAnswerChange={setAnswer}
-                    onContinue={() => void submitAnswer()}
+                    questions={currentQuestions}
+                    drafts={answerDrafts}
+                    onDraftsChange={setAnswerDrafts}
+                    onContinue={() => void submitAnswers()}
                   />
                 ) : null}
                 {phase === "complete" ? (
@@ -1303,33 +1299,96 @@ function DiscoverySummary({
   );
 }
 
-function FollowUpQuestion({
+function FollowUpQuestions({
   step,
-  response,
-  selectedOptions,
-  customAnswer,
-  onSelectedOptionsChange,
-  onCustomAnswerChange,
+  questions,
+  drafts,
+  onDraftsChange,
   onContinue
 }: {
   step: number;
-  response: HarnessFollowUpResponse;
-  selectedOptions: string[];
-  customAnswer: string;
-  onSelectedOptionsChange: (options: string[]) => void;
-  onCustomAnswerChange: (answer: string) => void;
+  questions: HarnessFollowUpQuestion[];
+  drafts: FollowUpAnswerDraft[];
+  onDraftsChange: (drafts: FollowUpAnswerDraft[]) => void;
   onContinue: () => void;
 }) {
-  const component = response.component;
-  if (!response.question || !component) return null;
+  const normalizedDrafts = questions.map((_, index) => drafts[index] ?? emptyFollowUpDraft());
+  const completedCount = questions.filter((question, index) => Boolean(composeAnswer(
+    question.component,
+    normalizedDrafts[index]?.selectedOptions ?? [],
+    normalizedDrafts[index]?.customAnswer ?? ""
+  ))).length;
+  const isComplete = completedCount === questions.length;
+
+  const updateDraft = (index: number, draft: FollowUpAnswerDraft) => {
+    const next = questions.map((_, draftIndex) => (
+      normalizedDrafts[draftIndex] ?? emptyFollowUpDraft()
+    ));
+    next[index] = draft;
+    onDraftsChange(next);
+  };
+
+  return (
+    <div className="space-y-3">
+      {questions.map((question, index) => (
+        <FollowUpQuestion
+          key={`${question.question}-${index}`}
+          step={step + index}
+          question={question}
+          draft={normalizedDrafts[index] ?? emptyFollowUpDraft()}
+          autoFocus={index === 0}
+          onDraftChange={(draft) => updateDraft(index, draft)}
+        />
+      ))}
+      <div className="rounded-xl border bg-muted/20 p-4 shadow-sm">
+        {questions.length > 1 ? (
+          <p className="mb-3 text-xs text-muted-foreground">
+            Answer all {questions.length} focused questions to continue. {completedCount} complete.
+          </p>
+        ) : null}
+        <Button
+          type="button"
+          className="w-full"
+          disabled={!isComplete}
+          onClick={onContinue}
+        >
+          {isComplete ? (
+            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          )}
+          {questions.length === 1 ? "Save answer and continue" : "Save answers and continue"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function FollowUpQuestion({
+  step,
+  question,
+  draft,
+  autoFocus,
+  onDraftChange
+}: {
+  step: number;
+  question: HarnessFollowUpQuestion;
+  draft: FollowUpAnswerDraft;
+  autoFocus: boolean;
+  onDraftChange: (draft: FollowUpAnswerDraft) => void;
+}) {
+  const component = question.component;
+  const selectedOptions = draft.selectedOptions;
+  const customAnswer = draft.customAnswer;
 
   const selectionLimit = component.maxSelections ?? component.options.length;
   const selectionLimitReached = selectedOptions.length >= selectionLimit;
-  const isComplete = Boolean(composeAnswer(component, selectedOptions, customAnswer));
   const fieldLabel = component.type === "single-select"
     ? "Select one"
     : component.type === "multi-select"
-      ? `Select up to ${selectionLimit}`
+      ? component.maxSelections
+        ? `Select up to ${selectionLimit}`
+        : "Select all that apply"
       : "Write an answer";
   const FieldIcon = component.type === "single-select"
     ? MousePointerClick
@@ -1339,14 +1398,19 @@ function FollowUpQuestion({
 
   const toggleOption = (label: string) => {
     if (component.type === "single-select") {
-      onSelectedOptionsChange([label]);
+      onDraftChange({ ...draft, selectedOptions: [label] });
       return;
     }
     if (selectedOptions.includes(label)) {
-      onSelectedOptionsChange(selectedOptions.filter((item) => item !== label));
+      onDraftChange({
+        ...draft,
+        selectedOptions: selectedOptions.filter((item) => item !== label)
+      });
       return;
     }
-    if (!selectionLimitReached) onSelectedOptionsChange([...selectedOptions, label]);
+    if (!selectionLimitReached) {
+      onDraftChange({ ...draft, selectedOptions: [...selectedOptions, label] });
+    }
   };
 
   return (
@@ -1360,7 +1424,7 @@ function FollowUpQuestion({
             AI
           </Badge>
         </div>
-        <p className="mt-2 font-medium leading-6 text-blue-950">{response.question}</p>
+        <p className="mt-2 font-medium leading-6 text-blue-950">{question.question}</p>
         <div className="mt-2 flex items-center gap-1.5 text-xs text-blue-700">
           <FieldIcon className="h-3.5 w-3.5" aria-hidden="true" />
           {fieldLabel}
@@ -1369,7 +1433,7 @@ function FollowUpQuestion({
 
       <div className="space-y-3 p-4">
         {component.type === "single-select" ? (
-          <div className="grid gap-2" role="radiogroup" aria-label={response.question}>
+          <div className="grid gap-2" role="radiogroup" aria-label={question.question}>
             {component.options.map((option) => {
               const selected = selectedOptions.includes(option.label);
               return (
@@ -1406,7 +1470,7 @@ function FollowUpQuestion({
         ) : null}
 
         {component.type === "multi-select" ? (
-          <div className="grid gap-2" aria-label={response.question}>
+          <div className="grid gap-2" aria-label={question.question}>
             {component.options.map((option) => {
               const selected = selectedOptions.includes(option.label);
               const disabled = !selected && selectionLimitReached;
@@ -1443,11 +1507,11 @@ function FollowUpQuestion({
         {component.type === "text" ? (
           <Textarea
             value={customAnswer}
-            onChange={(event) => onCustomAnswerChange(event.target.value)}
+            onChange={(event) => onDraftChange({ ...draft, customAnswer: event.target.value })}
             placeholder={component.placeholder ?? "Add the detail that will help shape the harness…"}
             className="min-h-28 resize-y"
             maxLength={2000}
-            autoFocus
+            autoFocus={autoFocus}
           />
         ) : null}
 
@@ -1459,7 +1523,7 @@ function FollowUpQuestion({
             <Textarea
               id={`forge-custom-answer-${step}`}
               value={customAnswer}
-              onChange={(event) => onCustomAnswerChange(event.target.value)}
+              onChange={(event) => onDraftChange({ ...draft, customAnswer: event.target.value })}
               placeholder="Add a constraint, exception, or answer that is not listed…"
               className="min-h-20 resize-y"
               maxLength={2000}
@@ -1467,19 +1531,6 @@ function FollowUpQuestion({
           </div>
         ) : null}
 
-        <Button
-          type="button"
-          className="w-full"
-          disabled={!isComplete}
-          onClick={onContinue}
-        >
-          {isComplete ? (
-            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-          ) : (
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          )}
-          Save answer and continue
-        </Button>
       </div>
     </div>
   );
@@ -1659,6 +1710,35 @@ function finalizeTree(
       type: node.type,
       children: node.childMap ? finalizeTree(node.childMap.values()) : undefined
     }));
+}
+
+function followUpQuestions(
+  response: HarnessFollowUpResponse | undefined
+): HarnessFollowUpQuestion[] {
+  if (!response || response.ready) return [];
+  if (response.questions?.length) return response.questions;
+  return response.question && response.component
+    ? [{ question: response.question, component: response.component }]
+    : [];
+}
+
+function emptyFollowUpDraft(): FollowUpAnswerDraft {
+  return { selectedOptions: [], customAnswer: "" };
+}
+
+function composeFollowUpAnswers(
+  questions: HarnessFollowUpQuestion[],
+  drafts: FollowUpAnswerDraft[]
+): HarnessInterviewAnswer[] {
+  return questions.flatMap((question, index) => {
+    const draft = drafts[index] ?? emptyFollowUpDraft();
+    const answer = composeAnswer(
+      question.component,
+      draft.selectedOptions,
+      draft.customAnswer
+    );
+    return answer ? [{ question: question.question, answer }] : [];
+  });
 }
 
 function composeAnswer(

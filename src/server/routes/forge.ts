@@ -140,7 +140,7 @@ function registerForgeOperationRoute(
 
       try {
         const sessionId = readRequiredString(req.params.sessionId, "sessionId", 128);
-        const answer = readOptionalAnswer(req.body);
+        const answers = readOptionalAnswers(req.body);
         await getForgeSession(context.account.id, context.workspace.id, sessionId);
         const stream = getOrCreateForgeOperationStream(
           {
@@ -155,7 +155,7 @@ function registerForgeOperationRoute(
             workspace: context.workspace,
             sessionId,
             operation,
-            answer,
+            answers,
             stream: activeStream
           })
         );
@@ -173,7 +173,7 @@ async function executeForgeOperation({
   workspace,
   sessionId,
   operation,
-  answer,
+  answers,
   stream
 }: {
   accountId: string;
@@ -181,7 +181,7 @@ async function executeForgeOperation({
   workspace: Parameters<typeof loadOrCreateWorkspaceAssetCatalog>[0];
   sessionId: string;
   operation: ForgeSessionOperation["operation"];
-  answer?: HarnessInterviewAnswer;
+  answers?: HarnessInterviewAnswer[];
   stream: ForgeOperationStream;
 }): Promise<void> {
   let input: HarnessFollowUpRequest | undefined;
@@ -193,7 +193,7 @@ async function executeForgeOperation({
       sessionId,
       stream.operationId,
       operation,
-      answer
+      answers
     );
     input = started.input;
     stream.publish({
@@ -355,10 +355,14 @@ function streamForgeOperation(res: Response, stream: ForgeOperationStream): void
   if (stream.done && !res.writableEnded) res.end();
 }
 
-function readOptionalAnswer(value: unknown): HarnessInterviewAnswer | undefined {
+function readOptionalAnswers(value: unknown): HarnessInterviewAnswer[] | undefined {
   if (value === undefined || value === null) return undefined;
   if (!isRecord(value)) throw new Error("Expected a JSON object request body");
-  return value.answer === undefined ? undefined : readAnswer(value.answer);
+  if (value.answers !== undefined) {
+    if (!Array.isArray(value.answers)) throw new Error("answers must be an array");
+    return value.answers.map(readAnswer);
+  }
+  return value.answer === undefined ? undefined : [readAnswer(value.answer)];
 }
 
 function forgeOperationFailure(

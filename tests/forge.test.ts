@@ -36,15 +36,17 @@ test("retries Forge AI requests and surfaces the final failure", async (context)
     response.end(JSON.stringify({
       choices: [{ message: { content: JSON.stringify({
         ready: false,
-        question: "Who will use the release assistant?",
-        component: {
-          type: "single-select",
-          options: [
-            { label: "Release engineers" },
-            { label: "Product managers" },
-            { label: "Support teams" }
-          ]
-        }
+        questions: [{
+          question: "Who will use the release assistant?",
+          component: {
+            type: "single-select",
+            options: [
+              { label: "Release engineers" },
+              { label: "Product managers" },
+              { label: "Support teams" }
+            ]
+          }
+        }]
       }) } }]
     }));
   });
@@ -62,7 +64,7 @@ test("retries Forge AI requests and surfaces the final failure", async (context)
   const followUp = await createHarnessFollowUp(input, [], configuration);
   assert.equal(attempts, 3);
   assert.equal(followUp.mode, "llm");
-  assert.equal(followUp.question, "Who will use the release assistant?");
+  assert.equal(followUp.questions?.[0]?.question, "Who will use the release assistant?");
 
   alwaysFail = true;
   attempts = 0;
@@ -78,11 +80,13 @@ test("streams Forge AI deltas and requests provider streaming", async (context) 
   const chunks: string[] = [];
   const content = JSON.stringify({
     ready: false,
-    question: "Which delivery path matters most?",
-    component: {
-      type: "single-select",
-      options: [{ label: "Web" }, { label: "CLI" }, { label: "Both" }]
-    }
+    questions: [{
+      question: "Which delivery path matters most?",
+      component: {
+        type: "single-select",
+        options: [{ label: "Web" }, { label: "CLI" }, { label: "Both" }]
+      }
+    }]
   });
   const provider = createServer((request, response) => {
     const body: Buffer[] = [];
@@ -120,7 +124,7 @@ test("streams Forge AI deltas and requests provider streaming", async (context) 
 
   assert.equal(providerStreamSetting, true);
   assert.equal(chunks.join(""), content);
-  assert.equal(followUp.question, "Which delivery path matters most?");
+  assert.equal(followUp.questions?.[0]?.question, "Which delivery path matters most?");
 });
 
 test("does not retry provider authentication failures", async (context) => {
@@ -274,26 +278,66 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
       const content = requestCount === 0
         ? {
             ready: false,
-            question: "Which outcome is most important for the first release?",
-            component: {
-              type: "single-select",
-              options: [
-                { label: "Fast onboarding" },
-                { label: "Reliable delivery" },
-                { label: "Easy maintenance" }
-              ]
-            }
+            questions: [
+              {
+                question: "Which outcome is most important for the first release?",
+                component: {
+                  type: "single-select",
+                  options: [
+                    { label: "Fast onboarding" },
+                    { label: "Reliable delivery" },
+                    { label: "Easy maintenance" }
+                  ]
+                }
+              },
+              {
+                question: "Which surfaces must the first release support?",
+                component: {
+                  type: "multi-select",
+                  options: [
+                    { label: "Web" },
+                    { label: "CLI" },
+                    { label: "API" },
+                    { label: "Mobile" },
+                    { label: "Desktop" }
+                  ],
+                  maxSelections: 4
+                }
+              },
+              {
+                question: "Which success signals should be tracked?",
+                component: {
+                  type: "multi-select",
+                  options: [
+                    { label: "Activation" },
+                    { label: "Retention" },
+                    { label: "Reliability" },
+                    { label: "Revenue" }
+                  ]
+                }
+              },
+              {
+                question: "What is the next most important risk?",
+                component: {
+                  type: "text",
+                  placeholder: "Describe the risk",
+                  options: []
+                }
+              }
+            ]
           }
         : requestCount === 1
           ? { ready: true }
           : {
             ready: false,
-            question: "Which deployment constraint matters most?",
-            component: {
-              type: "text",
-              placeholder: "Describe the constraint",
-              options: []
-            }
+            questions: [{
+              question: "Which deployment constraint matters most?",
+              component: {
+                type: "text",
+                placeholder: "Describe the constraint",
+                options: []
+              }
+            }]
           };
       requestCount += 1;
       response.writeHead(200, { "Content-Type": "application/json" });
@@ -320,11 +364,16 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
   );
   assert.equal(requiredQuestion.ready, false);
   assert.equal(
-    requiredQuestion.question,
+    requiredQuestion.questions?.[0]?.question,
     "Which outcome is most important for the first release?"
   );
+  assert.equal(requiredQuestion.questions?.length, 3);
+  assert.equal(requiredQuestion.questions?.[1]?.component.maxSelections, 4);
+  assert.equal(requiredQuestion.questions?.[2]?.component.maxSelections, undefined);
   assert.match(receivedSystemPrompts[0] ?? "", /Required questions must be essential/);
-  assert.match(receivedSystemPrompts[0] ?? "", /Ask the highest-impact unresolved question first/);
+  assert.match(receivedSystemPrompts[0] ?? "", /Put the highest-impact unresolved questions first/);
+  assert.match(receivedSystemPrompts[0] ?? "", /Choose the question count yourself/);
+  assert.match(receivedSystemPrompts[0] ?? "", /Never use a fixed default such as 3/);
 
   const twoAnswers = Array.from({ length: 2 }, (_, index) => ({
     question: `Essential question ${index + 1}`,
@@ -347,7 +396,10 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
     configuration
   );
   assert.equal(needsMoreContext.ready, false);
-  assert.equal(needsMoreContext.question, "Which deployment constraint matters most?");
+  assert.equal(
+    needsMoreContext.questions?.[0]?.question,
+    "Which deployment constraint matters most?"
+  );
   assert.deepEqual(receivedInputs[2]?.answers, fourAnswers);
   assert.equal(requestCount, 3);
 });

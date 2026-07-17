@@ -8,6 +8,7 @@ import type {
   ForgeAiOperation,
   ForgeAiOperationFailure,
   HarnessFollowUpComponent,
+  HarnessFollowUpQuestion,
   HarnessFollowUpRequest,
   HarnessFollowUpResponse,
   HarnessTemplateFile,
@@ -18,6 +19,7 @@ import type {
   WorkspaceAiConnectionTestResult
 } from "../../shared/types.js";
 import {
+  MAX_FORGE_FOLLOW_UP_QUESTIONS,
   MAX_FORGE_INTERVIEW_ANSWERS,
   MIN_FORGE_INTERVIEW_ANSWERS
 } from "../../shared/forge.js";
@@ -239,26 +241,32 @@ export async function createHarnessFollowUp(
     operationContext
   );
   const configuration = requireForgeAiConfiguration(aiConfiguration, context);
+  const maxQuestions = Math.min(
+    MAX_FORGE_FOLLOW_UP_QUESTIONS,
+    MAX_FORGE_INTERVIEW_ANSWERS - input.answers.length
+  );
 
   return runForgeAiOperation(async ({ signal, attempt }) => {
     const payload = await requestJson({
       ...configuration,
-      maxTokens: 700,
+      maxTokens: 1_200,
       system: [
         "You run a concise project discovery interview for an agent harness template.",
         "Decide whether the current requirement and answers are sufficient to generate a useful starter framework.",
         `The first ${MIN_FORGE_INTERVIEW_ANSWERS} answered follow-ups are required. Before then, always set ready to false and ask another question.`,
         "Required questions must be essential rather than generic setup questions.",
-        "Rank unresolved information by its expected impact on the framework, asset selection, core workflow, constraints, and delivery risk. Ask the highest-impact unresolved question first.",
+        "Rank unresolved information by its expected impact on the framework, asset selection, core workflow, constraints, and delivery risk. Put the highest-impact unresolved questions first.",
         `Once at least ${MIN_FORGE_INTERVIEW_ANSWERS} essential answers are recorded, set ready to true as soon as the available context is sufficient. There is no target number beyond that minimum.`,
-        "When more context would materially change the framework, selected assets, workflow, or constraints, set ready to false and ask exactly one useful follow-up in the same language as the user's requirement.",
+        `When more context would materially change the result, set ready to false and return a questions array containing between 1 and ${maxQuestions} useful follow-ups in the same language as the user's requirement.`,
+        "Choose the question count yourself. Prefer 1 or 2; use 3 only when the questions are independently answerable, essential, and useful to ask together. Do not create a large questionnaire.",
         "Clarify target users, must-work workflow, constraints, success criteria, or technical context.",
         "Do not repeat answered questions, ask for information that is already explicit, or continue merely to reach a question quota.",
-        "Return only JSON with ready and, when ready is false, question and component.",
-        "When ready is true, omit question and component.",
-        "When ready is false, component.type is single-select, multi-select, or text.",
+        "Return only JSON with ready and, when ready is false, questions. Each questions item contains question and component.",
+        "When ready is true, omit questions.",
+        "Each component.type is single-select, multi-select, or text.",
         "Use single-select for one mutually exclusive answer, multi-select when several choices may apply, and text when presets would hide important nuance.",
-        "Choice components contain 3 to 6 options with short label and optional description, plus allowCustom and optional maxSelections.",
+        "Choice components contain 3 to 6 options with short label and optional description, plus allowCustom.",
+        "For each multi-select, decide maxSelections from the question's meaning. Include maxSelections only when there is a real maximum; otherwise omit it so every relevant option may be selected. Never use a fixed default such as 3.",
         "Text components contain a useful placeholder and an empty options array."
       ].join(" "),
       user: JSON.stringify({
@@ -268,19 +276,26 @@ export async function createHarnessFollowUp(
       signal,
       onDelta: (delta) => context.onDelta?.(attempt, delta)
     });
-    const question = readString(payload.question);
-    const component = readFollowUpComponent(payload.component);
     const ready = input.answers.length >= MIN_FORGE_INTERVIEW_ANSWERS && payload.ready === true;
+    const questions = ready
+      ? []
+      : readFollowUpQuestions(payload.questions, maxQuestions);
+    if (!ready && questions.length === 0) {
+      const legacyQuestion = readString(payload.question);
+      const legacyComponent = readFollowUpComponent(payload.component);
+      if (legacyQuestion && legacyComponent) {
+        questions.push({ question: legacyQuestion, component: legacyComponent });
+      }
+    }
 
-    if (!ready && (!question || !component)) {
+    if (!ready && questions.length === 0) {
       throw new Error("AI follow-up did not match the expected shape");
     }
 
     return {
       mode: "llm",
       ready,
-      question: ready ? undefined : question,
-      component: ready ? undefined : component
+      ...(ready ? {} : { questions })
     };
   }, context, FOLLOW_UP_AI_POLICY);
 }
@@ -989,6 +1004,25 @@ function readFollowUpComponent(value: unknown): HarnessFollowUpComponent | undef
     allowCustom: value.allowCustom !== false,
     ...(maxSelections ? { maxSelections } : {})
   };
+}
+
+function readFollowUpQuestions(
+  value: unknown,
+  maxQuestions: number
+): HarnessFollowUpQuestion[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const questions: HarnessFollowUpQuestion[] = [];
+  for (const item of value) {
+    if (questions.length >= maxQuestions) break;
+    if (!isRecord(item)) continue;
+    const question = readString(item.question);
+    const component = readFollowUpComponent(item.component);
+    if (!question || !component || seen.has(question)) continue;
+    seen.add(question);
+    questions.push({ question, component });
+  }
+  return questions;
 }
 
 function readRequiredAiString(value: unknown, label: string): string {

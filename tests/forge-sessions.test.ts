@@ -55,17 +55,19 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
       {
         mode: "llm",
         ready: false,
-        question: "What should it do?",
-        component: {
-          type: "multi-select",
-          options: [{ label: "Review changes" }, { label: "Prepare a handoff" }],
-          maxSelections: 2
-        }
+        questions: [{
+          question: "What should it do?",
+          component: {
+            type: "multi-select",
+            options: [{ label: "Review changes" }, { label: "Prepare a handoff" }],
+            maxSelections: 2
+          }
+        }]
       }
     );
     const restoredQuestion = await getForgeSession("acct_demo", "ws_demo", resumable.id);
     assert.equal(restoredQuestion.answerCount, 1);
-    assert.equal(restoredQuestion.followUp?.question, "What should it do?");
+    assert.equal(restoredQuestion.followUp?.questions?.[0]?.question, "What should it do?");
 
     const template = exampleTemplate("# Project harness\n");
     await recordForgeSessionTemplate(
@@ -90,9 +92,28 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
       {
         mode: "llm",
         ready: false,
-        question: "Who is the primary user?",
-        component: { type: "text", options: [] }
+        questions: [
+          {
+            question: "Who is the primary user?",
+            component: { type: "text", options: [] }
+          },
+          {
+            question: "What must work in the first release?",
+            component: { type: "text", options: [] }
+          }
+        ]
       }
+    );
+    await assert.rejects(
+      beginForgeSessionOperation(
+        "acct_demo",
+        "ws_demo",
+        authoritative.id,
+        "operation-incomplete",
+        "follow-up",
+        [{ question: "Who is the primary user?", answer: "Release engineers" }]
+      ),
+      /Answer every current Forge question/
     );
     const begun = await beginForgeSessionOperation(
       "acct_demo",
@@ -100,12 +121,16 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
       authoritative.id,
       "operation-one",
       "follow-up",
-      { question: "Who is the primary user?", answer: "Release engineers" }
+      [
+        { question: "Who is the primary user?", answer: "Release engineers" },
+        { question: "What must work in the first release?", answer: "Verified handoffs" }
+      ]
     );
     assert.equal(begun.session.status, "working");
     assert.equal(begun.session.activeOperation?.operationId, "operation-one");
     assert.deepEqual(begun.input.answers, [
-      { question: "Who is the primary user?", answer: "Release engineers" }
+      { question: "Who is the primary user?", answer: "Release engineers" },
+      { question: "What must work in the first release?", answer: "Verified handoffs" }
     ]);
     const operationFailure = {
       operationId: "operation-one",
@@ -159,6 +184,34 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
       (await getForgeSession("acct_demo", "ws_demo", authoritative.id)).status,
       "complete"
     );
+
+    const legacySingle = await createForgeSession(
+      "acct_demo",
+      "ws_demo",
+      "Resume a legacy single-question session"
+    );
+    await recordForgeSessionFollowUp(
+      "acct_demo",
+      "ws_demo",
+      { requirement: legacySingle.requirement, answers: [], sessionId: legacySingle.id },
+      {
+        mode: "llm",
+        ready: false,
+        question: "Which legacy workflow matters most?",
+        component: { type: "text", options: [] }
+      }
+    );
+    const resumedLegacySingle = await beginForgeSessionOperation(
+      "acct_demo",
+      "ws_demo",
+      legacySingle.id,
+      "legacy-single-operation",
+      "follow-up",
+      [{ question: "Which legacy workflow matters most?", answer: "Release handoffs" }]
+    );
+    assert.deepEqual(resumedLegacySingle.input.answers, [
+      { question: "Which legacy workflow matters most?", answer: "Release handoffs" }
+    ]);
 
     const legacy = await createForgeSession("acct_demo", "ws_demo", "Legacy local response");
     const legacyState = await loadState();
@@ -247,7 +300,7 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
         headers,
         body: JSON.stringify({
           requirement: "This client value must be ignored",
-          answers: [{ question: "Injected", answer: "Injected" }]
+          clientAnswers: [{ question: "Injected", answer: "Injected" }]
         })
       }
     );

@@ -115,7 +115,7 @@ export async function beginForgeSessionOperation(
   sessionId: string,
   operationId: string,
   operation: ForgeSessionOperation["operation"],
-  answer?: HarnessInterviewAnswer
+  answers?: HarnessInterviewAnswer[]
 ): Promise<{ input: HarnessFollowUpRequest; session: ForgeSessionDetail }> {
   const state = await loadState();
   requireWorkspaceMembership(state, accountId, workspaceId);
@@ -123,22 +123,35 @@ export async function beginForgeSessionOperation(
   const current = findSession(state, accountId, workspaceId, sessionId);
   const next = structuredClone(current);
 
-  if (answer) {
-    if (current.answers.length >= MAX_FORGE_INTERVIEW_ANSWERS) {
+  if (answers?.length) {
+    if (current.answers.length + answers.length > MAX_FORGE_INTERVIEW_ANSWERS) {
       throw new Error(
         `Forge sessions support at most ${MAX_FORGE_INTERVIEW_ANSWERS} interview answers.`
       );
     }
-    const expectedQuestion = current.followUp?.ready === false
-      ? current.followUp.question
-      : undefined;
-    if (!expectedQuestion || expectedQuestion !== answer.question.trim()) {
-      throw new Error("Forge answer does not match the current session question.");
+    const expectedQuestions = currentForgeQuestions(current.followUp);
+    const submitted = new Map<string, HarnessInterviewAnswer>();
+    for (const answer of answers) {
+      const question = answer.question.trim();
+      if (submitted.has(question)) throw new Error("Forge answers contain a duplicate question.");
+      if (!expectedQuestions.includes(question)) {
+        throw new Error("Forge answer does not match the current session questions.");
+      }
+      submitted.set(question, {
+        question,
+        answer: answer.answer.trim()
+      });
     }
-    next.answers.push({
-      question: answer.question.trim(),
-      answer: answer.answer.trim()
-    });
+    if (
+      operation === "follow-up" &&
+      expectedQuestions.some((question) => !submitted.has(question))
+    ) {
+      throw new Error("Answer every current Forge question before continuing.");
+    }
+    next.answers.push(...expectedQuestions.flatMap((question) => {
+      const answer = submitted.get(question);
+      return answer ? [answer] : [];
+    }));
     next.answerCount = next.answers.length;
   }
 
@@ -169,6 +182,16 @@ export async function beginForgeSessionOperation(
     },
     session: toDetail(next)
   };
+}
+
+function currentForgeQuestions(followUp: ForgeSessionDetail["followUp"]): string[] {
+  if (!followUp || followUp.ready) return [];
+  const questions = followUp.questions
+    ?.map((item) => item.question.trim())
+    .filter(Boolean) ?? [];
+  if (questions.length > 0) return Array.from(new Set(questions));
+  const legacyQuestion = followUp.question?.trim();
+  return legacyQuestion ? [legacyQuestion] : [];
 }
 
 export async function recordForgeSessionAttempt(

@@ -310,6 +310,11 @@ export interface HarnessFollowUpComponent {
   maxSelections?: number;
 }
 
+export interface HarnessFollowUpQuestion {
+  question: string;
+  component: HarnessFollowUpComponent;
+}
+
 export interface HarnessFollowUpRequest {
   requirement: string;
   answers: HarnessInterviewAnswer[];
@@ -319,6 +324,8 @@ export interface HarnessFollowUpRequest {
 export interface HarnessFollowUpResponse {
   mode: HarnessBuilderMode;
   ready: boolean;
+  questions?: HarnessFollowUpQuestion[];
+  /** Legacy single-question fields retained for persisted sessions created before question batches. */
   question?: string;
   component?: HarnessFollowUpComponent;
 }

@@ -58,7 +58,7 @@ export async function streamForgeOperation(
   workspaceId: string,
   sessionId: string,
   operation: "follow-up" | "generate",
-  answer: HarnessInterviewAnswer | undefined,
+  answers: HarnessInterviewAnswer[] | undefined,
   onEvent: (event: ForgeOperationStreamEvent) => void
 ): Promise<void> {
   const response = await fetch(
@@ -69,7 +69,7 @@ export async function streamForgeOperation(
         Authorization: `Bearer ${token}`,
         ...JSON_HEADERS
       },
-      body: JSON.stringify(answer ? { answer } : {}),
+      body: JSON.stringify(answers?.length ? { answers } : {}),
       cache: "no-store"
     }
   );
