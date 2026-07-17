@@ -1,4 +1,5 @@
 import type {
+  WorkspaceAiConnectionTestRequest,
   WorkspaceAiSettings,
   WorkspaceAiSettingsUpdate
 } from "../shared/types.js";
@@ -86,6 +87,34 @@ export async function getWorkspaceAiRuntimeConfiguration(
     baseUrl: settings.baseUrl,
     model: settings.model,
     apiKey: decryptWorkspaceSecret(settings.encryptedApiKey, workspaceId)
+  };
+}
+
+export async function resolveWorkspaceAiConnectionTestConfiguration(
+  accountId: string,
+  workspaceId: string,
+  input: WorkspaceAiConnectionTestRequest
+): Promise<WorkspaceAiRuntimeConfiguration> {
+  const state = await loadState();
+  requireWorkspaceAdmin(state, accountId, workspaceId);
+  if (input.provider !== "openai-compatible") throw new Error("Unsupported AI provider.");
+  const settings = state.workspaceAiConfigurations.find(
+    (item) => item.workspaceId === workspaceId
+  );
+  const providedApiKey = input.apiKey?.trim();
+  const apiKey = providedApiKey
+    ? validateApiKey(providedApiKey)
+    : settings?.encryptedApiKey
+      ? decryptWorkspaceSecret(settings.encryptedApiKey, workspaceId)
+      : undefined;
+  if (!apiKey) {
+    throw new Error("Enter an API key or save one for this workspace before testing.");
+  }
+  return {
+    provider: input.provider,
+    baseUrl: normalizeBaseUrl(input.baseUrl),
+    model: normalizeModel(input.model),
+    apiKey
   };
 }
 

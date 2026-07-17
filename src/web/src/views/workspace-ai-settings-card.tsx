@@ -1,11 +1,14 @@
 import {
   Bot,
+  CheckCircle2,
   Eye,
   EyeOff,
   KeyRound,
   Loader2,
+  PlugZap,
   Save,
-  Trash2
+  Trash2,
+  XCircle
 } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
@@ -31,7 +34,16 @@ import {
   CardTitle
 } from "../components/ui/card";
 import { Input } from "../components/ui/input";
-import { getWorkspaceAiSettings, saveWorkspaceAiSettings } from "../lib/api";
+import {
+  getWorkspaceAiSettings,
+  saveWorkspaceAiSettings,
+  testWorkspaceAiConnection
+} from "../lib/api";
+
+interface ConnectionTestStatus {
+  type: "success" | "error";
+  message: string;
+}
 
 export function WorkspaceAiSettingsCard({
   token,
@@ -47,8 +59,10 @@ export function WorkspaceAiSettingsCard({
   const [showApiKey, setShowApiKey] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
   const [message, setMessage] = useState<string>();
+  const [testStatus, setTestStatus] = useState<ConnectionTestStatus>();
 
   useEffect(() => {
     let active = true;
@@ -76,6 +90,7 @@ export function WorkspaceAiSettingsCard({
     setModel(result.model);
     setApiKey("");
     setShowApiKey(false);
+    setTestStatus(undefined);
   }
 
   async function saveSettings(event: FormEvent) {
@@ -121,6 +136,35 @@ export function WorkspaceAiSettingsCard({
     }
   }
 
+  async function testConnection() {
+    if (!settings?.canManage) return;
+    setIsTesting(true);
+    setMessage(undefined);
+    setTestStatus(undefined);
+    try {
+      const result = await testWorkspaceAiConnection(token, workspace.id, {
+        provider: "openai-compatible",
+        baseUrl,
+        model,
+        ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {})
+      });
+      setTestStatus({
+        type: "success",
+        message: `Connected to ${result.model} in ${result.latencyMs} ms.`
+      });
+    } catch (caught) {
+      setTestStatus({ type: "error", message: errorMessage(caught) });
+    } finally {
+      setIsTesting(false);
+    }
+  }
+
+  function updateDraft(setter: (value: string) => void, value: string) {
+    setter(value);
+    setMessage(undefined);
+    setTestStatus(undefined);
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -158,9 +202,9 @@ export function WorkspaceAiSettingsCard({
                 id="workspace-ai-base-url"
                 type="url"
                 value={baseUrl}
-                onChange={(event) => setBaseUrl(event.target.value)}
+                onChange={(event) => updateDraft(setBaseUrl, event.target.value)}
                 placeholder="https://api.openai.com/v1"
-                disabled={!settings.canManage || isSaving}
+                disabled={!settings.canManage || isSaving || isTesting}
                 required
               />
               <span className="text-xs font-normal text-muted-foreground">
@@ -172,9 +216,9 @@ export function WorkspaceAiSettingsCard({
               <Input
                 id="workspace-ai-model"
                 value={model}
-                onChange={(event) => setModel(event.target.value)}
+                onChange={(event) => updateDraft(setModel, event.target.value)}
                 placeholder="gpt-5.6"
-                disabled={!settings.canManage || isSaving}
+                disabled={!settings.canManage || isSaving || isTesting}
                 required
               />
             </label>
@@ -190,14 +234,14 @@ export function WorkspaceAiSettingsCard({
                     id="workspace-ai-api-key"
                     type={showApiKey ? "text" : "password"}
                     value={apiKey}
-                    onChange={(event) => setApiKey(event.target.value)}
+                    onChange={(event) => updateDraft(setApiKey, event.target.value)}
                     placeholder={settings.configured
                       ? `${settings.apiKeyHint ?? "Saved key"} — leave blank to keep it`
                       : "Enter a workspace API key"
                     }
                     className="pl-9 pr-10"
                     autoComplete="new-password"
-                    disabled={!settings.canManage || isSaving}
+                    disabled={!settings.canManage || isSaving || isTesting}
                   />
                   <Button
                     type="button"
@@ -218,7 +262,11 @@ export function WorkspaceAiSettingsCard({
                 {settings.configured && settings.canManage ? (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button type="button" variant="outline" disabled={isRemoving}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={isRemoving || isSaving || isTesting}
+                      >
                         <Trash2 className="h-4 w-4" aria-hidden="true" />
                         Remove key
                       </Button>
@@ -253,23 +301,65 @@ export function WorkspaceAiSettingsCard({
             </label>
 
             {settings.canManage ? (
-              <Button
-                type="submit"
-                className="w-fit"
-                disabled={isSaving || !baseUrl.trim() || !model.trim()}
-              >
-                {isSaving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                ) : (
-                  <Save className="h-4 w-4" aria-hidden="true" />
-                )}
-                Save AI configuration
-              </Button>
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="submit"
+                    disabled={isSaving || isTesting || !baseUrl.trim() || !model.trim()}
+                  >
+                    {isSaving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Save className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    Save AI configuration
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={
+                      isSaving ||
+                      isTesting ||
+                      !baseUrl.trim() ||
+                      !model.trim() ||
+                      (!apiKey.trim() && !settings.configured)
+                    }
+                    onClick={() => void testConnection()}
+                  >
+                    {isTesting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <PlugZap className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    {isTesting ? "Testing connection…" : "Test connection"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Test uses the current form values without saving them.
+                </p>
+              </div>
             ) : (
               <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
                 Only workspace owners and admins can change this configuration.
               </p>
             )}
+            {testStatus ? (
+              <div
+                className={testStatus.type === "success"
+                  ? "flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900"
+                  : "flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                }
+                role="status"
+                aria-live="polite"
+              >
+                {testStatus.type === "success" ? (
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                ) : (
+                  <XCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                )}
+                <span>{testStatus.message}</span>
+              </div>
+            ) : null}
             {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
           </form>
         ) : (

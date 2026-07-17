@@ -86,6 +86,9 @@ Forge can use any OpenAI-compatible chat completions endpoint to ask follow-up
 questions and select relevant Skills. Owners and admins configure the base URL,
 model, and API key separately for each workspace from **Workspace Settings →
 Forge AI**. Provider credentials are not global environment settings.
+The **Test connection** action sends one minimal JSON chat request using the
+current form values without saving them. A blank API key field uses the
+workspace's already encrypted key when one exists.
 
 API keys are encrypted before they enter Postgres or local JSON state and are
 never returned to the browser. Hosted and multi-instance deployments must set a

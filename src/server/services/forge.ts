@@ -11,7 +11,8 @@ import type {
   HarnessTemplateAssetSelection,
   HarnessTemplateProfile,
   HarnessTemplateResponse,
-  HarnessWorkspaceAssetSummary
+  HarnessWorkspaceAssetSummary,
+  WorkspaceAiConnectionTestResult
 } from "../../shared/types.js";
 import { loadStoredSkill } from "./skill-packages.js";
 
@@ -41,6 +42,36 @@ export interface ForgeAiConfiguration {
   baseUrl: string;
   model: string;
   apiKey: string;
+}
+
+export async function testForgeAiConnection(
+  configuration: ForgeAiConfiguration
+): Promise<WorkspaceAiConnectionTestResult> {
+  const startedAt = Date.now();
+  try {
+    const payload = await requestJson({
+      ...configuration,
+      maxTokens: 700,
+      system: "This is a connection test. Return only the JSON object {\"ok\":true}.",
+      user: "Confirm that this model can complete an OpenAI-compatible JSON chat request."
+    });
+    if (payload.ok !== true) {
+      throw new Error("AI provider responded, but did not follow the required JSON response format.");
+    }
+    return {
+      ok: true,
+      model: configuration.model,
+      latencyMs: Math.max(0, Date.now() - startedAt)
+    };
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new Error("AI provider did not respond within 30 seconds.");
+    }
+    if (error instanceof TypeError && error.message === "fetch failed") {
+      throw new Error("Could not connect to the AI provider. Check the Base URL and server network access.");
+    }
+    throw error;
+  }
 }
 
 export async function createHarnessFollowUp(
@@ -495,13 +526,34 @@ async function requestJson({
     signal: AbortSignal.timeout(30_000)
   });
 
-  if (!response.ok) throw new Error(`AI request failed with HTTP ${response.status}`);
+  if (!response.ok) {
+    const detail = await readProviderError(response);
+    throw new Error(
+      `AI provider returned HTTP ${response.status}${detail ? `: ${detail}` : ""}`
+    );
+  }
   const body = await response.json() as unknown;
   const content = extractMessageContent(body);
   if (!content) throw new Error("AI response did not contain JSON text");
   const parsed = JSON.parse(stripCodeFence(content)) as unknown;
   if (!isRecord(parsed)) throw new Error("AI response was not a JSON object");
   return parsed;
+}
+
+async function readProviderError(response: Response): Promise<string | undefined> {
+  const text = await response.text().catch(() => "");
+  if (!text) return undefined;
+  try {
+    const payload = JSON.parse(text) as unknown;
+    if (isRecord(payload)) {
+      const error = isRecord(payload.error) ? payload.error : payload;
+      const message = readString(error.message);
+      if (message) return message.replace(/\s+/g, " ").slice(0, 300);
+    }
+  } catch {
+    // Fall through to a bounded plain-text provider error.
+  }
+  return text.replace(/\s+/g, " ").trim().slice(0, 300) || undefined;
 }
 
 function extractMessageContent(value: unknown): string | undefined {

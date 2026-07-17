@@ -1,4 +1,6 @@
 import type {
+  WorkspaceAiConnectionTestRequest,
+  WorkspaceAiConnectionTestResult,
   WorkspaceAiSettings,
   WorkspaceAiSettingsUpdate,
   WorkspaceRole
@@ -127,6 +129,22 @@ export function saveWorkspaceAiSettings(
     {
       token,
       method: "PUT",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(input)
+    }
+  );
+}
+
+export function testWorkspaceAiConnection(
+  token: string,
+  workspaceId: string,
+  input: WorkspaceAiConnectionTestRequest
+): Promise<WorkspaceAiConnectionTestResult> {
+  return request<WorkspaceAiConnectionTestResult>(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/ai-settings/test`,
+    {
+      token,
+      method: "POST",
       headers: JSON_HEADERS,
       body: JSON.stringify(input)
     }

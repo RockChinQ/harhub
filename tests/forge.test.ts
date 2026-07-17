@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import test from "node:test";
 import JSZip from "jszip";
 
@@ -6,6 +8,7 @@ import {
   buildHarnessTemplate,
   createHarnessTemplateArchive,
   createLocalHarnessFollowUp,
+  testForgeAiConnection,
   workspaceAssetSummaries
 } from "../src/server/services/forge.js";
 import type {
@@ -114,6 +117,43 @@ test("offers only stored non-error Skills to the builder", () => {
     workspaceAssetSummaries([valid, invalid, unstored]).map((asset) => asset.id),
     [valid.id]
   );
+});
+
+test("tests the exact OpenAI-compatible model configuration", async (context) => {
+  let receivedAuthorization: string | undefined;
+  let receivedPath: string | undefined;
+  let receivedBody: Record<string, unknown> | undefined;
+  const server = createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    receivedAuthorization = request.headers.authorization;
+    receivedPath = request.url;
+    request.on("data", (chunk: Buffer) => chunks.push(chunk));
+    request.on("end", () => {
+      receivedBody = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({ ok: true }) } }]
+      }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => new Promise<void>((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  }));
+  const address = server.address() as AddressInfo;
+
+  const result = await testForgeAiConnection({
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    model: "draft-test-model",
+    apiKey: "draft-test-key"
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.model, "draft-test-model");
+  assert.equal(receivedPath, "/v1/chat/completions");
+  assert.equal(receivedAuthorization, "Bearer draft-test-key");
+  assert.equal(receivedBody?.model, "draft-test-model");
+  assert.deepEqual(receivedBody?.response_format, { type: "json_object" });
 });
 
 function workspaceSkill(): HarnessWorkspaceAssetSummary {

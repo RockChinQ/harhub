@@ -18,6 +18,7 @@ test("stores encrypted AI credentials per workspace without returning the key", 
       getWorkspaceAiRuntimeConfiguration,
       getWorkspaceAiSettings,
       loadState,
+      resolveWorkspaceAiConnectionTestConfiguration,
       saveState,
       updateWorkspaceAiSettings
     } = await import("../src/state/index.js");
@@ -40,6 +41,19 @@ test("stores encrypted AI credentials per workspace without returning the key", 
     const runtime = await getWorkspaceAiRuntimeConfiguration("acct_demo", "ws_demo");
     assert.equal(runtime?.apiKey, "sk-workspace-secret");
     assert.equal(runtime?.model, "workspace-model");
+
+    const draftConfiguration = await resolveWorkspaceAiConnectionTestConfiguration(
+      "acct_demo",
+      "ws_demo",
+      {
+        provider: "openai-compatible",
+        baseUrl: "http://127.0.0.1:9900/v1/",
+        model: "draft-model"
+      }
+    );
+    assert.equal(draftConfiguration.baseUrl, "http://127.0.0.1:9900/v1");
+    assert.equal(draftConfiguration.model, "draft-model");
+    assert.equal(draftConfiguration.apiKey, "sk-workspace-secret");
 
     const storedState = readFileSync(statePath, "utf8");
     assert.doesNotMatch(storedState, /sk-workspace-secret/);
@@ -68,6 +82,14 @@ test("stores encrypted AI credentials per workspace without returning the key", 
     assert.equal(
       await getWorkspaceAiRuntimeConfiguration("acct_demo", secondWorkspace.id),
       undefined
+    );
+    await assert.rejects(
+      resolveWorkspaceAiConnectionTestConfiguration("acct_demo", secondWorkspace.id, {
+        provider: "openai-compatible",
+        baseUrl: "https://provider.example/v1",
+        model: "draft-model"
+      }),
+      /Enter an API key or save one/
     );
   } finally {
     if (previousStatePath === undefined) delete process.env.HARHUB_STATE;

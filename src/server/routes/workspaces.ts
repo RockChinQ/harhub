@@ -1,5 +1,8 @@
 import type { Express } from "express";
-import type { WorkspaceAiSettingsUpdate } from "../../shared/types.js";
+import type {
+  WorkspaceAiConnectionTestRequest,
+  WorkspaceAiSettingsUpdate
+} from "../../shared/types.js";
 import {
   acceptWorkspaceInvitation,
   createWorkspaceInvitation,
@@ -10,6 +13,7 @@ import {
   getWorkspaceAiSettings,
   removeWorkspaceInvitation,
   removeWorkspaceMember,
+  resolveWorkspaceAiConnectionTestConfiguration,
   updateWorkspaceAiSettings,
   updateWorkspaceForAccount,
   updateWorkspaceMemberRole
@@ -20,6 +24,7 @@ import {
   sendError
 } from "../utils/http.js";
 import { sendWorkspaceInvitationEmail } from "../services/email.js";
+import { testForgeAiConnection } from "../services/forge.js";
 import { publicAppUrl } from "../services/oauth.js";
 
 export function registerWorkspaceRoutes(app: Express): void {
@@ -93,6 +98,33 @@ export function registerWorkspaceRoutes(app: Express): void {
     }
   });
 
+  app.post("/api/workspaces/:workspaceId/ai-settings/test", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
+    if (!context) return;
+    if (!["owner", "admin"].includes(context.membership.role)) {
+      res.status(403).json({ error: "Workspace admin access is required." });
+      return;
+    }
+
+    let configuration;
+    try {
+      configuration = await resolveWorkspaceAiConnectionTestConfiguration(
+        context.account.id,
+        context.workspace.id,
+        readAiConnectionTestRequest(req.body)
+      );
+    } catch (error) {
+      sendError(res, error, 400);
+      return;
+    }
+
+    try {
+      res.json(await testForgeAiConnection(configuration));
+    } catch (error) {
+      sendError(res, error, 502);
+    }
+  });
+
   registerMemberRoutes(app);
 
   app.post("/api/invitations/accept", async (req, res) => {
@@ -128,6 +160,22 @@ function readAiSettingsUpdate(value: unknown): WorkspaceAiSettingsUpdate {
     model: typeof input.model === "string" ? input.model : "",
     apiKey: typeof input.apiKey === "string" ? input.apiKey : undefined,
     clearApiKey: input.clearApiKey === true
+  };
+}
+
+function readAiConnectionTestRequest(value: unknown): WorkspaceAiConnectionTestRequest {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Expected a JSON object request body.");
+  }
+  const input = value as Record<string, unknown>;
+  if (input.provider !== "openai-compatible") {
+    throw new Error("Unsupported AI provider.");
+  }
+  return {
+    provider: input.provider,
+    baseUrl: typeof input.baseUrl === "string" ? input.baseUrl : "",
+    model: typeof input.model === "string" ? input.model : "",
+    apiKey: typeof input.apiKey === "string" ? input.apiKey : undefined
   };
 }
 

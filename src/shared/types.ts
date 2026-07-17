@@ -92,6 +92,19 @@ export interface WorkspaceAiSettingsUpdate {
   clearApiKey?: boolean;
 }
 
+export interface WorkspaceAiConnectionTestRequest {
+  provider: AiProvider;
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
+}
+
+export interface WorkspaceAiConnectionTestResult {
+  ok: true;
+  model: string;
+  latencyMs: number;
+}
+
 export type WorkspaceInvitationStatus = "pending" | "accepted" | "revoked";
 
 export interface WorkspaceInvitation {
