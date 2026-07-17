@@ -8,11 +8,13 @@ export function FileTree({
   nodes,
   selectedPath,
   onSelect,
+  markers,
   depth = 0
 }: {
   nodes: AssetFileTreeNode[];
   selectedPath?: string;
   onSelect: (path: string) => void;
+  markers?: Readonly<Record<string, string>>;
   depth?: number;
 }) {
   return (
@@ -44,12 +46,21 @@ export function FileTree({
                 <Folder className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               )}
               <span className="min-w-0 flex-1 truncate">{node.name}</span>
+              {markers?.[node.path] ? (
+                <span
+                  className="shrink-0 rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none tracking-wide text-blue-700"
+                  aria-label={`${node.name} is a ${markers[node.path]}`}
+                >
+                  {markers[node.path]}
+                </span>
+              ) : null}
             </Button>
             {node.children?.length ? (
               <FileTree
                 nodes={node.children}
                 selectedPath={selectedPath}
                 onSelect={onSelect}
+                markers={markers}
                 depth={depth + 1}
               />
             ) : null}

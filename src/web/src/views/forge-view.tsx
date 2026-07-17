@@ -20,7 +20,6 @@ import {
 
 import type {
   AssetFilePreview,
-  AssetFileTreeNode,
   AssetRecord,
   ForgeAiOperationFailure,
   ForgeGenerationProgressStatus,
@@ -71,6 +70,8 @@ import {
   deleteForgeSession,
   downloadForgeTemplate,
   getForgeSession,
+  getWorkspaceAssetPreview,
+  getWorkspaceAssetTree,
   getWorkspaceAiSettings,
   listForgeSessions,
   streamForgeOperation
@@ -78,6 +79,12 @@ import {
 import { cn } from "../lib/utils";
 import { FilePreviewPane } from "./assets/file-preview-pane";
 import { FileTree } from "./assets/file-tree";
+import {
+  buildForgeFrameworkTree,
+  prefixForgeSkillFilePreview,
+  resolveForgeSkillFile,
+  type ForgeSelectedSkillTree
+} from "./forge-framework-preview";
 
 type BuilderPhase = "idle" | "question" | "working" | "failed" | "complete";
 
@@ -94,6 +101,8 @@ interface FollowUpAnswerDraft {
   selectedOptions: string[];
   customAnswer: string;
 }
+
+const MAX_FORGE_SKILL_FILE_CACHE_ENTRIES = 12;
 
 const GENERATION_STEPS: Array<{
   id: ForgeGenerationProgressStep;
@@ -167,20 +176,42 @@ export function ForgeView({
   const [loadingSessionId, setLoadingSessionId] = useState<string>();
   const [sessionToDelete, setSessionToDelete] = useState<ForgeSessionSummary>();
   const [isDeletingSession, setIsDeletingSession] = useState(false);
+  const [skillTrees, setSkillTrees] = useState<ForgeSelectedSkillTree[]>([]);
+  const [isSkillTreeLoading, setIsSkillTreeLoading] = useState(false);
+  const [skillTreeError, setSkillTreeError] = useState<string>();
+  const [skillTreeRefreshKey, setSkillTreeRefreshKey] = useState(0);
+  const [selectedSkillFile, setSelectedSkillFile] = useState<AssetFilePreview>();
+  const [isSkillFileLoading, setIsSkillFileLoading] = useState(false);
+  const [skillFileError, setSkillFileError] = useState<string>();
+  const [skillFileRefreshKey, setSkillFileRefreshKey] = useState(0);
   const historyScope = `${workspace.id}\u0000${token}`;
   const historyScopeRef = useRef(historyScope);
   const routeSessionLoadRef = useRef<string | undefined>(undefined);
   const routedSessionIdRef = useRef(routedSessionId);
   const activeSessionIdRef = useRef<string | undefined>(undefined);
   const discoveryScrollRef = useRef<HTMLDivElement | null>(null);
+  const skillFileCacheRef = useRef(new Map<string, AssetFilePreview>());
   historyScopeRef.current = historyScope;
   routedSessionIdRef.current = routedSessionId;
   activeSessionIdRef.current = activeSessionId;
-  const tree = useMemo(() => buildTemplateTree(template?.files ?? []), [template?.files]);
-  const selectedFile = useMemo(
+  const tree = useMemo(
+    () => buildForgeFrameworkTree(template?.files ?? [], skillTrees),
+    [skillTrees, template?.files]
+  );
+  const generatedSelectedFile = useMemo(
     () => templateFilePreview(template, selectedPath),
     [template, selectedPath]
   );
+  const selectedSkillTarget = useMemo(
+    () => resolveForgeSkillFile(template?.selectedAssets ?? [], selectedPath),
+    [selectedPath, template?.selectedAssets]
+  );
+  const selectedFile = generatedSelectedFile ?? (
+    selectedSkillFile?.path === selectedPath ? selectedSkillFile : undefined
+  );
+  const skillTreeMarkers = useMemo(() => Object.fromEntries(
+    skillTrees.map((skill) => [skill.installPath, "Skill"])
+  ), [skillTrees]);
   const currentQuestions = useMemo(() => followUpQuestions(followUp), [followUp]);
   const streamingText = useMemo(
     () => workingOperation === "generate"
@@ -232,6 +263,112 @@ export function ForgeView({
     });
     return () => window.cancelAnimationFrame(animationFrame);
   }, [answers.length, currentQuestions, phase]);
+
+  useEffect(() => {
+    let active = true;
+    const selectedAssets = template?.selectedAssets ?? [];
+    setSkillTrees([]);
+    setSkillTreeError(undefined);
+    setIsSkillTreeLoading(false);
+    setSelectedSkillFile(undefined);
+    setSkillFileError(undefined);
+    setIsSkillFileLoading(false);
+    skillFileCacheRef.current.clear();
+
+    if (selectedAssets.length === 0) return () => {
+      active = false;
+    };
+
+    setIsSkillTreeLoading(true);
+    void Promise.allSettled(selectedAssets.map(async (asset) => {
+      const preview = await getWorkspaceAssetTree(token, workspace.id, asset.id);
+      return {
+        assetId: asset.id,
+        installPath: asset.installPath,
+        tree: preview.tree
+      } satisfies ForgeSelectedSkillTree;
+    })).then((results) => {
+      if (!active) return;
+      const loaded = results.flatMap((result) => result.status === "fulfilled"
+        ? [result.value]
+        : []);
+      const failedCount = results.length - loaded.length;
+      setSkillTrees(loaded);
+      if (failedCount > 0) {
+        setSkillTreeError(
+          `${failedCount} of ${results.length} selected Skill file trees could not be loaded.`
+        );
+      }
+    }).finally(() => {
+      if (active) setIsSkillTreeLoading(false);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [skillTreeRefreshKey, template, token, workspace.id]);
+
+  useEffect(() => {
+    let active = true;
+    setSelectedSkillFile(undefined);
+    setSkillFileError(undefined);
+    setIsSkillFileLoading(false);
+
+    if (generatedSelectedFile || !selectedSkillTarget || !selectedPath) {
+      return () => {
+        active = false;
+      };
+    }
+
+    const cacheKey = [
+      workspace.id,
+      selectedSkillTarget.assetId,
+      selectedSkillTarget.relativePath
+    ].join("\u0000");
+    const cached = skillFileCacheRef.current.get(cacheKey);
+    if (cached) {
+      skillFileCacheRef.current.delete(cacheKey);
+      skillFileCacheRef.current.set(cacheKey, cached);
+      setSelectedSkillFile(cached);
+      return () => {
+        active = false;
+      };
+    }
+
+    setIsSkillFileLoading(true);
+    void getWorkspaceAssetPreview(
+      token,
+      workspace.id,
+      selectedSkillTarget.assetId,
+      selectedSkillTarget.relativePath
+    ).then((preview) => {
+      if (!preview.selectedFile) {
+        throw new Error("The selected Skill file is unavailable for preview.");
+      }
+      const file = prefixForgeSkillFilePreview(
+        preview.selectedFile,
+        selectedSkillTarget.installPath
+      );
+      if (!active) return;
+      cacheForgeSkillFile(skillFileCacheRef.current, cacheKey, file);
+      setSelectedSkillFile(file);
+    }).catch((caught) => {
+      if (active) setSkillFileError(errorMessage(caught));
+    }).finally(() => {
+      if (active) setIsSkillFileLoading(false);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    generatedSelectedFile,
+    selectedPath,
+    selectedSkillTarget,
+    skillFileRefreshKey,
+    token,
+    workspace.id
+  ]);
 
   useEffect(() => {
     setPhase("idle");
@@ -959,13 +1096,60 @@ export function ForgeView({
                       nodes={tree}
                       selectedPath={selectedPath}
                       onSelect={setSelectedPath}
+                      markers={skillTreeMarkers}
                     />
-                    <p className="mt-3 border-t px-2 pt-3 text-[11px] leading-4 text-muted-foreground">
-                      Selected Skill package contents are added to the ZIP under
-                      {" "}<code>.harness/skills/</code>.
-                    </p>
+                    <div className="mt-3 space-y-2 border-t px-2 pt-3 text-[11px] leading-4">
+                      {isSkillTreeLoading ? (
+                        <p className="flex items-center gap-1.5 text-muted-foreground">
+                          <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                          Loading selected Skill file trees…
+                        </p>
+                      ) : null}
+                      {skillTreeError ? (
+                        <div className="space-y-1.5 text-amber-700">
+                          <p>{skillTreeError}</p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-[11px]"
+                            onClick={() => setSkillTreeRefreshKey((current) => current + 1)}
+                          >
+                            <RotateCcw className="h-3 w-3" aria-hidden="true" />
+                            Retry trees
+                          </Button>
+                        </div>
+                      ) : null}
+                      {skillTrees.length > 0 ? (
+                        <p className="text-muted-foreground">
+                          Directories marked <span className="font-semibold text-blue-700">Skill</span>
+                          {" "}come from this workspace. Files load on demand here and are copied
+                          unchanged into the ZIP.
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
-                  <FilePreviewPane file={selectedFile} />
+                  {isSkillFileLoading ? (
+                    <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      Loading Skill file…
+                    </div>
+                  ) : skillFileError ? (
+                    <div className="flex min-h-64 flex-col items-center justify-center gap-3 p-6 text-center">
+                      <p className="max-w-sm text-sm text-destructive">{skillFileError}</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSkillFileRefreshKey((current) => current + 1)}
+                      >
+                        <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                        Retry file
+                      </Button>
+                    </div>
+                  ) : (
+                    <FilePreviewPane file={selectedFile} />
+                  )}
                 </div>
               </div>
             )}
@@ -1666,50 +1850,18 @@ function templateFilePreview(
   };
 }
 
-function buildTemplateTree(files: HarnessTemplateResponse["files"]): AssetFileTreeNode[] {
-  type MutableNode = AssetFileTreeNode & { childMap?: Map<string, MutableNode> };
-  const roots = new Map<string, MutableNode>();
-
-  for (const file of files) {
-    const parts = file.path.split("/").filter(Boolean);
-    let level = roots;
-    let currentPath = "";
-    parts.forEach((part, index) => {
-      currentPath = currentPath ? `${currentPath}/${part}` : part;
-      const isFile = index === parts.length - 1;
-      let node = level.get(part);
-      if (!node) {
-        node = {
-          name: part,
-          path: currentPath,
-          type: isFile ? "file" : "directory",
-          ...(isFile ? {} : { children: [], childMap: new Map() })
-        };
-        level.set(part, node);
-      }
-      if (!isFile) {
-        node.childMap ??= new Map();
-        level = node.childMap;
-      }
-    });
+function cacheForgeSkillFile(
+  cache: Map<string, AssetFilePreview>,
+  key: string,
+  file: AssetFilePreview
+): void {
+  cache.delete(key);
+  cache.set(key, file);
+  while (cache.size > MAX_FORGE_SKILL_FILE_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (!oldestKey) break;
+    cache.delete(oldestKey);
   }
-
-  return finalizeTree(roots.values());
-}
-
-function finalizeTree(
-  nodes: Iterable<AssetFileTreeNode & { childMap?: Map<string, AssetFileTreeNode> }>
-): AssetFileTreeNode[] {
-  return Array.from(nodes)
-    .sort((left, right) => left.type === right.type
-      ? left.name.localeCompare(right.name)
-      : left.type === "directory" ? -1 : 1)
-    .map((node) => ({
-      name: node.name,
-      path: node.path,
-      type: node.type,
-      children: node.childMap ? finalizeTree(node.childMap.values()) : undefined
-    }));
 }
 
 function followUpQuestions(

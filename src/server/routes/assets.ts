@@ -23,6 +23,7 @@ import { loadOrCreateWorkspaceAssetCatalog } from "../services/workspace-catalog
 import { buildAssetPreview } from "../utils/zip-preview.js";
 import {
   sendError,
+  setPrivateNoStore,
   stringQuery
 } from "../utils/http.js";
 
@@ -45,6 +46,7 @@ export function registerAssetRoutes(
   app.get("/api/workspaces/:workspaceId/assets/:query/preview", async (req, res) => {
     const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
+    setPrivateNoStore(res);
 
     try {
       const catalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
@@ -60,7 +62,11 @@ export function registerAssetRoutes(
       }
 
       const { files } = await loadStoredSkill(asset.storage);
-      res.json(buildAssetPreview(asset, files, stringQuery(req.query.path)));
+      res.json(buildAssetPreview(
+        asset,
+        files,
+        req.query.treeOnly === "true" ? null : stringQuery(req.query.path)
+      ));
     } catch (error) {
       sendError(res, error, 400);
     }

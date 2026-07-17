@@ -17,7 +17,7 @@ import {
 export function buildAssetPreview(
   asset: AssetRecord,
   inputFiles: SkillPackageFile[],
-  requestedPath?: string
+  requestedPath?: string | null
 ): AssetPreview {
   return {
     asset,
@@ -27,11 +27,13 @@ export function buildAssetPreview(
 
 export function buildAssetContentPreview(
   inputFiles: SkillPackageFile[],
-  requestedPath?: string
+  requestedPath?: string | null
 ): AssetContentPreview {
   const files = inputFiles.slice().sort((left, right) => left.path.localeCompare(right.path));
   const fallbackPath = files.find((file) => file.path === "SKILL.md")?.path ?? files[0]?.path;
-  const selectedFile = files.find((file) => file.path === (requestedPath || fallbackPath));
+  const selectedFile = requestedPath === null
+    ? undefined
+    : files.find((file) => file.path === (requestedPath || fallbackPath));
 
   return {
     tree: buildFileTree(files),
