@@ -169,6 +169,7 @@ export function ForgeView({
   const [isDownloading, setIsDownloading] = useState(false);
   const [aiSettings, setAiSettings] = useState<WorkspaceAiSettings>();
   const [activeSessionId, setActiveSessionId] = useState<string>();
+  const [sessionTitle, setSessionTitle] = useState<string>();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<ForgeSessionListResponse>();
   const [historyError, setHistoryError] = useState<string>();
@@ -386,6 +387,7 @@ export function ForgeView({
     setLiveAttempt(undefined);
     setGenerationProgress(initialGenerationProgress());
     setActiveSessionId(undefined);
+    setSessionTitle(undefined);
     activeSessionIdRef.current = undefined;
     setHistory(undefined);
     setHistoryError(undefined);
@@ -415,6 +417,7 @@ export function ForgeView({
       return;
     }
     setActiveSessionId(session.id);
+    setSessionTitle(session.title);
     activeSessionIdRef.current = session.id;
     onNavigateSession(session.id);
     addSessionToLoadedHistory(session);
@@ -601,6 +604,7 @@ export function ForgeView({
 
   function applyServerSession(session: ForgeSessionDetail) {
     setActiveSessionId(session.id);
+    setSessionTitle(session.title);
     activeSessionIdRef.current = session.id;
     setRequirement(session.requirement);
     setAnswers(session.answers);
@@ -720,15 +724,15 @@ export function ForgeView({
   }
 
   async function downloadTemplate() {
-    if (!template) return;
+    if (!template || !activeSessionId) return;
     setIsDownloading(true);
     setError(undefined);
     try {
-      const blob = await downloadForgeTemplate(token, workspace.id, template);
-      const url = URL.createObjectURL(blob);
+      const download = await downloadForgeTemplate(token, workspace.id, activeSessionId);
+      const url = URL.createObjectURL(download.blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${template.profile.slug}-harness.zip`;
+      link.download = download.fileName;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -742,6 +746,7 @@ export function ForgeView({
 
   function clearBuilderState() {
     setActiveSessionId(undefined);
+    setSessionTitle(undefined);
     activeSessionIdRef.current = undefined;
     setPhase("idle");
     setRequirement("");
@@ -896,7 +901,16 @@ export function ForgeView({
           <CardHeader className="shrink-0 border-b">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Bot className="h-5 w-5 text-blue-700" aria-hidden="true" />
-              Project discovery
+              <span>Project discovery</span>
+              {(followUp || template) && sessionTitle ? (
+                <Badge
+                  variant="secondary"
+                  className="max-w-52 truncate normal-case tracking-normal"
+                  title={sessionTitle}
+                >
+                  {sessionTitle}
+                </Badge>
+              ) : null}
             </CardTitle>
             <CardDescription>
               The interview gives the asset selector enough context without turning setup into a
@@ -1033,7 +1047,7 @@ export function ForgeView({
               {template ? (
                 <Button
                   type="button"
-                  disabled={isDownloading}
+                  disabled={isDownloading || !activeSessionId}
                   onClick={() => void downloadTemplate()}
                 >
                   {isDownloading ? (

@@ -225,6 +225,9 @@ export async function recordForgeSessionFollowUp(
     delete next.activeOperation;
     return {
       ...next,
+      ...(!session.followUp && followUp.sessionTitle
+        ? { title: normalizeSessionTitle(followUp.sessionTitle) }
+        : {}),
       status: "interviewing",
       answers: input.answers,
       answerCount: input.answers.length,
@@ -250,6 +253,7 @@ export async function recordForgeSessionTemplate(
     delete next.activeOperation;
     return {
       ...next,
+      title: normalizeSessionTitle(template.profile.name),
       status: "complete",
       answers: input.answers,
       answerCount: input.answers.length,
@@ -356,7 +360,12 @@ function pruneForgeSessions(state: AppState): void {
 }
 
 function createSessionTitle(requirement: string): string {
-  const firstLine = requirement.split(/\r?\n/, 1)[0]?.replace(/\s+/g, " ").trim();
+  const firstLine = requirement.split(/\r?\n/, 1)[0];
+  return normalizeSessionTitle(firstLine || "Untitled Forge session");
+}
+
+function normalizeSessionTitle(value: string): string {
+  const firstLine = value.split(/\r?\n/, 1)[0]?.replace(/\s+/g, " ").trim();
   if (!firstLine) return "Untitled Forge session";
   return firstLine.length <= 72 ? firstLine : `${firstLine.slice(0, 69).trimEnd()}…`;
 }
@@ -386,7 +395,7 @@ function newestFirst(left: ForgeSessionCacheRecord, right: ForgeSessionCacheReco
 function toSummary(session: ForgeSessionCacheRecord): ForgeSessionSummary {
   return {
     id: session.id,
-    title: session.title,
+    title: normalizeSessionTitle(session.template?.profile.name ?? session.title),
     status: session.status,
     answerCount: session.answerCount,
     createdAt: session.createdAt,

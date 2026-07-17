@@ -2,8 +2,7 @@ import type {
   ForgeOperationStreamEvent,
   ForgeSessionDetail,
   ForgeSessionListResponse,
-  HarnessInterviewAnswer,
-  HarnessTemplateResponse
+  HarnessInterviewAnswer
 } from "../../../../shared/types";
 import { ApiRequestError, JSON_HEADERS, request } from "./request";
 
@@ -120,8 +119,8 @@ export async function streamForgeOperation(
 export async function downloadForgeTemplate(
   token: string,
   workspaceId: string,
-  template: HarnessTemplateResponse
-): Promise<Blob> {
+  sessionId: string
+): Promise<{ blob: Blob; fileName: string }> {
   const response = await fetch(
     `/api/workspaces/${encodeURIComponent(workspaceId)}/forge/archive`,
     {
@@ -131,11 +130,7 @@ export async function downloadForgeTemplate(
         ...JSON_HEADERS
       },
       cache: "no-store",
-      body: JSON.stringify({
-        slug: template.profile.slug,
-        files: template.files,
-        selectedAssetIds: template.selectedAssets.map((asset) => asset.id)
-      })
+      body: JSON.stringify({ sessionId })
     }
   );
 
@@ -146,5 +141,25 @@ export async function downloadForgeTemplate(
     );
   }
 
-  return response.blob();
+  return {
+    blob: await response.blob(),
+    fileName: forgeArchiveFileName(response.headers.get("content-disposition"))
+  };
+}
+
+export function forgeArchiveFileName(contentDisposition: string | null): string {
+  const encoded = contentDisposition?.match(/filename\*\s*=\s*UTF-8''([^;]+)/i)?.[1];
+  if (encoded) {
+    try {
+      return safeDownloadName(decodeURIComponent(encoded));
+    } catch {
+      // Use the basic filename when an intermediary returns malformed encoding.
+    }
+  }
+  const basic = contentDisposition?.match(/filename\s*=\s*"?([^";]+)"?/i)?.[1];
+  return safeDownloadName(basic ?? "project-harness.zip");
+}
+
+function safeDownloadName(value: string): string {
+  return value.split(/[\\/]/).pop()?.trim() || "project-harness.zip";
 }

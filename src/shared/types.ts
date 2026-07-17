@@ -323,6 +323,8 @@ export interface HarnessFollowUpRequest {
 
 export interface HarnessFollowUpResponse {
   mode: HarnessBuilderMode;
+  /** AI-generated semantic name for the session. Optional for legacy persisted sessions. */
+  sessionTitle?: string;
   ready: boolean;
   questions?: HarnessFollowUpQuestion[];
   /** Legacy single-question fields retained for persisted sessions created before question batches. */

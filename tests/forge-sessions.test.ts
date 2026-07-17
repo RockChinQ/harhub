@@ -54,6 +54,7 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
       { requirement: resumable.requirement, answers, sessionId: resumable.id },
       {
         mode: "llm",
+        sessionTitle: "Release Readiness",
         ready: false,
         questions: [{
           question: "What should it do?",
@@ -66,6 +67,7 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
       }
     );
     const restoredQuestion = await getForgeSession("acct_demo", "ws_demo", resumable.id);
+    assert.equal(restoredQuestion.title, "Release Readiness");
     assert.equal(restoredQuestion.answerCount, 1);
     assert.equal(restoredQuestion.followUp?.questions?.[0]?.question, "What should it do?");
 
@@ -78,6 +80,7 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
     );
     const restoredTemplate = await getForgeSession("acct_demo", "ws_demo", resumable.id);
     assert.equal(restoredTemplate.status, "complete");
+    assert.equal(restoredTemplate.title, "Project");
     assert.equal(restoredTemplate.template?.files[0]?.content, "# Project harness\n");
 
     const authoritative = await createForgeSession(
@@ -283,6 +286,19 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json"
     };
+
+    const archiveResponse = await fetch(`${baseUrl}/api/workspaces/ws_demo/forge/archive`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ sessionId: resumable.id })
+    });
+    assert.equal(archiveResponse.status, 200);
+    assertPrivateNoStore(archiveResponse);
+    assert.match(
+      archiveResponse.headers.get("content-disposition") ?? "",
+      /filename\*=UTF-8''project-harness\.zip/
+    );
+    assert.ok((await archiveResponse.arrayBuffer()).byteLength > 0);
 
     const createResponse = await fetch(`${baseUrl}/api/workspaces/ws_demo/forge/sessions`, {
       method: "POST",

@@ -36,6 +36,7 @@ test("retries Forge AI requests and surfaces the final failure", async (context)
     response.writeHead(200, { "Content-Type": "application/json" });
     response.end(JSON.stringify({
       choices: [{ message: { content: JSON.stringify({
+        sessionTitle: "Release Assistant",
         ready: false,
         questions: [{
           question: "Who will use the release assistant?",
@@ -82,6 +83,7 @@ test("streams Forge AI deltas and requests provider streaming", async (context) 
   const logs: Array<Record<string, unknown>> = [];
   let delayedEnd: ReturnType<typeof setTimeout> | undefined;
   const content = JSON.stringify({
+    sessionTitle: "Delivery Assistant",
     ready: false,
     questions: [{
       question: "Which delivery path matters most?",
@@ -339,6 +341,7 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
       receivedSystemPrompts.push(systemMessage?.content ?? "");
       const content = requestCount === 0
         ? {
+            sessionTitle: "Documentation Site",
             ready: false,
             questions: [
               {
@@ -389,8 +392,9 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
             ]
           }
         : requestCount === 1
-          ? { ready: true }
+          ? { sessionTitle: "Documentation Site", ready: true }
           : {
+            sessionTitle: "Documentation Site",
             ready: false,
             questions: [{
               question: "Which deployment constraint matters most?",
@@ -425,6 +429,7 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
     configuration
   );
   assert.equal(requiredQuestion.ready, false);
+  assert.equal(requiredQuestion.sessionTitle, "Documentation Site");
   assert.equal(
     requiredQuestion.questions?.[0]?.question,
     "Which outcome is most important for the first release?"
@@ -433,6 +438,7 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
   assert.equal(requiredQuestion.questions?.[1]?.component.maxSelections, 4);
   assert.equal(requiredQuestion.questions?.[2]?.component.maxSelections, undefined);
   assert.match(receivedSystemPrompts[0] ?? "", /Required questions must be essential/);
+  assert.match(receivedSystemPrompts[0] ?? "", /Always return sessionTitle/);
   assert.match(receivedSystemPrompts[0] ?? "", /Put the highest-impact unresolved questions first/);
   assert.match(receivedSystemPrompts[0] ?? "", /Choose the question count yourself/);
   assert.match(receivedSystemPrompts[0] ?? "", /Never use a fixed default such as 3/);
@@ -590,7 +596,7 @@ test("builds a framework that records selected workspace Skills", () => {
 
 test("creates a safe ZIP for generated framework files", async () => {
   const archive = await createHarnessTemplateArchive(emptyCatalog(), {
-    slug: "release-assistant",
+    name: "Release Assistant",
     files: [
       { path: "AGENTS.md", content: "# Agent guide\n" },
       { path: ".harness/README.md", content: "# Harness\n" }
@@ -605,12 +611,19 @@ test("creates a safe ZIP for generated framework files", async () => {
 
   await assert.rejects(
     createHarnessTemplateArchive(emptyCatalog(), {
-      slug: "unsafe",
+      name: "Unsafe",
       files: [{ path: "../AGENTS.md", content: "unsafe" }],
       selectedAssetIds: []
     }),
     /Invalid generated file path/
   );
+
+  const localizedArchive = await createHarnessTemplateArchive(emptyCatalog(), {
+    name: "发票审核系统",
+    files: [{ path: "AGENTS.md", content: "# 发票审核系统\n" }],
+    selectedAssetIds: []
+  });
+  assert.equal(localizedArchive.fileName, "发票审核系统-harness.zip");
 });
 
 test("offers only stored non-error Skills to the builder", () => {

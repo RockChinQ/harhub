@@ -263,6 +263,7 @@ export async function createHarnessFollowUp(
       system: [
         "You run a concise project discovery interview for an agent harness template.",
         "Decide whether the current requirement and answers are sufficient to generate a useful starter framework.",
+        "Always return sessionTitle: a concise semantic project name in the same language as the requirement. Use a 2 to 6 word noun phrase, not a request sentence, and keep the core name stable across interview rounds.",
         `The first ${MIN_FORGE_INTERVIEW_ANSWERS} answered follow-ups are required. Before then, always set ready to false and ask another question.`,
         "Required questions must be essential rather than generic setup questions.",
         "Rank unresolved information by its expected impact on the framework, asset selection, core workflow, constraints, and delivery risk. Put the highest-impact unresolved questions first.",
@@ -271,7 +272,7 @@ export async function createHarnessFollowUp(
         "Choose the question count yourself. Prefer 1 or 2; use 3 only when the questions are independently answerable, essential, and useful to ask together. Do not create a large questionnaire.",
         "Clarify target users, must-work workflow, constraints, success criteria, or technical context.",
         "Do not repeat answered questions, ask for information that is already explicit, or continue merely to reach a question quota.",
-        "Return only JSON with ready and, when ready is false, questions. Each questions item contains question and component.",
+        "Return only JSON with sessionTitle, ready and, when ready is false, questions. Each questions item contains question and component.",
         "When ready is true, omit questions.",
         "Each component.type is single-select, multi-select, or text.",
         "Use single-select for one mutually exclusive answer, multi-select when several choices may apply, and text when presets would hide important nuance.",
@@ -288,6 +289,7 @@ export async function createHarnessFollowUp(
       observability: { context, attempt },
       onDelta: (delta) => context.onDelta?.(attempt, delta)
     });
+    const sessionTitle = readSemanticSessionTitle(payload.sessionTitle);
     const ready = input.answers.length >= MIN_FORGE_INTERVIEW_ANSWERS && payload.ready === true;
     const questions = ready
       ? []
@@ -306,6 +308,7 @@ export async function createHarnessFollowUp(
 
     return {
       mode: "llm",
+      sessionTitle,
       ready,
       ...(ready ? {} : { questions })
     };
@@ -475,7 +478,7 @@ export function workspaceAssetSummaries(assets: AssetRecord[]): HarnessWorkspace
 export async function createHarnessTemplateArchive(
   catalog: AssetCatalog,
   input: {
-    slug: string;
+    name: string;
     files: HarnessTemplateFile[];
     selectedAssetIds: string[];
   }
@@ -506,7 +509,7 @@ export async function createHarnessTemplateArchive(
 
   return {
     buffer: await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }),
-    fileName: `${slugify(input.slug) || "project-harness"}-harness.zip`
+    fileName: `${safeArchiveName(input.name)}-harness.zip`
   };
 }
 
@@ -1153,6 +1156,12 @@ function readRequiredAiString(value: unknown, label: string): string {
   return result;
 }
 
+function readSemanticSessionTitle(value: unknown): string {
+  const title = readString(value)?.replace(/\s+/g, " ").trim();
+  if (!title) throw new Error("AI follow-up sessionTitle is required");
+  return title.length <= 72 ? title : `${title.slice(0, 69).trimEnd()}…`;
+}
+
 function readAiStringList(value: unknown, label: string): string[] {
   if (!Array.isArray(value)) throw new Error(`AI template ${label} must be an array`);
   const items = value.slice(0, MAX_LIST_ITEMS).map((item, index) => {
@@ -1180,6 +1189,17 @@ function slugify(value: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 64);
+}
+
+function safeArchiveName(value: string): string {
+  const normalized = value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[.\-_]+|[.\-_]+$/g, "");
+  return Array.from(normalized).slice(0, 80).join("") || "project-harness";
 }
 
 function validateFrameworkFiles(files: HarnessTemplateFile[]): void {

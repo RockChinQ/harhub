@@ -5,8 +5,7 @@ import type {
   ForgeGenerationProgressStatus,
   ForgeSessionOperation,
   HarnessFollowUpRequest,
-  HarnessInterviewAnswer,
-  HarnessTemplateFile
+  HarnessInterviewAnswer
 } from "../../shared/types.js";
 import {
   beginForgeSessionOperation,
@@ -116,10 +115,24 @@ export function registerForgeRoutes(app: Express): void {
     setPrivateNoStore(res);
 
     try {
+      if (!isRecord(req.body)) throw new Error("Expected a JSON object request body");
+      const sessionId = readRequiredString(req.body.sessionId, "sessionId", 128);
+      const session = await getForgeSession(
+        context.account.id,
+        context.workspace.id,
+        sessionId
+      );
+      if (session.status !== "complete" || !session.template) {
+        throw new Error("Forge session does not have a completed framework to download.");
+      }
       const catalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
-      const archive = await createHarnessTemplateArchive(catalog, readArchiveInput(req.body));
+      const archive = await createHarnessTemplateArchive(catalog, {
+        name: session.title,
+        files: session.template.files,
+        selectedAssetIds: session.template.selectedAssets.map((asset) => asset.id)
+      });
       res.setHeader("Content-Type", "application/zip");
-      res.setHeader("Content-Disposition", `attachment; filename="${archive.fileName}"`);
+      res.setHeader("Content-Disposition", archiveContentDisposition(archive.fileName));
       res.send(archive.buffer);
     } catch (error) {
       sendError(res, error, 400);
@@ -401,31 +414,11 @@ function logForgeStateWriteError(
   }));
 }
 
-function readArchiveInput(value: unknown): {
-  slug: string;
-  files: HarnessTemplateFile[];
-  selectedAssetIds: string[];
-} {
-  if (!isRecord(value)) throw new Error("Expected a JSON object request body");
-  const files = Array.isArray(value.files) ? value.files.map(readTemplateFile) : [];
-  const selectedAssetIds = Array.isArray(value.selectedAssetIds)
-    ? value.selectedAssetIds.filter(
-      (item): item is string => typeof item === "string" && Boolean(item.trim())
-    )
-    : [];
-  return {
-    slug: readRequiredString(value.slug, "slug", 128),
-    files,
-    selectedAssetIds
-  };
-}
-
-function readTemplateFile(value: unknown): HarnessTemplateFile {
-  if (!isRecord(value)) throw new Error("Invalid generated file");
-  return {
-    path: readRequiredString(value.path, "path", 256),
-    content: typeof value.content === "string" ? value.content : ""
-  };
+function archiveContentDisposition(fileName: string): string {
+  const encoded = encodeURIComponent(fileName).replace(/[!'()*]/g, (character) => (
+    `%${character.charCodeAt(0).toString(16).toUpperCase()}`
+  ));
+  return `attachment; filename="project-harness.zip"; filename*=UTF-8''${encoded}`;
 }
 
 function readAnswer(value: unknown): HarnessInterviewAnswer {
