@@ -1,13 +1,17 @@
 import { randomUUID } from "node:crypto";
 
 import type {
+  ForgeAiOperationFailure,
   ForgeSessionDetail,
   ForgeSessionListResponse,
+  ForgeSessionOperation,
   ForgeSessionSummary,
   HarnessFollowUpRequest,
   HarnessFollowUpResponse,
+  HarnessInterviewAnswer,
   HarnessTemplateResponse
 } from "../shared/types.js";
+import { MAX_FORGE_INTERVIEW_ANSWERS } from "../shared/forge.js";
 import { requireWorkspaceMembership } from "./records.js";
 import { loadState, saveState } from "./store.js";
 import type { AppState, ForgeSessionCacheRecord } from "./types.js";
@@ -105,39 +109,156 @@ export async function deleteForgeSession(
   await saveState(state);
 }
 
+export async function beginForgeSessionOperation(
+  accountId: string,
+  workspaceId: string,
+  sessionId: string,
+  operationId: string,
+  operation: ForgeSessionOperation["operation"],
+  answer?: HarnessInterviewAnswer
+): Promise<{ input: HarnessFollowUpRequest; session: ForgeSessionDetail }> {
+  const state = await loadState();
+  requireWorkspaceMembership(state, accountId, workspaceId);
+  pruneForgeSessions(state);
+  const current = findSession(state, accountId, workspaceId, sessionId);
+  const next = structuredClone(current);
+
+  if (answer) {
+    if (current.answers.length >= MAX_FORGE_INTERVIEW_ANSWERS) {
+      throw new Error(
+        `Forge sessions support at most ${MAX_FORGE_INTERVIEW_ANSWERS} interview answers.`
+      );
+    }
+    const expectedQuestion = current.followUp?.ready === false
+      ? current.followUp.question
+      : undefined;
+    if (!expectedQuestion || expectedQuestion !== answer.question.trim()) {
+      throw new Error("Forge answer does not match the current session question.");
+    }
+    next.answers.push({
+      question: answer.question.trim(),
+      answer: answer.answer.trim()
+    });
+    next.answerCount = next.answers.length;
+  }
+
+  const now = nextSessionTime(state);
+  delete next.failure;
+  next.status = "working";
+  next.activeOperation = {
+    operationId,
+    operation,
+    startedAt: now.toISOString(),
+    attempt: 0
+  };
+  next.updatedAt = now.toISOString();
+  next.expiresAt = expirationFrom(now);
+  assertSessionSize(next);
+  state.forgeSessions = state.forgeSessions.map((item) => (
+    item.id === next.id && item.accountId === accountId && item.workspaceId === workspaceId
+      ? next
+      : item
+  ));
+  pruneForgeSessions(state);
+  await saveState(state);
+  return {
+    input: {
+      requirement: next.requirement,
+      answers: structuredClone(next.answers),
+      sessionId: next.id
+    },
+    session: toDetail(next)
+  };
+}
+
+export async function recordForgeSessionAttempt(
+  accountId: string,
+  workspaceId: string,
+  sessionId: string,
+  operationId: string,
+  attempt: number
+): Promise<void> {
+  const state = await loadState();
+  requireWorkspaceMembership(state, accountId, workspaceId);
+  const session = findSession(state, accountId, workspaceId, sessionId);
+  if (session.activeOperation?.operationId !== operationId) return;
+  session.activeOperation.attempt = attempt;
+  assertSessionSize(session);
+  await saveState(state);
+}
+
 export async function recordForgeSessionFollowUp(
   accountId: string,
   workspaceId: string,
   input: HarnessFollowUpRequest,
-  followUp: HarnessFollowUpResponse
+  followUp: HarnessFollowUpResponse,
+  operationId?: string
 ): Promise<void> {
   if (!input.sessionId) return;
-  await updateForgeSession(accountId, workspaceId, input, (session, now) => ({
-    ...session,
-    answers: input.answers,
-    answerCount: input.answers.length,
-    followUp,
-    updatedAt: now.toISOString(),
-    expiresAt: expirationFrom(now)
-  }));
+  await updateForgeSession(accountId, workspaceId, input, (session, now) => {
+    assertCurrentForgeOperation(session, operationId);
+    const next = structuredClone(session);
+    delete next.failure;
+    delete next.activeOperation;
+    return {
+      ...next,
+      status: "interviewing",
+      answers: input.answers,
+      answerCount: input.answers.length,
+      followUp,
+      updatedAt: now.toISOString(),
+      expiresAt: expirationFrom(now)
+    };
+  });
 }
 
 export async function recordForgeSessionTemplate(
   accountId: string,
   workspaceId: string,
   input: HarnessFollowUpRequest,
-  template: HarnessTemplateResponse
+  template: HarnessTemplateResponse,
+  operationId?: string
 ): Promise<void> {
   if (!input.sessionId) return;
-  await updateForgeSession(accountId, workspaceId, input, (session, now) => ({
-    ...session,
-    status: "complete",
-    answers: input.answers,
-    answerCount: input.answers.length,
-    template,
-    updatedAt: now.toISOString(),
-    expiresAt: expirationFrom(now)
-  }));
+  await updateForgeSession(accountId, workspaceId, input, (session, now) => {
+    assertCurrentForgeOperation(session, operationId);
+    const next = structuredClone(session);
+    delete next.failure;
+    delete next.activeOperation;
+    return {
+      ...next,
+      status: "complete",
+      answers: input.answers,
+      answerCount: input.answers.length,
+      template,
+      updatedAt: now.toISOString(),
+      expiresAt: expirationFrom(now)
+    };
+  });
+}
+
+export async function recordForgeSessionFailure(
+  accountId: string,
+  workspaceId: string,
+  input: HarnessFollowUpRequest,
+  failure: ForgeAiOperationFailure,
+  operationId?: string
+): Promise<void> {
+  if (!input.sessionId) return;
+  await updateForgeSession(accountId, workspaceId, input, (session, now) => {
+    assertCurrentForgeOperation(session, operationId);
+    const next = structuredClone(session);
+    delete next.activeOperation;
+    return {
+      ...next,
+      status: "failed",
+      answers: input.answers,
+      answerCount: input.answers.length,
+      failure: structuredClone(failure),
+      updatedAt: now.toISOString(),
+      expiresAt: expirationFrom(now)
+    };
+  });
 }
 
 async function updateForgeSession(
@@ -176,6 +297,15 @@ function findSession(
   );
   if (!session) throw new Error("Forge session not found.");
   return session;
+}
+
+function assertCurrentForgeOperation(
+  session: ForgeSessionCacheRecord,
+  operationId: string | undefined
+): void {
+  if (operationId && session.activeOperation?.operationId !== operationId) {
+    throw new Error("Forge operation was superseded by a newer session operation.");
+  }
 }
 
 function pruneForgeSessions(state: AppState): void {
@@ -248,6 +378,10 @@ function toDetail(session: ForgeSessionCacheRecord): ForgeSessionDetail {
     requirement: session.requirement,
     answers: structuredClone(session.answers),
     ...(session.followUp ? { followUp: structuredClone(session.followUp) } : {}),
-    ...(session.template ? { template: structuredClone(session.template) } : {})
+    ...(session.template ? { template: structuredClone(session.template) } : {}),
+    ...(session.failure ? { failure: structuredClone(session.failure) } : {}),
+    ...(session.activeOperation
+      ? { activeOperation: structuredClone(session.activeOperation) }
+      : {})
   };
 }

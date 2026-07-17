@@ -6,7 +6,10 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import type { HarnessTemplateResponse } from "../src/shared/types.js";
+import type {
+  ForgeOperationStreamEvent,
+  HarnessTemplateResponse
+} from "../src/shared/types.js";
 
 test("keeps Forge history private, bounded, expiring, and non-cacheable", async () => {
   const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "harhub-forge-history-"));
@@ -16,11 +19,13 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
 
   try {
     const {
+      beginForgeSessionOperation,
       createForgeSession,
       createSession,
       getForgeSession,
       listForgeSessions,
       loadState,
+      recordForgeSessionFailure,
       recordForgeSessionFollowUp,
       recordForgeSessionTemplate,
       saveState
@@ -72,6 +77,88 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
     const restoredTemplate = await getForgeSession("acct_demo", "ws_demo", resumable.id);
     assert.equal(restoredTemplate.status, "complete");
     assert.equal(restoredTemplate.template?.files[0]?.content, "# Project harness\n");
+
+    const authoritative = await createForgeSession(
+      "acct_demo",
+      "ws_demo",
+      "Build from server-owned session state"
+    );
+    await recordForgeSessionFollowUp(
+      "acct_demo",
+      "ws_demo",
+      { requirement: authoritative.requirement, answers: [], sessionId: authoritative.id },
+      {
+        mode: "llm",
+        ready: false,
+        question: "Who is the primary user?",
+        component: { type: "text", options: [] }
+      }
+    );
+    const begun = await beginForgeSessionOperation(
+      "acct_demo",
+      "ws_demo",
+      authoritative.id,
+      "operation-one",
+      "follow-up",
+      { question: "Who is the primary user?", answer: "Release engineers" }
+    );
+    assert.equal(begun.session.status, "working");
+    assert.equal(begun.session.activeOperation?.operationId, "operation-one");
+    assert.deepEqual(begun.input.answers, [
+      { question: "Who is the primary user?", answer: "Release engineers" }
+    ]);
+    const operationFailure = {
+      operationId: "operation-one",
+      operation: "follow-up" as const,
+      code: "timeout" as const,
+      message: "The provider timed out.",
+      retryable: true,
+      attempts: 3,
+      durationMs: 70_000,
+      occurredAt: new Date().toISOString()
+    };
+    await recordForgeSessionFailure(
+      "acct_demo",
+      "ws_demo",
+      begun.input,
+      operationFailure,
+      "operation-one"
+    );
+    const failed = await getForgeSession("acct_demo", "ws_demo", authoritative.id);
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.failure?.operationId, "operation-one");
+    assert.equal(failed.activeOperation, undefined);
+
+    const retry = await beginForgeSessionOperation(
+      "acct_demo",
+      "ws_demo",
+      authoritative.id,
+      "operation-two",
+      "generate"
+    );
+    assert.equal(retry.session.status, "working");
+    assert.equal(retry.session.failure, undefined);
+    await assert.rejects(
+      recordForgeSessionTemplate(
+        "acct_demo",
+        "ws_demo",
+        retry.input,
+        template,
+        "operation-one"
+      ),
+      /superseded by a newer session operation/
+    );
+    await recordForgeSessionTemplate(
+      "acct_demo",
+      "ws_demo",
+      retry.input,
+      template,
+      "operation-two"
+    );
+    assert.equal(
+      (await getForgeSession("acct_demo", "ws_demo", authoritative.id)).status,
+      "complete"
+    );
 
     const legacy = await createForgeSession("acct_demo", "ws_demo", "Legacy local response");
     const legacyState = await loadState();
@@ -153,63 +240,32 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
     assertPrivateNoStore(createResponse);
     const apiSession = await createResponse.json() as { id: string; title: string };
 
-    const tooManyAnswersResponse = await fetch(
-      `${baseUrl}/api/workspaces/ws_demo/forge/follow-up`,
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          requirement: "Browser history API verification",
-          answers: Array.from({ length: 13 }, (_, index) => ({
-            question: `Question ${index + 1}`,
-            answer: `Answer ${index + 1}`
-          })),
-          sessionId: apiSession.id
-        })
-      }
-    );
-    assert.equal(tooManyAnswersResponse.status, 400);
-    assert.match(
-      (await tooManyAnswersResponse.json() as { error: string }).error,
-      /answers must contain at most 12 items/
-    );
-
-    const tooFewAnswersResponse = await fetch(
-      `${baseUrl}/api/workspaces/ws_demo/forge/generate`,
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          requirement: "Browser history API verification",
-          answers: [{ question: "Who is it for?", answer: "Developers" }],
-          sessionId: apiSession.id
-        })
-      }
-    );
-    assert.equal(tooFewAnswersResponse.status, 400);
-    assert.match(
-      (await tooFewAnswersResponse.json() as { error: string }).error,
-      /Answer at least 2 essential follow-up questions/
-    );
-
     const missingAiResponse = await fetch(
-      `${baseUrl}/api/workspaces/ws_demo/forge/follow-up`,
+      `${baseUrl}/api/workspaces/ws_demo/forge/sessions/${apiSession.id}/follow-up`,
       {
         method: "POST",
         headers,
         body: JSON.stringify({
-          requirement: "Browser history API verification",
-          answers: [],
-          sessionId: apiSession.id
+          requirement: "This client value must be ignored",
+          answers: [{ question: "Injected", answer: "Injected" }]
         })
       }
     );
-    assert.equal(missingAiResponse.status, 409);
+    assert.equal(missingAiResponse.status, 200);
     assertPrivateNoStore(missingAiResponse);
+    assert.match(missingAiResponse.headers.get("content-type") ?? "", /application\/x-ndjson/);
+    assert.ok(missingAiResponse.headers.get("x-harhub-operation-id"));
+    const missingAiEvents = await readNdjson(missingAiResponse);
+    const missingAiTerminal = missingAiEvents.at(-1);
+    assert.equal(missingAiTerminal?.type, "error");
     assert.match(
-      (await missingAiResponse.json() as { error: string }).error,
+      missingAiTerminal?.type === "error" ? missingAiTerminal.failure.message : "",
       /Forge AI is not configured/
     );
+    const failedApiSession = await getForgeSession("acct_demo", "ws_demo", apiSession.id);
+    assert.equal(failedApiSession.status, "failed");
+    assert.equal(failedApiSession.requirement, "Browser history API verification");
+    assert.deepEqual(failedApiSession.answers, []);
 
     const listResponse = await fetch(`${baseUrl}/api/workspaces/ws_demo/forge/sessions`, {
       headers: { Authorization: `Bearer ${token}` }
@@ -269,4 +325,12 @@ function assertPrivateNoStore(response: Response): void {
   assert.match(response.headers.get("cache-control") ?? "", /no-store/);
   assert.match(response.headers.get("pragma") ?? "", /no-cache/);
   assert.match(response.headers.get("vary") ?? "", /Authorization/i);
+}
+
+async function readNdjson(response: Response): Promise<ForgeOperationStreamEvent[]> {
+  const text = await response.text();
+  return text
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as ForgeOperationStreamEvent);
 }

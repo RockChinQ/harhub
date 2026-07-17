@@ -1,16 +1,20 @@
 import type { Express, Response } from "express";
 import type {
+  ForgeAiOperationFailure,
+  ForgeSessionOperation,
   HarnessFollowUpRequest,
   HarnessInterviewAnswer,
   HarnessTemplateFile
 } from "../../shared/types.js";
-import { MAX_FORGE_INTERVIEW_ANSWERS } from "../../shared/forge.js";
 import {
+  beginForgeSessionOperation,
   createForgeSession,
   deleteForgeSession,
   getForgeSession,
   getWorkspaceAiRuntimeConfiguration,
   listForgeSessions,
+  recordForgeSessionAttempt,
+  recordForgeSessionFailure,
   recordForgeSessionFollowUp,
   recordForgeSessionTemplate
 } from "../../state/index.js";
@@ -19,8 +23,14 @@ import {
   createHarnessFollowUp,
   createHarnessTemplate,
   createHarnessTemplateArchive,
+  createObservedForgeAiOperation,
+  isForgeAiOperationError,
   workspaceAssetSummaries
 } from "../services/forge.js";
+import {
+  type ForgeOperationStream,
+  getOrCreateForgeOperationStream
+} from "../services/forge-operation-streams.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "../services/workspace-catalogs.js";
 import { sendError, setPrivateNoStore } from "../utils/http.js";
 
@@ -95,55 +105,8 @@ export function registerForgeRoutes(app: Express): void {
     }
   });
 
-  app.post("/api/workspaces/:workspaceId/forge/follow-up", async (req, res) => {
-    const context = await requireWorkspaceAccess(req, res);
-    if (!context) return;
-    setPrivateNoStore(res);
-
-    try {
-      const input = readInput(req.body);
-      const catalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
-      const response = await createHarnessFollowUp(
-        input,
-        workspaceAssetSummaries(catalog.assets),
-        await getWorkspaceAiRuntimeConfiguration(context.account.id, context.workspace.id)
-      );
-      await recordForgeSessionFollowUp(
-        context.account.id,
-        context.workspace.id,
-        input,
-        response
-      );
-      res.json(response);
-    } catch (error) {
-      sendForgeOperationError(res, error);
-    }
-  });
-
-  app.post("/api/workspaces/:workspaceId/forge/generate", async (req, res) => {
-    const context = await requireWorkspaceAccess(req, res);
-    if (!context) return;
-    setPrivateNoStore(res);
-
-    try {
-      const input = readInput(req.body);
-      const catalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
-      const template = await createHarnessTemplate(
-        input,
-        workspaceAssetSummaries(catalog.assets),
-        await getWorkspaceAiRuntimeConfiguration(context.account.id, context.workspace.id)
-      );
-      await recordForgeSessionTemplate(
-        context.account.id,
-        context.workspace.id,
-        input,
-        template
-      );
-      res.json(template);
-    } catch (error) {
-      sendForgeOperationError(res, error);
-    }
-  });
+  registerForgeOperationRoute(app, "follow-up");
+  registerForgeOperationRoute(app, "generate");
 
   app.post("/api/workspaces/:workspaceId/forge/archive", async (req, res) => {
     const context = await requireWorkspaceAccess(req, res);
@@ -162,18 +125,250 @@ export function registerForgeRoutes(app: Express): void {
   });
 }
 
-function readInput(value: unknown): HarnessFollowUpRequest {
-  if (!isRecord(value)) throw new Error("Expected a JSON object request body");
-  const requirement = readRequiredString(value.requirement, "requirement", MAX_REQUIREMENT_CHARS);
-  const rawAnswers = Array.isArray(value.answers) ? value.answers : [];
-  if (rawAnswers.length > MAX_FORGE_INTERVIEW_ANSWERS) {
-    throw new Error(`answers must contain at most ${MAX_FORGE_INTERVIEW_ANSWERS} items`);
+function registerForgeOperationRoute(
+  app: Express,
+  operation: ForgeSessionOperation["operation"]
+): void {
+  app.post(
+    `/api/workspaces/:workspaceId/forge/sessions/:sessionId/${operation}`,
+    async (req, res) => {
+      const context = await requireWorkspaceAccess(req, res);
+      if (!context) return;
+      setPrivateNoStore(res);
+
+      try {
+        const sessionId = readRequiredString(req.params.sessionId, "sessionId", 128);
+        const answer = readOptionalAnswer(req.body);
+        await getForgeSession(context.account.id, context.workspace.id, sessionId);
+        const stream = getOrCreateForgeOperationStream(
+          {
+            accountId: context.account.id,
+            workspaceId: context.workspace.id,
+            sessionId
+          },
+          operation,
+          (activeStream) => executeForgeOperation({
+            accountId: context.account.id,
+            workspaceId: context.workspace.id,
+            workspace: context.workspace,
+            sessionId,
+            operation,
+            answer,
+            stream: activeStream
+          })
+        );
+        streamForgeOperation(res, stream);
+      } catch (error) {
+        sendForgeError(res, error);
+      }
+    }
+  );
+}
+
+async function executeForgeOperation({
+  accountId,
+  workspaceId,
+  workspace,
+  sessionId,
+  operation,
+  answer,
+  stream
+}: {
+  accountId: string;
+  workspaceId: string;
+  workspace: Parameters<typeof loadOrCreateWorkspaceAssetCatalog>[0];
+  sessionId: string;
+  operation: ForgeSessionOperation["operation"];
+  answer?: HarnessInterviewAnswer;
+  stream: ForgeOperationStream;
+}): Promise<void> {
+  let input: HarnessFollowUpRequest | undefined;
+  try {
+    const started = await beginForgeSessionOperation(
+      accountId,
+      workspaceId,
+      sessionId,
+      stream.operationId,
+      operation,
+      answer
+    );
+    input = started.input;
+    stream.publish({
+      type: "session",
+      operationId: stream.operationId,
+      operation,
+      session: started.session
+    });
+    const configuration = await getWorkspaceAiRuntimeConfiguration(accountId, workspaceId);
+    const observed = createObservedForgeAiOperation(operation, {
+      operationId: stream.operationId,
+      workspaceId,
+      sessionId,
+      model: configuration?.model
+    });
+    observed.onAttempt = async (attempt, maxAttempts) => {
+      stream.publish({
+        type: "attempt",
+        operationId: stream.operationId,
+        operation,
+        attempt,
+        maxAttempts
+      });
+      try {
+        await recordForgeSessionAttempt(
+          accountId,
+          workspaceId,
+          sessionId,
+          stream.operationId,
+          attempt
+        );
+      } catch (error) {
+        logForgeStateWriteError(
+          error,
+          stream.operationId,
+          operation,
+          workspaceId,
+          sessionId
+        );
+      }
+    };
+    observed.onDelta = (attempt, delta) => stream.publish({
+      type: "delta",
+      operationId: stream.operationId,
+      operation,
+      attempt,
+      delta
+    });
+
+    const catalog = await loadOrCreateWorkspaceAssetCatalog(workspace);
+    const assets = workspaceAssetSummaries(catalog.assets);
+    if (operation === "follow-up") {
+      const followUp = await createHarnessFollowUp(input, assets, configuration, observed);
+      await recordForgeSessionFollowUp(
+        accountId,
+        workspaceId,
+        input,
+        followUp,
+        stream.operationId
+      );
+      stream.publish({
+        type: "complete",
+        operationId: stream.operationId,
+        operation,
+        followUp,
+        session: await getForgeSession(accountId, workspaceId, sessionId)
+      });
+      return;
+    }
+
+    const template = await createHarnessTemplate(input, assets, configuration, observed);
+    await recordForgeSessionTemplate(
+      accountId,
+      workspaceId,
+      input,
+      template,
+      stream.operationId
+    );
+    stream.publish({
+      type: "complete",
+      operationId: stream.operationId,
+      operation,
+      template,
+      session: await getForgeSession(accountId, workspaceId, sessionId)
+    });
+  } catch (error) {
+    const failure = forgeOperationFailure(error, stream.operationId, operation);
+    let session;
+    if (input) {
+      try {
+        await recordForgeSessionFailure(
+          accountId,
+          workspaceId,
+          input,
+          failure,
+          stream.operationId
+        );
+      } catch (stateError) {
+        logForgeStateWriteError(
+          stateError,
+          stream.operationId,
+          operation,
+          workspaceId,
+          sessionId
+        );
+      }
+    }
+    try {
+      session = await getForgeSession(accountId, workspaceId, sessionId);
+    } catch {
+      session = undefined;
+    }
+    stream.publish({
+      type: "error",
+      operationId: stream.operationId,
+      operation,
+      failure,
+      ...(session ? { session } : {})
+    });
   }
-  const answers = rawAnswers.map(readAnswer);
-  const sessionId = value.sessionId === undefined
-    ? undefined
-    : readRequiredString(value.sessionId, "sessionId", 128);
-  return { requirement, answers, ...(sessionId ? { sessionId } : {}) };
+}
+
+function streamForgeOperation(res: Response, stream: ForgeOperationStream): void {
+  res.status(200);
+  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Harhub-Operation-Id", stream.operationId);
+  res.flushHeaders();
+
+  const unsubscribe = stream.subscribe((event) => {
+    if (res.writableEnded) return;
+    res.write(`${JSON.stringify(event)}\n`);
+    if (event.type === "complete" || event.type === "error") res.end();
+  });
+  res.on("close", unsubscribe);
+  if (stream.done && !res.writableEnded) res.end();
+}
+
+function readOptionalAnswer(value: unknown): HarnessInterviewAnswer | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!isRecord(value)) throw new Error("Expected a JSON object request body");
+  return value.answer === undefined ? undefined : readAnswer(value.answer);
+}
+
+function forgeOperationFailure(
+  error: unknown,
+  operationId: string,
+  operation: ForgeSessionOperation["operation"]
+): ForgeAiOperationFailure {
+  if (isForgeAiOperationError(error)) return error.failure;
+  return {
+    operationId,
+    operation,
+    code: "unknown",
+    message: error instanceof Error ? error.message : "Forge AI operation failed.",
+    retryable: false,
+    attempts: 0,
+    durationMs: 0,
+    occurredAt: new Date().toISOString()
+  };
+}
+
+function logForgeStateWriteError(
+  error: unknown,
+  operationId: string,
+  operation: ForgeSessionOperation["operation"],
+  workspaceId: string,
+  sessionId: string
+): void {
+  console.error(JSON.stringify({
+    timestamp: new Date().toISOString(),
+    event: "forge.ai.session.write.failed",
+    operationId,
+    operation,
+    workspaceId,
+    sessionId,
+    message: (error instanceof Error ? error.message : String(error)).slice(0, 300)
+  }));
 }
 
 function readArchiveInput(value: unknown): {
@@ -229,15 +424,5 @@ function sendForgeError(
   const status = error instanceof Error && error.message === "Forge session not found."
     ? 404
     : 400;
-  sendError(res, error, status);
-}
-
-function sendForgeOperationError(res: Response, error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error);
-  const status = message.startsWith("AI request failed after ")
-    ? 502
-    : message.startsWith("Forge AI is not configured")
-      ? 409
-      : 400;
   sendError(res, error, status);
 }

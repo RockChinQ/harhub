@@ -21,10 +21,16 @@ import {
 import { requireAuth, requireWorkspaceAccess } from "../auth.js";
 import {
   readWorkspaceRole,
-  sendError
+  sendError,
+  setPrivateNoStore
 } from "../utils/http.js";
 import { sendWorkspaceInvitationEmail } from "../services/email.js";
-import { testForgeAiConnection } from "../services/forge.js";
+import {
+  createObservedForgeAiOperation,
+  forgeAiFailureHttpStatus,
+  isForgeAiOperationError,
+  testForgeAiConnection
+} from "../services/forge.js";
 import { publicAppUrl } from "../services/oauth.js";
 
 export function registerWorkspaceRoutes(app: Express): void {
@@ -105,6 +111,7 @@ export function registerWorkspaceRoutes(app: Express): void {
       res.status(403).json({ error: "Workspace admin access is required." });
       return;
     }
+    setPrivateNoStore(res);
 
     let configuration;
     try {
@@ -119,9 +126,21 @@ export function registerWorkspaceRoutes(app: Express): void {
     }
 
     try {
-      res.json(await testForgeAiConnection(configuration));
+      const operation = createObservedForgeAiOperation("connection-test", {
+        workspaceId: context.workspace.id,
+        model: configuration.model
+      });
+      res.setHeader("X-Harhub-Operation-Id", operation.operationId);
+      res.json(await testForgeAiConnection(configuration, operation));
     } catch (error) {
-      sendError(res, error, 502);
+      if (isForgeAiOperationError(error)) {
+        res.status(forgeAiFailureHttpStatus(error.failure.code)).json({
+          error: error.failure.message,
+          operation: error.failure
+        });
+      } else {
+        sendError(res, error, 502);
+      }
     }
   });
 

@@ -1,8 +1,12 @@
 import JSZip from "jszip";
+import { randomUUID } from "node:crypto";
 
 import type {
   AssetCatalog,
   AssetRecord,
+  ForgeAiFailureCode,
+  ForgeAiOperation,
+  ForgeAiOperationFailure,
   HarnessFollowUpComponent,
   HarnessFollowUpRequest,
   HarnessFollowUpResponse,
@@ -22,8 +26,27 @@ import { loadStoredSkill } from "./skill-packages.js";
 const MAX_LIST_ITEMS = 6;
 const MAX_SELECTED_ASSETS = 4;
 const MAX_ARCHIVE_SKILL_BYTES = 25 * 1024 * 1024;
-const AI_REQUEST_ATTEMPTS = 3;
-const AI_RETRY_DELAYS_MS = [250, 750];
+
+const FOLLOW_UP_AI_POLICY: ForgeAiOperationPolicy = {
+  maxAttempts: 3,
+  attemptTimeoutMs: 30_000,
+  totalTimeoutMs: 70_000,
+  retryDelaysMs: [300, 900]
+};
+
+const GENERATE_AI_POLICY: ForgeAiOperationPolicy = {
+  maxAttempts: 3,
+  attemptTimeoutMs: 60_000,
+  totalTimeoutMs: 125_000,
+  retryDelaysMs: [500, 1_500]
+};
+
+const CONNECTION_TEST_AI_POLICY: ForgeAiOperationPolicy = {
+  maxAttempts: 2,
+  attemptTimeoutMs: 20_000,
+  totalTimeoutMs: 45_000,
+  retryDelaysMs: [500]
+};
 
 interface ForgeTemplateSpec {
   name: string;
@@ -49,47 +72,175 @@ export interface ForgeAiConfiguration {
   apiKey: string;
 }
 
+export interface ForgeAiOperationPolicy {
+  maxAttempts: number;
+  attemptTimeoutMs: number;
+  totalTimeoutMs: number;
+  retryDelaysMs: number[];
+}
+
+export interface ForgeAiLogEntry {
+  timestamp: string;
+  event:
+    | "forge.ai.attempt.started"
+    | "forge.ai.attempt.failed"
+    | "forge.ai.retry.scheduled"
+    | "forge.ai.operation.succeeded"
+    | "forge.ai.operation.failed";
+  operationId: string;
+  operation: ForgeAiOperation;
+  workspaceId?: string;
+  sessionId?: string;
+  model?: string;
+  attempt?: number;
+  maxAttempts?: number;
+  timeoutMs?: number;
+  durationMs?: number;
+  delayMs?: number;
+  code?: ForgeAiFailureCode;
+  retryable?: boolean;
+  providerStatus?: number;
+}
+
+export type ForgeAiLogLevel = "info" | "warn" | "error";
+
+export interface ForgeAiOperationContext {
+  operationId: string;
+  operation: ForgeAiOperation;
+  workspaceId?: string;
+  sessionId?: string;
+  model?: string;
+  logger?: (level: ForgeAiLogLevel, entry: ForgeAiLogEntry) => void;
+  onAttempt?: (attempt: number, maxAttempts: number) => void | Promise<void>;
+  onDelta?: (attempt: number, delta: string) => void;
+}
+
+interface ForgeAiAttemptContext {
+  attempt: number;
+  signal: AbortSignal;
+  timeoutMs: number;
+}
+
+interface ForgeAiRequestErrorOptions {
+  code: ForgeAiFailureCode;
+  retryable: boolean;
+  providerStatus?: number;
+  retryAfterMs?: number;
+}
+
+export class ForgeAiRequestError extends Error {
+  readonly code: ForgeAiFailureCode;
+  readonly retryable: boolean;
+  readonly providerStatus?: number;
+  readonly retryAfterMs?: number;
+
+  constructor(message: string, options: ForgeAiRequestErrorOptions) {
+    super(message);
+    this.name = "ForgeAiRequestError";
+    this.code = options.code;
+    this.retryable = options.retryable;
+    this.providerStatus = options.providerStatus;
+    this.retryAfterMs = options.retryAfterMs;
+  }
+}
+
+export class ForgeAiOperationError extends Error {
+  readonly failure: ForgeAiOperationFailure;
+
+  constructor(failure: ForgeAiOperationFailure) {
+    super(failure.message);
+    this.name = "ForgeAiOperationError";
+    this.failure = failure;
+  }
+}
+
+export function createObservedForgeAiOperation(
+  operation: ForgeAiOperation,
+  fields: {
+    operationId?: string;
+    workspaceId?: string;
+    sessionId?: string;
+    model?: string;
+  } = {}
+): ForgeAiOperationContext {
+  return {
+    operationId: fields.operationId ?? randomUUID(),
+    operation,
+    ...fields,
+    logger: (level, entry) => {
+      const output = JSON.stringify(entry);
+      if (level === "error") console.error(output);
+      else if (level === "warn") console.warn(output);
+      else console.info(output);
+    }
+  };
+}
+
+export function isForgeAiOperationError(error: unknown): error is ForgeAiOperationError {
+  return error instanceof ForgeAiOperationError;
+}
+
+export function forgeAiFailureHttpStatus(code: ForgeAiFailureCode): number {
+  if (code === "configuration") return 409;
+  if (code === "rate_limited") return 429;
+  if (code === "timeout") return 504;
+  return 502;
+}
+
 export async function testForgeAiConnection(
-  configuration: ForgeAiConfiguration
+  configuration: ForgeAiConfiguration,
+  operationContext?: ForgeAiOperationContext
 ): Promise<WorkspaceAiConnectionTestResult> {
   const startedAt = Date.now();
-  try {
-    const payload = await requestJson({
-      ...configuration,
-      maxTokens: 700,
-      system: "This is a connection test. Return only the JSON object {\"ok\":true}.",
-      user: "Confirm that this model can complete an OpenAI-compatible JSON chat request."
-    });
-    if (payload.ok !== true) {
-      throw new Error("AI provider responded, but did not follow the required JSON response format.");
-    }
-    return {
-      ok: true,
-      model: configuration.model,
-      latencyMs: Math.max(0, Date.now() - startedAt)
-    };
-  } catch (error) {
-    if (error instanceof Error && error.name === "TimeoutError") {
-      throw new Error("AI provider did not respond within 30 seconds.");
-    }
-    if (error instanceof TypeError && error.message === "fetch failed") {
-      throw new Error("Could not connect to the AI provider. Check the Base URL and server network access.");
-    }
-    throw error;
-  }
+  const context = resolveForgeAiOperationContext(
+    "connection-test",
+    configuration.model,
+    operationContext
+  );
+  await runForgeAiOperation(
+    async ({ signal, attempt }) => {
+      const payload = await requestJson({
+        ...configuration,
+        maxTokens: 700,
+        system: "This is a connection test. Return only the JSON object {\"ok\":true}.",
+        user: "Confirm that this model can complete an OpenAI-compatible JSON chat request.",
+        signal,
+        onDelta: (delta) => context.onDelta?.(attempt, delta)
+      });
+      if (payload.ok !== true) {
+        throw new ForgeAiRequestError(
+          "AI provider responded, but did not follow the required JSON response format.",
+          { code: "invalid_response", retryable: true }
+        );
+      }
+    },
+    context,
+    CONNECTION_TEST_AI_POLICY
+  );
+  return {
+    ok: true,
+    model: configuration.model,
+    latencyMs: Math.max(0, Date.now() - startedAt)
+  };
 }
 
 export async function createHarnessFollowUp(
   input: HarnessFollowUpRequest,
   workspaceAssets: HarnessWorkspaceAssetSummary[],
-  aiConfiguration?: ForgeAiConfiguration
+  aiConfiguration?: ForgeAiConfiguration,
+  operationContext?: ForgeAiOperationContext
 ): Promise<HarnessFollowUpResponse> {
   if (input.answers.length >= MAX_FORGE_INTERVIEW_ANSWERS) {
     return { mode: "llm", ready: true };
   }
-  const configuration = requireForgeAiConfiguration(aiConfiguration);
+  const context = resolveForgeAiOperationContext(
+    "follow-up",
+    aiConfiguration?.model,
+    operationContext
+  );
+  const configuration = requireForgeAiConfiguration(aiConfiguration, context);
 
-  return withAiRetries(async () => {
+  return runForgeAiOperation(async ({ signal, attempt }) => {
     const payload = await requestJson({
       ...configuration,
       maxTokens: 700,
@@ -113,7 +264,9 @@ export async function createHarnessFollowUp(
       user: JSON.stringify({
         ...input,
         workspaceSkills: workspaceAssets.map(assetPromptSummary)
-      }, null, 2)
+      }, null, 2),
+      signal,
+      onDelta: (delta) => context.onDelta?.(attempt, delta)
     });
     const question = readString(payload.question);
     const component = readFollowUpComponent(payload.component);
@@ -129,21 +282,27 @@ export async function createHarnessFollowUp(
       question: ready ? undefined : question,
       component: ready ? undefined : component
     };
-  });
+  }, context, FOLLOW_UP_AI_POLICY);
 }
 
 export async function createHarnessTemplate(
   input: HarnessFollowUpRequest,
   workspaceAssets: HarnessWorkspaceAssetSummary[],
-  aiConfiguration?: ForgeAiConfiguration
+  aiConfiguration?: ForgeAiConfiguration,
+  operationContext?: ForgeAiOperationContext
 ): Promise<HarnessTemplateResponse> {
   if (input.answers.length < MIN_FORGE_INTERVIEW_ANSWERS) {
     throw new Error(
       `Answer at least ${MIN_FORGE_INTERVIEW_ANSWERS} essential follow-up questions before generating a framework.`
     );
   }
-  const configuration = requireForgeAiConfiguration(aiConfiguration);
-  return withAiRetries(async () => {
+  const context = resolveForgeAiOperationContext(
+    "generate",
+    aiConfiguration?.model,
+    operationContext
+  );
+  const configuration = requireForgeAiConfiguration(aiConfiguration, context);
+  return runForgeAiOperation(async ({ signal, attempt }) => {
     const payload = await requestJson({
       ...configuration,
       maxTokens: 2400,
@@ -175,10 +334,12 @@ export async function createHarnessTemplate(
       user: JSON.stringify({
         ...input,
         workspaceSkills: workspaceAssets.map(assetPromptSummary)
-      }, null, 2)
+      }, null, 2),
+      signal,
+      onDelta: (delta) => context.onDelta?.(attempt, delta)
     });
     return buildHarnessTemplate(readTemplateSpec(payload, workspaceAssets), workspaceAssets);
-  });
+  }, context, GENERATE_AI_POLICY);
 }
 
 export function buildHarnessTemplate(
@@ -354,7 +515,9 @@ async function requestJson({
   model,
   maxTokens,
   system,
-  user
+  user,
+  signal,
+  onDelta
 }: {
   apiKey: string;
   baseUrl: string;
@@ -362,6 +525,8 @@ async function requestJson({
   maxTokens: number;
   system: string;
   user: string;
+  signal: AbortSignal;
+  onDelta?: (delta: string) => void;
 }): Promise<Record<string, unknown>> {
   const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/chat/completions`, {
     method: "POST",
@@ -372,65 +537,386 @@ async function requestJson({
     body: JSON.stringify({
       model,
       max_completion_tokens: maxTokens,
+      stream: true,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: system },
         { role: "user", content: user }
       ]
     }),
-    signal: AbortSignal.timeout(30_000)
+    signal
   });
 
   if (!response.ok) {
     const detail = await readProviderError(response);
-    throw new Error(
-      `AI provider returned HTTP ${response.status}${detail ? `: ${detail}` : ""}`
+    const classification = classifyProviderStatus(response.status);
+    throw new ForgeAiRequestError(
+      `AI provider returned HTTP ${response.status}${detail ? `: ${detail}` : ""}`,
+      {
+        ...classification,
+        providerStatus: response.status,
+        retryAfterMs: readRetryAfterMs(response.headers.get("retry-after"))
+      }
     );
   }
-  const body = await response.json() as unknown;
-  const content = extractMessageContent(body);
-  if (!content) throw new Error("AI response did not contain JSON text");
-  const parsed = JSON.parse(stripCodeFence(content)) as unknown;
-  if (!isRecord(parsed)) throw new Error("AI response was not a JSON object");
+  const content = await readStreamingResponseContent(response, onDelta);
+  if (!content) {
+    throw new ForgeAiRequestError("AI response did not contain JSON text.", {
+      code: "invalid_response",
+      retryable: true
+    });
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripCodeFence(content)) as unknown;
+  } catch {
+    throw new ForgeAiRequestError("AI response JSON could not be parsed.", {
+      code: "invalid_response",
+      retryable: true
+    });
+  }
+  if (!isRecord(parsed)) {
+    throw new ForgeAiRequestError("AI response was not a JSON object.", {
+      code: "invalid_response",
+      retryable: true
+    });
+  }
   return parsed;
 }
 
 function requireForgeAiConfiguration(
-  configuration: ForgeAiConfiguration | undefined
+  configuration: ForgeAiConfiguration | undefined,
+  context: ForgeAiOperationContext
 ): ForgeAiConfiguration {
   if (!configuration) {
-    throw new Error(
-      "Forge AI is not configured for this workspace. Configure and test it in Workspace Settings, then retry."
+    const error = new ForgeAiRequestError(
+      "Forge AI is not configured for this workspace. Configure and test it in Workspace Settings, then retry.",
+      { code: "configuration", retryable: false }
     );
+    const operationError = operationFailureFromRequestError(error, context, 0, 0);
+    logForgeAiEvent(context, "error", "forge.ai.operation.failed", {
+      durationMs: 0,
+      code: error.code,
+      retryable: error.retryable
+    });
+    throw operationError;
   }
   return configuration;
 }
 
-async function withAiRetries<T>(request: () => Promise<T>): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= AI_REQUEST_ATTEMPTS; attempt += 1) {
+export async function runForgeAiOperation<T>(
+  request: (context: ForgeAiAttemptContext) => Promise<T>,
+  operation: ForgeAiOperationContext,
+  policy: ForgeAiOperationPolicy
+): Promise<T> {
+  const startedAt = Date.now();
+  let attempts = 0;
+  let lastError: ForgeAiRequestError | undefined;
+
+  for (let attempt = 1; attempt <= policy.maxAttempts; attempt += 1) {
+    const elapsedMs = Math.max(0, Date.now() - startedAt);
+    const remainingMs = policy.totalTimeoutMs - elapsedMs;
+    if (remainingMs <= 0) break;
+    const timeoutMs = Math.max(1, Math.min(policy.attemptTimeoutMs, remainingMs));
+    attempts = attempt;
     try {
-      return await request();
-    } catch (error) {
-      lastError = error;
-      if (attempt < AI_REQUEST_ATTEMPTS) {
-        await new Promise((resolve) => setTimeout(resolve, AI_RETRY_DELAYS_MS[attempt - 1]));
-      }
+      await operation.onAttempt?.(attempt, policy.maxAttempts);
+    } catch {
+      // A disconnected observer must not cancel the server-side operation.
+    }
+    logForgeAiEvent(operation, "info", "forge.ai.attempt.started", {
+      attempt,
+      maxAttempts: policy.maxAttempts,
+      timeoutMs
+    });
+
+    try {
+      const result = await request({
+        attempt,
+        timeoutMs,
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      logForgeAiEvent(operation, "info", "forge.ai.operation.succeeded", {
+        attempt,
+        maxAttempts: policy.maxAttempts,
+        durationMs: Math.max(0, Date.now() - startedAt)
+      });
+      return result;
+    } catch (caught) {
+      lastError = normalizeForgeAiRequestError(caught);
+      logForgeAiEvent(operation, "warn", "forge.ai.attempt.failed", {
+        attempt,
+        maxAttempts: policy.maxAttempts,
+        durationMs: Math.max(0, Date.now() - startedAt),
+        code: lastError.code,
+        retryable: lastError.retryable,
+        providerStatus: lastError.providerStatus
+      });
+      if (!lastError.retryable || attempt >= policy.maxAttempts) break;
+
+      const configuredDelay = policy.retryDelaysMs[attempt - 1] ?? 0;
+      const delayMs = Math.max(configuredDelay, lastError.retryAfterMs ?? 0);
+      const remainingAfterAttempt = policy.totalTimeoutMs - Math.max(0, Date.now() - startedAt);
+      if (delayMs >= remainingAfterAttempt) break;
+      logForgeAiEvent(operation, "info", "forge.ai.retry.scheduled", {
+        attempt,
+        maxAttempts: policy.maxAttempts,
+        delayMs,
+        code: lastError.code,
+        retryable: true
+      });
+      if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
-  throw new Error(
-    `AI request failed after ${AI_REQUEST_ATTEMPTS} attempts: ${aiErrorMessage(lastError)}`
+
+  const finalError = lastError ?? new ForgeAiRequestError(
+    "AI operation exceeded its total time limit.",
+    { code: "timeout", retryable: true }
+  );
+  const durationMs = Math.max(0, Date.now() - startedAt);
+  const operationError = operationFailureFromRequestError(
+    finalError,
+    operation,
+    attempts,
+    durationMs
+  );
+  logForgeAiEvent(operation, "error", "forge.ai.operation.failed", {
+    maxAttempts: policy.maxAttempts,
+    durationMs,
+    code: finalError.code,
+    retryable: finalError.retryable,
+    providerStatus: finalError.providerStatus
+  });
+  throw operationError;
+}
+
+function resolveForgeAiOperationContext(
+  operation: ForgeAiOperation,
+  model: string | undefined,
+  context: ForgeAiOperationContext | undefined
+): ForgeAiOperationContext {
+  return {
+    operationId: context?.operationId ?? randomUUID(),
+    operation,
+    workspaceId: context?.workspaceId,
+    sessionId: context?.sessionId,
+    model: context?.model ?? model,
+    logger: context?.logger,
+    onAttempt: context?.onAttempt,
+    onDelta: context?.onDelta
+  };
+}
+
+function normalizeForgeAiRequestError(error: unknown): ForgeAiRequestError {
+  if (error instanceof ForgeAiRequestError) return error;
+  if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+    return new ForgeAiRequestError("The AI provider did not respond before the request timed out.", {
+      code: "timeout",
+      retryable: true
+    });
+  }
+  if (error instanceof TypeError) {
+    return new ForgeAiRequestError(
+      "Could not connect to the AI provider. Check the Base URL and server network access.",
+      { code: "network", retryable: true }
+    );
+  }
+  return new ForgeAiRequestError(
+    error instanceof Error ? error.message : "AI provider returned an unusable response.",
+    { code: "invalid_response", retryable: true }
   );
 }
 
-function aiErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.name === "TimeoutError") {
-    return "The AI provider did not respond before the request timed out.";
+function operationFailureFromRequestError(
+  error: ForgeAiRequestError,
+  context: ForgeAiOperationContext,
+  attempts: number,
+  durationMs: number
+): ForgeAiOperationError {
+  return new ForgeAiOperationError({
+    operationId: context.operationId,
+    operation: context.operation,
+    code: error.code,
+    message: forgeAiFailureMessage(error, attempts),
+    retryable: error.retryable,
+    attempts,
+    durationMs,
+    occurredAt: new Date().toISOString()
+  });
+}
+
+function forgeAiFailureMessage(error: ForgeAiRequestError, attempts: number): string {
+  const attemptText = attempts === 1 ? "1 attempt" : `${attempts} attempts`;
+  if (error.code === "configuration") return error.message;
+  if (error.code === "timeout") {
+    return `The AI provider timed out after ${attemptText}. Retry the operation or review the provider settings.`;
   }
-  if (error instanceof TypeError && error.message === "fetch failed") {
-    return "Could not connect to the AI provider. Check the Base URL and server network access.";
+  if (error.code === "network") {
+    return `Could not reach the AI provider after ${attemptText}. Check provider availability and network access.`;
   }
-  return error instanceof Error ? error.message : String(error);
+  if (error.code === "rate_limited") {
+    return `The AI provider is rate limiting Forge after ${attemptText}. Wait briefly, then retry.`;
+  }
+  if (error.code === "provider_auth") {
+    return "The AI provider rejected the workspace credentials. Check the API key and provider permissions.";
+  }
+  if (error.code === "provider_rejected") {
+    return `The AI provider rejected this request: ${error.message}`;
+  }
+  if (error.code === "provider_unavailable") {
+    return `The AI provider remained unavailable after ${attemptText}. Retry when the provider recovers.`;
+  }
+  if (error.code === "invalid_response") {
+    return `The AI provider returned an unusable response after ${attemptText}. Retry or try another model.`;
+  }
+  return `Forge AI failed after ${attemptText}: ${error.message}`;
+}
+
+function classifyProviderStatus(status: number): {
+  code: ForgeAiFailureCode;
+  retryable: boolean;
+} {
+  if (status === 401 || status === 403) return { code: "provider_auth", retryable: false };
+  if (status === 429) return { code: "rate_limited", retryable: true };
+  if (status === 408 || status === 425 || status >= 500) {
+    return { code: "provider_unavailable", retryable: true };
+  }
+  return { code: "provider_rejected", retryable: false };
+}
+
+function readRetryAfterMs(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1_000);
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) return undefined;
+  return Math.max(0, timestamp - Date.now());
+}
+
+function logForgeAiEvent(
+  context: ForgeAiOperationContext,
+  level: ForgeAiLogLevel,
+  event: ForgeAiLogEntry["event"],
+  fields: Omit<
+    ForgeAiLogEntry,
+    "timestamp" | "event" | "operationId" | "operation" | "workspaceId" | "sessionId" | "model"
+  >
+): void {
+  if (!context.logger) return;
+  try {
+    context.logger(level, {
+      timestamp: new Date().toISOString(),
+      event,
+      operationId: context.operationId,
+      operation: context.operation,
+      workspaceId: context.workspaceId,
+      sessionId: context.sessionId,
+      model: context.model,
+      ...fields
+    });
+  } catch {
+    // Observability must never break the user operation.
+  }
+}
+
+async function readStreamingResponseContent(
+  response: Response,
+  onDelta?: (delta: string) => void
+): Promise<string> {
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  if (contentType.includes("application/json")) {
+    const body = await response.json().catch(() => undefined) as unknown;
+    const content = extractMessageContent(body);
+    if (content) emitForgeAiDelta(onDelta, content);
+    return content ?? "";
+  }
+  if (!response.body) {
+    throw new ForgeAiRequestError("AI provider did not return a response stream.", {
+      code: "invalid_response",
+      retryable: true
+    });
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  let dataLines: string[] = [];
+  let content = "";
+
+  const dispatchEvent = () => {
+    if (dataLines.length === 0) return;
+    const data = dataLines.join("\n").trim();
+    dataLines = [];
+    if (!data || data === "[DONE]") return;
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(data) as unknown;
+    } catch {
+      throw new ForgeAiRequestError("AI provider emitted an invalid stream event.", {
+        code: "invalid_response",
+        retryable: true
+      });
+    }
+    if (isRecord(payload) && payload.error) {
+      const providerError = isRecord(payload.error) ? payload.error : payload;
+      throw new ForgeAiRequestError(
+        readString(providerError.message) ?? "AI provider reported a streaming error.",
+        { code: "provider_unavailable", retryable: true }
+      );
+    }
+    const delta = extractStreamDeltaContent(payload);
+    if (!delta) return;
+    content += delta;
+    emitForgeAiDelta(onDelta, delta);
+  };
+
+  const processLines = (flush = false) => {
+    const lines = pending.split("\n");
+    pending = flush ? "" : (lines.pop() ?? "");
+    for (const rawLine of lines) {
+      const line = rawLine.replace(/\r$/, "");
+      if (!line) {
+        dispatchEvent();
+      } else if (line.startsWith("data:")) {
+        dataLines.push(line.slice(5).trimStart());
+      }
+    }
+    if (flush) dispatchEvent();
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    pending += decoder.decode(value, { stream: true });
+    processLines();
+  }
+  pending += decoder.decode();
+  if (pending) pending += "\n";
+  processLines(true);
+  return content;
+}
+
+function extractStreamDeltaContent(value: unknown): string | undefined {
+  if (!isRecord(value) || !Array.isArray(value.choices)) return undefined;
+  const choice = value.choices[0];
+  if (!isRecord(choice)) return undefined;
+  if (isRecord(choice.delta) && typeof choice.delta.content === "string") {
+    return choice.delta.content || undefined;
+  }
+  if (isRecord(choice.message) && typeof choice.message.content === "string") {
+    return choice.message.content || undefined;
+  }
+  return undefined;
+}
+
+function emitForgeAiDelta(onDelta: ((delta: string) => void) | undefined, delta: string): void {
+  if (!onDelta) return;
+  try {
+    onDelta(delta);
+  } catch {
+    // A disconnected observer must not cancel the server-side operation.
+  }
 }
 
 async function readProviderError(response: Response): Promise<string | undefined> {
@@ -453,7 +939,8 @@ function extractMessageContent(value: unknown): string | undefined {
   if (!isRecord(value) || !Array.isArray(value.choices)) return undefined;
   const choice = value.choices[0];
   if (!isRecord(choice) || !isRecord(choice.message)) return undefined;
-  return readString(choice.message.content) ?? undefined;
+  const content = choice.message.content;
+  return typeof content === "string" && content.trim() ? content.slice(0, 200_000) : undefined;
 }
 
 function stripCodeFence(value: string): string {

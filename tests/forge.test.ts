@@ -6,12 +6,15 @@ import JSZip from "jszip";
 
 import {
   buildHarnessTemplate,
+  createObservedForgeAiOperation,
   createHarnessFollowUp,
   createHarnessTemplate,
   createHarnessTemplateArchive,
+  runForgeAiOperation,
   testForgeAiConnection,
   workspaceAssetSummaries
 } from "../src/server/services/forge.js";
+import { getOrCreateForgeOperationStream } from "../src/server/services/forge-operation-streams.js";
 import type {
   AssetCatalog,
   AssetRecord,
@@ -65,9 +68,185 @@ test("retries Forge AI requests and surfaces the final failure", async (context)
   attempts = 0;
   await assert.rejects(
     createHarnessFollowUp(input, [], configuration),
-    /AI request failed after 3 attempts: AI provider returned HTTP 503: provider overloaded/
+    /AI provider remained unavailable after 3 attempts/
   );
   assert.equal(attempts, 3);
+});
+
+test("streams Forge AI deltas and requests provider streaming", async (context) => {
+  let providerStreamSetting: unknown;
+  const chunks: string[] = [];
+  const content = JSON.stringify({
+    ready: false,
+    question: "Which delivery path matters most?",
+    component: {
+      type: "single-select",
+      options: [{ label: "Web" }, { label: "CLI" }, { label: "Both" }]
+    }
+  });
+  const provider = createServer((request, response) => {
+    const body: Buffer[] = [];
+    request.on("data", (chunk: Buffer) => body.push(chunk));
+    request.on("end", () => {
+      providerStreamSetting = (JSON.parse(Buffer.concat(body).toString("utf8")) as {
+        stream?: unknown;
+      }).stream;
+      response.writeHead(200, { "Content-Type": "text/event-stream" });
+      for (const delta of [content.slice(0, 30), content.slice(30, 80), content.slice(80)]) {
+        response.write(`data: ${JSON.stringify({ choices: [{ delta: { content: delta } }] })}\n\n`);
+      }
+      response.end("data: [DONE]\n\n");
+    });
+  });
+  await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
+  context.after(() => new Promise<void>((resolve, reject) => {
+    provider.close((error) => error ? reject(error) : resolve());
+  }));
+  const address = provider.address() as AddressInfo;
+  const operation = createObservedForgeAiOperation("follow-up");
+  operation.logger = undefined;
+  operation.onDelta = (_attempt, delta) => chunks.push(delta);
+
+  const followUp = await createHarnessFollowUp(
+    { requirement: "Build a delivery tool", answers: [] },
+    [],
+    {
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      model: "stream-model",
+      apiKey: "stream-key"
+    },
+    operation
+  );
+
+  assert.equal(providerStreamSetting, true);
+  assert.equal(chunks.join(""), content);
+  assert.equal(followUp.question, "Which delivery path matters most?");
+});
+
+test("does not retry provider authentication failures", async (context) => {
+  let attempts = 0;
+  const provider = createServer((_request, response) => {
+    attempts += 1;
+    response.writeHead(401, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({ error: { message: "invalid key" } }));
+  });
+  await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
+  context.after(() => new Promise<void>((resolve, reject) => {
+    provider.close((error) => error ? reject(error) : resolve());
+  }));
+  const address = provider.address() as AddressInfo;
+
+  await assert.rejects(
+    createHarnessFollowUp(
+      { requirement: "Build a tool", answers: [] },
+      [],
+      {
+        baseUrl: `http://127.0.0.1:${address.port}/v1`,
+        model: "auth-model",
+        apiKey: "bad-key"
+      }
+    ),
+    (error: unknown) => {
+      const failure = (error as { failure?: { code?: string; retryable?: boolean } }).failure;
+      return failure?.code === "provider_auth" && failure.retryable === false;
+    }
+  );
+  assert.equal(attempts, 1);
+});
+
+test("bounds Forge AI timeouts and emits structured operation logs", async () => {
+  const logs: Array<Record<string, unknown>> = [];
+  const attempts: number[] = [];
+  const operation = createObservedForgeAiOperation("follow-up", {
+    operationId: "timeout-operation",
+    workspaceId: "workspace-timeout",
+    sessionId: "session-timeout",
+    model: "timeout-model"
+  });
+  operation.logger = (_level, entry) => logs.push(entry);
+  operation.onAttempt = (attempt) => attempts.push(attempt);
+
+  await assert.rejects(
+    runForgeAiOperation(
+      async ({ signal }) => new Promise<never>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      }),
+      operation,
+      {
+        maxAttempts: 2,
+        attemptTimeoutMs: 15,
+        totalTimeoutMs: 50,
+        retryDelaysMs: [1]
+      }
+    ),
+    (error: unknown) => {
+      const failure = (error as { failure?: { code?: string; attempts?: number; durationMs?: number } }).failure;
+      return failure?.code === "timeout" &&
+        failure.attempts === 2 &&
+        typeof failure.durationMs === "number" &&
+        failure.durationMs < 250;
+    }
+  );
+
+  assert.deepEqual(attempts, [1, 2]);
+  assert.ok(logs.some((entry) => entry.event === "forge.ai.operation.failed"));
+  assert.ok(logs.every((entry) => entry.operationId === "timeout-operation"));
+  assert.equal(JSON.stringify(logs).includes("bad-key"), false);
+});
+
+test("replays one server-side Forge operation to reentrant subscribers", async () => {
+  const identity = {
+    accountId: `account-${Date.now()}`,
+    workspaceId: "workspace-replay",
+    sessionId: "session-replay"
+  };
+  let executions = 0;
+  let releaseOperation!: () => void;
+  const operationGate = new Promise<void>((resolve) => {
+    releaseOperation = resolve;
+  });
+  const execute = async (stream: ReturnType<typeof getOrCreateForgeOperationStream>) => {
+    executions += 1;
+    stream.publish({
+      type: "delta",
+      operationId: stream.operationId,
+      operation: "follow-up",
+      attempt: 1,
+      delta: "partial"
+    });
+    await operationGate;
+    stream.publish({
+      type: "error",
+      operationId: stream.operationId,
+      operation: "follow-up",
+      failure: {
+        operationId: stream.operationId,
+        operation: "follow-up",
+        code: "timeout",
+        message: "timed out",
+        retryable: true,
+        attempts: 1,
+        durationMs: 10,
+        occurredAt: new Date().toISOString()
+      }
+    });
+  };
+
+  const first = getOrCreateForgeOperationStream(identity, "follow-up", execute);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const second = getOrCreateForgeOperationStream(identity, "follow-up", execute);
+  assert.equal(second, first);
+  assert.equal(executions, 1);
+  const replayed: string[] = [];
+  const unsubscribe = second.subscribe((event) => replayed.push(event.type));
+  assert.deepEqual(replayed.slice(0, 2), ["operation", "delta"]);
+  unsubscribe();
+
+  releaseOperation();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const terminalReplay: string[] = [];
+  first.subscribe((event) => terminalReplay.push(event.type));
+  assert.equal(terminalReplay.at(-1), "error");
 });
 
 test("lets Forge AI decide when discovery has enough context", async (context) => {

@@ -22,11 +22,12 @@ import type {
   AssetFilePreview,
   AssetFileTreeNode,
   AssetRecord,
+  ForgeAiOperationFailure,
+  ForgeOperationStreamEvent,
   ForgeSessionDetail,
   ForgeSessionListResponse,
   ForgeSessionSummary,
   HarnessFollowUpComponent,
-  HarnessFollowUpRequest,
   HarnessFollowUpResponse,
   HarnessInterviewAnswer,
   HarnessTemplateResponse,
@@ -66,11 +67,10 @@ import {
   createForgeSession,
   deleteForgeSession,
   downloadForgeTemplate,
-  generateForgeTemplate,
   getForgeSession,
   getWorkspaceAiSettings,
-  getForgeFollowUp,
-  listForgeSessions
+  listForgeSessions,
+  streamForgeOperation
 } from "../lib/api";
 import { cn } from "../lib/utils";
 import { FilePreviewPane } from "./assets/file-preview-pane";
@@ -80,7 +80,7 @@ type BuilderPhase = "idle" | "question" | "working" | "failed" | "complete";
 
 type ForgeRetryAction =
   | { kind: "start" }
-  | { kind: "follow-up" | "generate"; input: HarnessFollowUpRequest };
+  | { kind: "follow-up" | "generate" };
 
 export function ForgeView({
   token,
@@ -109,7 +109,11 @@ export function ForgeView({
   const [template, setTemplate] = useState<HarnessTemplateResponse>();
   const [selectedPath, setSelectedPath] = useState<string>();
   const [workingLabel, setWorkingLabel] = useState("");
+  const [workingOperation, setWorkingOperation] = useState<"follow-up" | "generate">();
+  const [liveOutput, setLiveOutput] = useState("");
+  const [liveAttempt, setLiveAttempt] = useState<{ attempt: number; maxAttempts: number }>();
   const [error, setError] = useState<string>();
+  const [operationFailure, setOperationFailure] = useState<ForgeAiOperationFailure>();
   const [retryAction, setRetryAction] = useState<ForgeRetryAction>();
   const [isDownloading, setIsDownloading] = useState(false);
   const [aiSettings, setAiSettings] = useState<WorkspaceAiSettings>();
@@ -125,13 +129,21 @@ export function ForgeView({
   const historyScopeRef = useRef(historyScope);
   const routeSessionLoadRef = useRef<string | undefined>(undefined);
   const routedSessionIdRef = useRef(routedSessionId);
+  const activeSessionIdRef = useRef<string | undefined>(undefined);
   const discoveryScrollRef = useRef<HTMLDivElement | null>(null);
   historyScopeRef.current = historyScope;
   routedSessionIdRef.current = routedSessionId;
+  activeSessionIdRef.current = activeSessionId;
   const tree = useMemo(() => buildTemplateTree(template?.files ?? []), [template?.files]);
   const selectedFile = useMemo(
     () => templateFilePreview(template, selectedPath),
     [template, selectedPath]
+  );
+  const streamingText = useMemo(
+    () => workingOperation === "generate"
+      ? extractFirstPartialJsonString(liveOutput, ["name", "summary"])
+      : extractFirstPartialJsonString(liveOutput, ["question"]),
+    [liveOutput, workingOperation]
   );
 
   useEffect(() => {
@@ -188,8 +200,13 @@ export function ForgeView({
     setTemplate(undefined);
     setSelectedPath(undefined);
     setError(undefined);
+    setOperationFailure(undefined);
     setRetryAction(undefined);
+    setWorkingOperation(undefined);
+    setLiveOutput("");
+    setLiveAttempt(undefined);
     setActiveSessionId(undefined);
+    activeSessionIdRef.current = undefined;
     setHistory(undefined);
     setHistoryError(undefined);
     setHistoryOpen(false);
@@ -203,6 +220,7 @@ export function ForgeView({
     const normalized = requirement.trim();
     if (!normalized || usableSkills.length === 0) return;
     setError(undefined);
+    setOperationFailure(undefined);
     setRetryAction(undefined);
     setTemplate(undefined);
     setAnswers([]);
@@ -218,83 +236,104 @@ export function ForgeView({
       return;
     }
     setActiveSessionId(session.id);
+    activeSessionIdRef.current = session.id;
     onNavigateSession(session.id);
     addSessionToLoadedHistory(session);
-    await requestFollowUp({
-      requirement: normalized,
-      answers: [],
-      sessionId: session.id
-    });
+    await requestOperation(session.id, "follow-up");
   }
 
   async function submitAnswer() {
     const question = followUp?.question;
     const normalized = composeAnswer(followUp?.component, selectedOptions, answer);
-    if (!question || !normalized) return;
-    const nextAnswers = [...answers, { question, answer: normalized }];
-    setAnswers(nextAnswers);
-    await requestFollowUp({
-      requirement: requirement.trim(),
-      answers: nextAnswers,
-      ...(activeSessionId ? { sessionId: activeSessionId } : {})
+    if (!activeSessionId || !question || !normalized) return;
+    await requestOperation(activeSessionId, "follow-up", {
+      question,
+      answer: normalized
     });
   }
 
   async function generateFromCurrentContext() {
+    if (!activeSessionId) return;
     const question = followUp?.question;
     const draftAnswer = composeAnswer(followUp?.component, selectedOptions, answer);
-    const nextAnswers = question && draftAnswer
-      ? [...answers, { question, answer: draftAnswer }]
-      : answers;
-    if (nextAnswers !== answers) setAnswers(nextAnswers);
-    await requestTemplate({
-      requirement: requirement.trim(),
-      answers: nextAnswers,
-      ...(activeSessionId ? { sessionId: activeSessionId } : {})
-    });
+    await requestOperation(
+      activeSessionId,
+      "generate",
+      question && draftAnswer ? { question, answer: draftAnswer } : undefined
+    );
   }
 
-  async function requestFollowUp(input: HarnessFollowUpRequest) {
+  async function requestOperation(
+    sessionId: string,
+    operation: "follow-up" | "generate",
+    submittedAnswer?: HarnessInterviewAnswer,
+    reconnectAttempt = 0
+  ) {
     setError(undefined);
+    setOperationFailure(undefined);
     setRetryAction(undefined);
-    setWorkingLabel(input.answers.length
-      ? "Finding the next useful question…"
-      : "Reviewing the requirement and workspace Skills…");
+    setWorkingOperation(operation);
+    setWorkingLabel(operation === "generate"
+      ? "Selecting workspace Skills and composing the project harness…"
+      : answers.length || submittedAnswer
+        ? "Finding the next useful question…"
+        : "Reviewing the requirement and workspace Skills…");
+    setLiveOutput("");
+    setLiveAttempt(undefined);
     setPhase("working");
-    let response: HarnessFollowUpResponse;
+    let terminalEvent: Extract<
+      ForgeOperationStreamEvent,
+      { type: "complete" | "error" }
+    > | undefined;
     try {
-      response = await getForgeFollowUp(token, workspace.id, input);
+      await streamForgeOperation(
+        token,
+        workspace.id,
+        sessionId,
+        operation,
+        submittedAnswer,
+        (event) => {
+          if (activeSessionIdRef.current !== sessionId) return;
+          if (event.type === "attempt") {
+            setLiveOutput("");
+            setLiveAttempt({ attempt: event.attempt, maxAttempts: event.maxAttempts });
+          } else if (event.type === "delta") {
+            setLiveOutput((current) => current + event.delta);
+          } else if (event.type === "session") {
+            applyServerSession(event.session);
+          } else if (event.type === "complete" || event.type === "error") {
+            terminalEvent = event;
+            if (event.session) applyServerSession(event.session);
+          }
+        }
+      );
     } catch (caught) {
-      setForgeFailure({ kind: "follow-up", input }, caught);
+      await recoverAfterStreamFailure(sessionId, operation, caught, reconnectAttempt);
       return;
     }
 
-    if (!response.ready && response.question) {
-      setFollowUp(response);
+    if (!terminalEvent || activeSessionIdRef.current !== sessionId) return;
+    if (terminalEvent.type === "error") {
+      showOperationFailure(terminalEvent.failure, terminalEvent.session);
+      return;
+    }
+    if (terminalEvent.operation === "generate") {
+      setTemplate(terminalEvent.template);
+      setSelectedPath(terminalEvent.template.files[0]?.path);
+      setPhase("complete");
+      setWorkingOperation(undefined);
+      if (history) void refreshHistory();
+      return;
+    }
+    if (!terminalEvent.followUp.ready && terminalEvent.followUp.question) {
+      setFollowUp(terminalEvent.followUp);
       setAnswer("");
       setSelectedOptions([]);
       setPhase("question");
+      setWorkingOperation(undefined);
       return;
     }
-    await requestTemplate(input);
-  }
-
-  async function requestTemplate(input: HarnessFollowUpRequest) {
-    setError(undefined);
-    setRetryAction(undefined);
-    setWorkingLabel("Selecting workspace Skills and composing the project harness…");
-    setPhase("working");
-    let result: HarnessTemplateResponse;
-    try {
-      result = await generateForgeTemplate(token, workspace.id, input);
-    } catch (caught) {
-      setForgeFailure({ kind: "generate", input }, caught);
-      return;
-    }
-    setTemplate(result);
-    setSelectedPath(result.files[0]?.path);
-    setPhase("complete");
-    if (history) void refreshHistory();
+    await requestOperation(sessionId, "generate");
   }
 
   async function retryFailedOperation() {
@@ -304,15 +343,87 @@ export function ForgeView({
       await startInterview();
       return;
     }
-    setAnswers(action.input.answers);
-    if (action.kind === "follow-up") await requestFollowUp(action.input);
-    else await requestTemplate(action.input);
+    if (activeSessionId) await requestOperation(activeSessionId, action.kind);
   }
 
   function setForgeFailure(action: ForgeRetryAction, caught: unknown) {
     setError(errorMessage(caught));
+    setOperationFailure(undefined);
     setRetryAction(action);
     setPhase("failed");
+  }
+
+  function showOperationFailure(
+    failure: ForgeAiOperationFailure,
+    session?: ForgeSessionDetail
+  ) {
+    if (session) applyServerSession(session);
+    setError(failure.message);
+    setOperationFailure(failure);
+    setRetryAction(
+      failure.operation === "follow-up" || failure.operation === "generate"
+        ? { kind: failure.operation }
+        : undefined
+    );
+    setWorkingOperation(undefined);
+    setPhase("failed");
+  }
+
+  async function recoverAfterStreamFailure(
+    sessionId: string,
+    operation: "follow-up" | "generate",
+    caught: unknown,
+    reconnectAttempt: number
+  ) {
+    try {
+      const session = await getForgeSession(token, workspace.id, sessionId);
+      if (activeSessionIdRef.current !== sessionId) return;
+      applyServerSession(session);
+      if (session.status === "complete" && session.template) {
+        setPhase("complete");
+        setWorkingOperation(undefined);
+        return;
+      }
+      if (session.status === "failed" && session.failure) {
+        showOperationFailure(session.failure, session);
+        return;
+      }
+      if (session.status === "working" && session.activeOperation && reconnectAttempt < 2) {
+        setWorkingLabel("Reconnecting to the server-side operation…");
+        setPhase("working");
+        await delay(250 * (reconnectAttempt + 1));
+        await requestOperation(
+          sessionId,
+          session.activeOperation.operation,
+          undefined,
+          reconnectAttempt + 1
+        );
+        return;
+      }
+      if (session.status === "interviewing" && session.followUp) {
+        if (session.followUp.ready) await requestOperation(sessionId, "generate");
+        else setPhase("question");
+        return;
+      }
+    } catch {
+      // Keep the original stream error when session reconciliation also fails.
+    }
+    setError(`${errorMessage(caught)} Retry to reconnect to the server-side operation.`);
+    setRetryAction({ kind: operation });
+    setWorkingOperation(undefined);
+    setPhase("failed");
+  }
+
+  function applyServerSession(session: ForgeSessionDetail) {
+    setActiveSessionId(session.id);
+    activeSessionIdRef.current = session.id;
+    setRequirement(session.requirement);
+    setAnswers(session.answers);
+    setFollowUp(session.followUp?.mode === "llm" ? session.followUp : undefined);
+    const storedTemplate = session.template?.mode === "llm" ? session.template : undefined;
+    setTemplate(storedTemplate);
+    if (storedTemplate) setSelectedPath(storedTemplate.files[0]?.path);
+    addSessionToLoadedHistory(session);
   }
 
   async function refreshHistory() {
@@ -332,7 +443,10 @@ export function ForgeView({
   function addSessionToLoadedHistory(session: ForgeSessionDetail) {
     setHistory((current) => current ? {
       ...current,
-      sessions: [toSessionSummary(session), ...current.sessions]
+      sessions: [
+        toSessionSummary(session),
+        ...current.sessions.filter((item) => item.id !== session.id)
+      ]
         .slice(0, current.cache.maxSessions)
     } : current);
   }
@@ -347,6 +461,7 @@ export function ForgeView({
     setLoadingSessionId(sessionId);
     setHistoryError(undefined);
     setError(undefined);
+    setOperationFailure(undefined);
     setRetryAction(undefined);
     setRequirement("");
     setAnswers([]);
@@ -360,36 +475,33 @@ export function ForgeView({
     try {
       const session = await getForgeSession(token, workspace.id, sessionId);
       if (routedSessionIdRef.current !== sessionId) return;
-      const storedTemplate = session.template?.mode === "llm" ? session.template : undefined;
-      const storedFollowUp = session.followUp?.mode === "llm" ? session.followUp : undefined;
-      setActiveSessionId(session.id);
-      setRequirement(session.requirement);
-      setAnswers(session.answers);
-      setFollowUp(storedFollowUp);
+      activeSessionIdRef.current = session.id;
+      applyServerSession(session);
       setAnswer("");
       setSelectedOptions([]);
-      setTemplate(storedTemplate);
-      setSelectedPath(storedTemplate?.files[0]?.path);
       setHistoryOpen(false);
 
-      if (storedTemplate) {
+      if (session.status === "complete" && session.template?.mode === "llm") {
         setPhase("complete");
         return;
       }
+      if (session.status === "failed" && session.failure) {
+        showOperationFailure(session.failure, session);
+        return;
+      }
+      if (session.status === "working" && session.activeOperation) {
+        await requestOperation(session.id, session.activeOperation.operation);
+        return;
+      }
+      const storedFollowUp = session.followUp?.mode === "llm" ? session.followUp : undefined;
       if (storedFollowUp && !storedFollowUp.ready && storedFollowUp.question) {
         setPhase("question");
         return;
       }
-
-      const input = {
-        requirement: session.requirement,
-        answers: session.answers,
-        sessionId: session.id
-      };
-      if (storedFollowUp?.ready && input.answers.length >= MIN_FORGE_INTERVIEW_ANSWERS) {
-        await requestTemplate(input);
+      if (storedFollowUp?.ready && session.answers.length >= MIN_FORGE_INTERVIEW_ANSWERS) {
+        await requestOperation(session.id, "generate");
       } else {
-        await requestFollowUp(input);
+        await requestOperation(session.id, "follow-up");
       }
     } catch (caught) {
       if (routedSessionIdRef.current !== sessionId) return;
@@ -447,6 +559,7 @@ export function ForgeView({
 
   function clearBuilderState() {
     setActiveSessionId(undefined);
+    activeSessionIdRef.current = undefined;
     setPhase("idle");
     setRequirement("");
     setAnswers([]);
@@ -456,7 +569,11 @@ export function ForgeView({
     setTemplate(undefined);
     setSelectedPath(undefined);
     setError(undefined);
+    setOperationFailure(undefined);
     setRetryAction(undefined);
+    setWorkingOperation(undefined);
+    setLiveOutput("");
+    setLiveAttempt(undefined);
   }
 
   function resetBuilder() {
@@ -561,7 +678,16 @@ export function ForgeView({
 
       {error ? (
         <div className="flex flex-col gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between">
-          <p className="leading-5">{error}</p>
+          <div className="min-w-0">
+            <p className="leading-5">{error}</p>
+            {operationFailure ? (
+              <p className="mt-1 break-all text-[11px] leading-4 text-destructive/80">
+                Operation {operationFailure.operationId} · {operationFailure.attempts}
+                {" "}attempt{operationFailure.attempts === 1 ? "" : "s"} ·
+                {" "}{formatDuration(operationFailure.durationMs)} · {operationFailure.code}
+              </p>
+            ) : null}
+          </div>
           {retryAction ? (
             <div className="flex shrink-0 flex-wrap gap-2">
               <Button
@@ -673,8 +799,19 @@ export function ForgeView({
                   <div className="flex min-h-40 flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 px-6 text-center">
                     <Loader2 className="mb-3 h-6 w-6 animate-spin text-blue-700" aria-hidden="true" />
                     <p className="text-sm font-medium">{workingLabel}</p>
+                    {liveAttempt ? (
+                      <Badge variant="outline" className="mt-2 text-[10px]">
+                        Attempt {liveAttempt.attempt} of {liveAttempt.maxAttempts}
+                      </Badge>
+                    ) : null}
+                    {streamingText ? (
+                      <p className="mt-4 w-full max-w-md rounded-md border bg-background px-4 py-3 text-left text-sm leading-6 text-foreground shadow-sm">
+                        {streamingText}
+                        <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-blue-600 align-middle" />
+                      </p>
+                    ) : null}
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Current workspace assets are part of the selection context.
+                      The operation continues on the server if this page disconnects.
                     </p>
                   </div>
                 ) : null}
@@ -908,10 +1045,20 @@ function ForgeHistoryPanel({
                           </span>
                           <span className="mt-2 flex flex-wrap items-center gap-1.5">
                             <Badge
-                              variant={session.status === "complete" ? "default" : "secondary"}
+                              variant={session.status === "complete"
+                                ? "default"
+                                : session.status === "failed"
+                                  ? "destructive"
+                                  : "secondary"}
                               className="text-[10px]"
                             >
-                              {session.status === "complete" ? "Ready" : "In progress"}
+                              {session.status === "complete"
+                                ? "Ready"
+                                : session.status === "failed"
+                                  ? "Failed"
+                                  : session.status === "working"
+                                    ? "Working"
+                                    : "In progress"}
                             </Badge>
                             {activeSessionId === session.id ? (
                               <Badge variant="outline" className="text-[10px]">Open</Badge>
@@ -1004,6 +1151,67 @@ function formatSessionTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit"
   });
+}
+
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1_000) return `${durationMs} ms`;
+  return `${(durationMs / 1_000).toFixed(durationMs < 10_000 ? 1 : 0)} s`;
+}
+
+function delay(durationMs: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, durationMs));
+}
+
+function extractFirstPartialJsonString(value: string, keys: string[]): string {
+  const values = keys
+    .map((key) => extractPartialJsonString(value, key))
+    .filter(Boolean);
+  return values.join("\n\n");
+}
+
+function extractPartialJsonString(value: string, key: string): string {
+  const keyIndex = value.indexOf(`"${key}"`);
+  if (keyIndex < 0) return "";
+  const colonIndex = value.indexOf(":", keyIndex + key.length + 2);
+  if (colonIndex < 0) return "";
+  let index = colonIndex + 1;
+  while (/\s/.test(value[index] ?? "")) index += 1;
+  if (value[index] !== '"') return "";
+  index += 1;
+
+  let result = "";
+  while (index < value.length) {
+    const character = value[index];
+    if (character === '"') break;
+    if (character !== "\\") {
+      result += character;
+      index += 1;
+      continue;
+    }
+
+    const escaped = value[index + 1];
+    if (!escaped) break;
+    if (escaped === "u") {
+      const code = value.slice(index + 2, index + 6);
+      if (!/^[0-9a-f]{4}$/i.test(code)) break;
+      result += String.fromCharCode(Number.parseInt(code, 16));
+      index += 6;
+      continue;
+    }
+    const escapes: Record<string, string> = {
+      '"': '"',
+      "\\": "\\",
+      "/": "/",
+      b: "\b",
+      f: "\f",
+      n: "\n",
+      r: "\r",
+      t: "\t"
+    };
+    result += escapes[escaped] ?? escaped;
+    index += 2;
+  }
+  return result;
 }
 
 function DiscoverySummary({

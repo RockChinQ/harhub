@@ -1,11 +1,11 @@
 import type {
+  ForgeOperationStreamEvent,
   ForgeSessionDetail,
   ForgeSessionListResponse,
-  HarnessFollowUpRequest,
-  HarnessFollowUpResponse,
+  HarnessInterviewAnswer,
   HarnessTemplateResponse
 } from "../../../../shared/types";
-import { JSON_HEADERS, request } from "./request";
+import { ApiRequestError, JSON_HEADERS, request } from "./request";
 
 export function listForgeSessions(
   token: string,
@@ -53,32 +53,68 @@ export function deleteForgeSession(
   );
 }
 
-export function getForgeFollowUp(
+export async function streamForgeOperation(
   token: string,
   workspaceId: string,
-  input: HarnessFollowUpRequest
-): Promise<HarnessFollowUpResponse> {
-  return request(`/api/workspaces/${encodeURIComponent(workspaceId)}/forge/follow-up`, {
-    method: "POST",
-    headers: JSON_HEADERS,
-    body: JSON.stringify(input),
-    cache: "no-store",
-    token
-  });
-}
+  sessionId: string,
+  operation: "follow-up" | "generate",
+  answer: HarnessInterviewAnswer | undefined,
+  onEvent: (event: ForgeOperationStreamEvent) => void
+): Promise<void> {
+  const response = await fetch(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/forge/sessions/${encodeURIComponent(sessionId)}/${operation}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...JSON_HEADERS
+      },
+      body: JSON.stringify(answer ? { answer } : {}),
+      cache: "no-store"
+    }
+  );
+  if (!response.ok) {
+    const data = await response.json().catch(() => undefined);
+    throw new ApiRequestError(
+      typeof data?.error === "string"
+        ? data.error
+        : `Forge operation failed with ${response.status}`,
+      response.status,
+      data
+    );
+  }
+  if (!response.body) throw new Error("Forge operation did not return a response stream.");
 
-export function generateForgeTemplate(
-  token: string,
-  workspaceId: string,
-  input: HarnessFollowUpRequest
-): Promise<HarnessTemplateResponse> {
-  return request(`/api/workspaces/${encodeURIComponent(workspaceId)}/forge/generate`, {
-    method: "POST",
-    headers: JSON_HEADERS,
-    body: JSON.stringify(input),
-    cache: "no-store",
-    token
-  });
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  let terminal = false;
+
+  const processLines = (flush = false) => {
+    const lines = pending.split("\n");
+    pending = flush ? "" : (lines.pop() ?? "");
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      const event = JSON.parse(line) as ForgeOperationStreamEvent;
+      onEvent(event);
+      if (event.type === "complete" || event.type === "error") terminal = true;
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    pending += decoder.decode(value, { stream: true });
+    if (pending.length > 1_000_000) {
+      throw new Error("Forge operation returned an oversized stream event.");
+    }
+    processLines();
+  }
+  pending += decoder.decode();
+  if (pending) pending += "\n";
+  processLines(true);
+  if (!terminal) throw new Error("Forge operation stream ended before a final result was saved.");
 }
 
 export async function downloadForgeTemplate(
