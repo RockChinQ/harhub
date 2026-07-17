@@ -395,6 +395,9 @@ export interface ForgeSessionOperation {
   attempt: number;
 }
 
+export type ForgeGenerationProgressStep = "context" | "assets" | "compose" | "save";
+export type ForgeGenerationProgressStatus = "active" | "complete";
+
 export type ForgeOperationStreamEvent =
   | {
       type: "operation";
@@ -413,6 +416,13 @@ export type ForgeOperationStreamEvent =
       operationId: string;
       operation: Exclude<ForgeAiOperation, "connection-test">;
       session: ForgeSessionDetail;
+    }
+  | {
+      type: "progress";
+      operationId: string;
+      operation: "generate";
+      step: ForgeGenerationProgressStep;
+      status: ForgeGenerationProgressStatus;
     }
   | {
       type: "delta";

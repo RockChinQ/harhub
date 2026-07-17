@@ -208,9 +208,16 @@ test("replays one server-side Forge operation to reentrant subscribers", async (
   const execute = async (stream: ReturnType<typeof getOrCreateForgeOperationStream>) => {
     executions += 1;
     stream.publish({
+      type: "progress",
+      operationId: stream.operationId,
+      operation: "generate",
+      step: "compose",
+      status: "active"
+    });
+    stream.publish({
       type: "delta",
       operationId: stream.operationId,
-      operation: "follow-up",
+      operation: "generate",
       attempt: 1,
       delta: "partial"
     });
@@ -218,10 +225,10 @@ test("replays one server-side Forge operation to reentrant subscribers", async (
     stream.publish({
       type: "error",
       operationId: stream.operationId,
-      operation: "follow-up",
+      operation: "generate",
       failure: {
         operationId: stream.operationId,
-        operation: "follow-up",
+        operation: "generate",
         code: "timeout",
         message: "timed out",
         retryable: true,
@@ -232,14 +239,14 @@ test("replays one server-side Forge operation to reentrant subscribers", async (
     });
   };
 
-  const first = getOrCreateForgeOperationStream(identity, "follow-up", execute);
+  const first = getOrCreateForgeOperationStream(identity, "generate", execute);
   await new Promise<void>((resolve) => setImmediate(resolve));
-  const second = getOrCreateForgeOperationStream(identity, "follow-up", execute);
+  const second = getOrCreateForgeOperationStream(identity, "generate", execute);
   assert.equal(second, first);
   assert.equal(executions, 1);
   const replayed: string[] = [];
   const unsubscribe = second.subscribe((event) => replayed.push(event.type));
-  assert.deepEqual(replayed.slice(0, 2), ["operation", "delta"]);
+  assert.deepEqual(replayed.slice(0, 3), ["operation", "progress", "delta"]);
   unsubscribe();
 
   releaseOperation();

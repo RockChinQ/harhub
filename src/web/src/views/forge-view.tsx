@@ -23,6 +23,8 @@ import type {
   AssetFileTreeNode,
   AssetRecord,
   ForgeAiOperationFailure,
+  ForgeGenerationProgressStatus,
+  ForgeGenerationProgressStep,
   ForgeOperationStreamEvent,
   ForgeSessionDetail,
   ForgeSessionListResponse,
@@ -82,6 +84,38 @@ type ForgeRetryAction =
   | { kind: "start" }
   | { kind: "follow-up" | "generate" };
 
+type GenerationProgressState = Record<
+  ForgeGenerationProgressStep,
+  ForgeGenerationProgressStatus | "pending"
+>;
+
+const GENERATION_STEPS: Array<{
+  id: ForgeGenerationProgressStep;
+  title: string;
+  description: string;
+}> = [
+  {
+    id: "context",
+    title: "Prepare discovery context",
+    description: "Restore the requirement and essential interview answers from this session."
+  },
+  {
+    id: "assets",
+    title: "Load workspace Skills",
+    description: "Collect the usable Skill assets available to this workspace."
+  },
+  {
+    id: "compose",
+    title: "Compose harness blueprint",
+    description: "Stream the project profile, asset selection, workflow, and agent rules."
+  },
+  {
+    id: "save",
+    title: "Assemble and save framework",
+    description: "Build the reviewable files and persist the completed session result."
+  }
+];
+
 export function ForgeView({
   token,
   workspace,
@@ -112,6 +146,9 @@ export function ForgeView({
   const [workingOperation, setWorkingOperation] = useState<"follow-up" | "generate">();
   const [liveOutput, setLiveOutput] = useState("");
   const [liveAttempt, setLiveAttempt] = useState<{ attempt: number; maxAttempts: number }>();
+  const [generationProgress, setGenerationProgress] = useState<GenerationProgressState>(
+    initialGenerationProgress
+  );
   const [error, setError] = useState<string>();
   const [operationFailure, setOperationFailure] = useState<ForgeAiOperationFailure>();
   const [retryAction, setRetryAction] = useState<ForgeRetryAction>();
@@ -205,6 +242,7 @@ export function ForgeView({
     setWorkingOperation(undefined);
     setLiveOutput("");
     setLiveAttempt(undefined);
+    setGenerationProgress(initialGenerationProgress());
     setActiveSessionId(undefined);
     activeSessionIdRef.current = undefined;
     setHistory(undefined);
@@ -280,6 +318,9 @@ export function ForgeView({
         : "Reviewing the requirement and workspace Skills…");
     setLiveOutput("");
     setLiveAttempt(undefined);
+    if (operation === "generate" && reconnectAttempt === 0) {
+      setGenerationProgress(initialGenerationProgress());
+    }
     setPhase("working");
     let terminalEvent: Extract<
       ForgeOperationStreamEvent,
@@ -299,6 +340,11 @@ export function ForgeView({
             setLiveAttempt({ attempt: event.attempt, maxAttempts: event.maxAttempts });
           } else if (event.type === "delta") {
             setLiveOutput((current) => current + event.delta);
+          } else if (event.type === "progress") {
+            setGenerationProgress((current) => ({
+              ...current,
+              [event.step]: event.status
+            }));
           } else if (event.type === "session") {
             applyServerSession(event.session);
           } else if (event.type === "complete" || event.type === "error") {
@@ -320,6 +366,7 @@ export function ForgeView({
     if (terminalEvent.operation === "generate") {
       setTemplate(terminalEvent.template);
       setSelectedPath(terminalEvent.template.files[0]?.path);
+      setGenerationProgress(completedGenerationProgress());
       setPhase("complete");
       setWorkingOperation(undefined);
       if (history) void refreshHistory();
@@ -574,6 +621,7 @@ export function ForgeView({
     setWorkingOperation(undefined);
     setLiveOutput("");
     setLiveAttempt(undefined);
+    setGenerationProgress(initialGenerationProgress());
   }
 
   function resetBuilder() {
@@ -799,12 +847,12 @@ export function ForgeView({
                   <div className="flex min-h-40 flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 px-6 text-center">
                     <Loader2 className="mb-3 h-6 w-6 animate-spin text-blue-700" aria-hidden="true" />
                     <p className="text-sm font-medium">{workingLabel}</p>
-                    {liveAttempt ? (
+                    {liveAttempt && liveAttempt.attempt > 1 ? (
                       <Badge variant="outline" className="mt-2 text-[10px]">
                         Attempt {liveAttempt.attempt} of {liveAttempt.maxAttempts}
                       </Badge>
                     ) : null}
-                    {streamingText ? (
+                    {streamingText && workingOperation !== "generate" ? (
                       <p className="mt-4 w-full max-w-md rounded-md border bg-background px-4 py-3 text-left text-sm leading-6 text-foreground shadow-sm">
                         {streamingText}
                         <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-blue-600 align-middle" />
@@ -867,7 +915,15 @@ export function ForgeView({
           </CardHeader>
           <CardContent className="min-h-0 flex-1 p-0">
             {!template ? (
-              <TemplateEmptyState />
+              phase === "working" && workingOperation === "generate" ? (
+                <ForgeGenerationProgress
+                  progress={generationProgress}
+                  streamingText={streamingText}
+                  attempt={liveAttempt}
+                />
+              ) : (
+                <TemplateEmptyState />
+              )
             ) : (
               <div className="flex h-full min-h-0 flex-col">
                 <div className="shrink-0 border-b px-5 py-4">
@@ -1444,6 +1500,103 @@ function TemplateEmptyState() {
       </div>
     </div>
   );
+}
+
+function ForgeGenerationProgress({
+  progress,
+  streamingText,
+  attempt
+}: {
+  progress: GenerationProgressState;
+  streamingText: string;
+  attempt?: { attempt: number; maxAttempts: number };
+}) {
+  return (
+    <div className="h-full min-h-[520px] overflow-auto p-6 sm:p-8" aria-live="polite">
+      <div className="mx-auto max-w-xl">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Sparkles className="h-4 w-4 text-blue-700" aria-hidden="true" />
+              Building your harness framework
+            </div>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Each stage runs on the server and can be restored after a refresh or reconnect.
+            </p>
+          </div>
+          {attempt && attempt.attempt > 1 ? (
+            <Badge variant="outline" className="text-[10px]">
+              Attempt {attempt.attempt} of {attempt.maxAttempts}
+            </Badge>
+          ) : null}
+        </div>
+
+        <div className="mt-6 space-y-1">
+          {GENERATION_STEPS.map((step, index) => {
+            const status = progress[step.id];
+            return (
+              <div key={step.id} className="relative flex gap-3 pb-5 last:pb-0">
+                {index < GENERATION_STEPS.length - 1 ? (
+                  <div
+                    className={cn(
+                      "absolute bottom-0 left-[11px] top-6 w-px",
+                      status === "complete" ? "bg-emerald-300" : "bg-border"
+                    )}
+                    aria-hidden="true"
+                  />
+                ) : null}
+                <div className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-background">
+                  {status === "complete" ? (
+                    <CheckCircle2 className="h-5 w-5 text-emerald-600" aria-hidden="true" />
+                  ) : status === "active" ? (
+                    <Loader2 className="h-5 w-5 animate-spin text-blue-700" aria-hidden="true" />
+                  ) : (
+                    <span className="h-3 w-3 rounded-full border-2 border-muted-foreground/30" />
+                  )}
+                </div>
+                <div className={cn("min-w-0 pt-0.5", status === "pending" && "opacity-55")}>
+                  <p className="text-sm font-medium">{step.title}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {step.description}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {streamingText ? (
+          <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50/50 p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-800">
+              Live blueprint
+            </div>
+            <p className="mt-2 whitespace-pre-line text-sm leading-6 text-blue-950">
+              {streamingText}
+              <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-blue-600 align-middle" />
+            </p>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function initialGenerationProgress(): GenerationProgressState {
+  return {
+    context: "pending",
+    assets: "pending",
+    compose: "pending",
+    save: "pending"
+  };
+}
+
+function completedGenerationProgress(): GenerationProgressState {
+  return {
+    context: "complete",
+    assets: "complete",
+    compose: "complete",
+    save: "complete"
+  };
 }
 
 function templateFilePreview(

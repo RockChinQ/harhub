@@ -1,6 +1,8 @@
 import type { Express, Response } from "express";
 import type {
   ForgeAiOperationFailure,
+  ForgeGenerationProgressStep,
+  ForgeGenerationProgressStatus,
   ForgeSessionOperation,
   HarnessFollowUpRequest,
   HarnessInterviewAnswer,
@@ -184,6 +186,7 @@ async function executeForgeOperation({
 }): Promise<void> {
   let input: HarnessFollowUpRequest | undefined;
   try {
+    publishGenerationProgress(stream, operation, "context", "active");
     const started = await beginForgeSessionOperation(
       accountId,
       workspaceId,
@@ -199,6 +202,8 @@ async function executeForgeOperation({
       operation,
       session: started.session
     });
+    publishGenerationProgress(stream, operation, "context", "complete");
+    publishGenerationProgress(stream, operation, "assets", "active");
     const configuration = await getWorkspaceAiRuntimeConfiguration(accountId, workspaceId);
     const observed = createObservedForgeAiOperation(operation, {
       operationId: stream.operationId,
@@ -242,6 +247,7 @@ async function executeForgeOperation({
 
     const catalog = await loadOrCreateWorkspaceAssetCatalog(workspace);
     const assets = workspaceAssetSummaries(catalog.assets);
+    publishGenerationProgress(stream, operation, "assets", "complete");
     if (operation === "follow-up") {
       const followUp = await createHarnessFollowUp(input, assets, configuration, observed);
       await recordForgeSessionFollowUp(
@@ -261,7 +267,10 @@ async function executeForgeOperation({
       return;
     }
 
+    publishGenerationProgress(stream, operation, "compose", "active");
     const template = await createHarnessTemplate(input, assets, configuration, observed);
+    publishGenerationProgress(stream, operation, "compose", "complete");
+    publishGenerationProgress(stream, operation, "save", "active");
     await recordForgeSessionTemplate(
       accountId,
       workspaceId,
@@ -269,6 +278,7 @@ async function executeForgeOperation({
       template,
       stream.operationId
     );
+    publishGenerationProgress(stream, operation, "save", "complete");
     stream.publish({
       type: "complete",
       operationId: stream.operationId,
@@ -311,6 +321,22 @@ async function executeForgeOperation({
       ...(session ? { session } : {})
     });
   }
+}
+
+function publishGenerationProgress(
+  stream: ForgeOperationStream,
+  operation: ForgeSessionOperation["operation"],
+  step: ForgeGenerationProgressStep,
+  status: ForgeGenerationProgressStatus
+): void {
+  if (operation !== "generate") return;
+  stream.publish({
+    type: "progress",
+    operationId: stream.operationId,
+    operation,
+    step,
+    status
+  });
 }
 
 function streamForgeOperation(res: Response, stream: ForgeOperationStream): void {
