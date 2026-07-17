@@ -36,7 +36,7 @@ is intentionally Skills-first.
 - Preview Skill metadata and package files.
 - Use Forge's AI-guided interview to compose a downloadable project harness
   from the current workspace's Skills, with workspace-scoped provider settings
-  managed by owners and admins.
+  managed by owners and admins, plus private bounded session history.
 - Publish revocable public share pages with verified zip downloads and Harhub or
   Agent Skills CLI install commands.
 - Manage Skills from the web UI or CLI.

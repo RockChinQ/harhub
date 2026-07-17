@@ -1,9 +1,57 @@
 import type {
+  ForgeSessionDetail,
+  ForgeSessionListResponse,
   HarnessFollowUpRequest,
   HarnessFollowUpResponse,
   HarnessTemplateResponse
 } from "../../../../shared/types";
 import { JSON_HEADERS, request } from "./request";
+
+export function listForgeSessions(
+  token: string,
+  workspaceId: string
+): Promise<ForgeSessionListResponse> {
+  return request(`/api/workspaces/${encodeURIComponent(workspaceId)}/forge/sessions`, {
+    cache: "no-store",
+    token
+  });
+}
+
+export function createForgeSession(
+  token: string,
+  workspaceId: string,
+  requirement: string
+): Promise<ForgeSessionDetail> {
+  return request(`/api/workspaces/${encodeURIComponent(workspaceId)}/forge/sessions`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ requirement }),
+    cache: "no-store",
+    token
+  });
+}
+
+export function getForgeSession(
+  token: string,
+  workspaceId: string,
+  sessionId: string
+): Promise<ForgeSessionDetail> {
+  return request(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/forge/sessions/${encodeURIComponent(sessionId)}`,
+    { cache: "no-store", token }
+  );
+}
+
+export function deleteForgeSession(
+  token: string,
+  workspaceId: string,
+  sessionId: string
+): Promise<void> {
+  return request(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/forge/sessions/${encodeURIComponent(sessionId)}`,
+    { method: "DELETE", cache: "no-store", token }
+  );
+}
 
 export function getForgeFollowUp(
   token: string,
@@ -14,6 +62,7 @@ export function getForgeFollowUp(
     method: "POST",
     headers: JSON_HEADERS,
     body: JSON.stringify(input),
+    cache: "no-store",
     token
   });
 }
@@ -27,6 +76,7 @@ export function generateForgeTemplate(
     method: "POST",
     headers: JSON_HEADERS,
     body: JSON.stringify(input),
+    cache: "no-store",
     token
   });
 }
@@ -44,6 +94,7 @@ export async function downloadForgeTemplate(
         Authorization: `Bearer ${token}`,
         ...JSON_HEADERS
       },
+      cache: "no-store",
       body: JSON.stringify({
         slug: template.profile.slug,
         files: template.files,

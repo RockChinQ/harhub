@@ -1,10 +1,18 @@
-import type { Express } from "express";
+import type { Express, Response } from "express";
 import type {
   HarnessFollowUpRequest,
   HarnessInterviewAnswer,
   HarnessTemplateFile
 } from "../../shared/types.js";
-import { getWorkspaceAiRuntimeConfiguration } from "../../state/index.js";
+import {
+  createForgeSession,
+  deleteForgeSession,
+  getForgeSession,
+  getWorkspaceAiRuntimeConfiguration,
+  listForgeSessions,
+  recordForgeSessionFollowUp,
+  recordForgeSessionTemplate
+} from "../../state/index.js";
 import { requireWorkspaceAccess } from "../auth.js";
 import {
   createHarnessFollowUp,
@@ -13,23 +21,99 @@ import {
   workspaceAssetSummaries
 } from "../services/forge.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "../services/workspace-catalogs.js";
-import { sendError } from "../utils/http.js";
+import { sendError, setPrivateNoStore } from "../utils/http.js";
 
 const MAX_REQUIREMENT_CHARS = 6_000;
 const MAX_ANSWER_CHARS = 2_000;
 
 export function registerForgeRoutes(app: Express): void {
+  app.get("/api/workspaces/:workspaceId/forge/sessions", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
+    if (!context) return;
+    setPrivateNoStore(res);
+
+    try {
+      res.json(await listForgeSessions(context.account.id, context.workspace.id));
+    } catch (error) {
+      sendForgeError(res, error);
+    }
+  });
+
+  app.post("/api/workspaces/:workspaceId/forge/sessions", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
+    if (!context) return;
+    setPrivateNoStore(res);
+
+    try {
+      if (!isRecord(req.body)) throw new Error("Expected a JSON object request body");
+      const requirement = readRequiredString(
+        req.body.requirement,
+        "requirement",
+        MAX_REQUIREMENT_CHARS
+      );
+      res.status(201).json(await createForgeSession(
+        context.account.id,
+        context.workspace.id,
+        requirement
+      ));
+    } catch (error) {
+      sendForgeError(res, error);
+    }
+  });
+
+  app.get("/api/workspaces/:workspaceId/forge/sessions/:sessionId", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
+    if (!context) return;
+    setPrivateNoStore(res);
+
+    try {
+      res.json(await getForgeSession(
+        context.account.id,
+        context.workspace.id,
+        readRequiredString(req.params.sessionId, "sessionId", 128)
+      ));
+    } catch (error) {
+      sendForgeError(res, error);
+    }
+  });
+
+  app.delete("/api/workspaces/:workspaceId/forge/sessions/:sessionId", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
+    if (!context) return;
+    setPrivateNoStore(res);
+
+    try {
+      await deleteForgeSession(
+        context.account.id,
+        context.workspace.id,
+        readRequiredString(req.params.sessionId, "sessionId", 128)
+      );
+      res.status(204).end();
+    } catch (error) {
+      sendForgeError(res, error);
+    }
+  });
+
   app.post("/api/workspaces/:workspaceId/forge/follow-up", async (req, res) => {
     const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
+    setPrivateNoStore(res);
 
     try {
+      const input = readInput(req.body);
       const catalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
-      res.json(await createHarnessFollowUp(
-        readInput(req.body),
+      const response = await createHarnessFollowUp(
+        input,
         workspaceAssetSummaries(catalog.assets),
         await getWorkspaceAiRuntimeConfiguration(context.account.id, context.workspace.id)
-      ));
+      );
+      await recordForgeSessionFollowUp(
+        context.account.id,
+        context.workspace.id,
+        input,
+        response
+      );
+      res.json(response);
     } catch (error) {
       sendError(res, error, 400);
     }
@@ -38,14 +122,23 @@ export function registerForgeRoutes(app: Express): void {
   app.post("/api/workspaces/:workspaceId/forge/generate", async (req, res) => {
     const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
+    setPrivateNoStore(res);
 
     try {
+      const input = readInput(req.body);
       const catalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
-      res.json(await createHarnessTemplate(
-        readInput(req.body),
+      const template = await createHarnessTemplate(
+        input,
         workspaceAssetSummaries(catalog.assets),
         await getWorkspaceAiRuntimeConfiguration(context.account.id, context.workspace.id)
-      ));
+      );
+      await recordForgeSessionTemplate(
+        context.account.id,
+        context.workspace.id,
+        input,
+        template
+      );
+      res.json(template);
     } catch (error) {
       sendError(res, error, 400);
     }
@@ -54,6 +147,7 @@ export function registerForgeRoutes(app: Express): void {
   app.post("/api/workspaces/:workspaceId/forge/archive", async (req, res) => {
     const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
+    setPrivateNoStore(res);
 
     try {
       const catalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
@@ -73,7 +167,10 @@ function readInput(value: unknown): HarnessFollowUpRequest {
   const answers = Array.isArray(value.answers)
     ? value.answers.slice(0, 3).map(readAnswer)
     : [];
-  return { requirement, answers };
+  const sessionId = value.sessionId === undefined
+    ? undefined
+    : readRequiredString(value.sessionId, "sessionId", 128);
+  return { requirement, answers, ...(sessionId ? { sessionId } : {}) };
 }
 
 function readArchiveInput(value: unknown): {
@@ -120,4 +217,14 @@ function readRequiredString(value: unknown, label: string, maxLength: number): s
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function sendForgeError(
+  res: Response,
+  error: unknown
+): void {
+  const status = error instanceof Error && error.message === "Forge session not found."
+    ? 404
+    : 400;
+  sendError(res, error, status);
 }

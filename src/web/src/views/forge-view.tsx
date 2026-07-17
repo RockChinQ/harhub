@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   Bot,
@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Download,
   FileArchive,
+  History,
   ListChecks,
   Loader2,
   MessageSquareText,
@@ -13,13 +14,17 @@ import {
   PackageCheck,
   RotateCcw,
   Settings2,
-  Sparkles
+  Sparkles,
+  Trash2
 } from "lucide-react";
 
 import type {
   AssetFilePreview,
   AssetFileTreeNode,
   AssetRecord,
+  ForgeSessionDetail,
+  ForgeSessionListResponse,
+  ForgeSessionSummary,
   HarnessFollowUpComponent,
   HarnessFollowUpResponse,
   HarnessInterviewAnswer,
@@ -28,6 +33,16 @@ import type {
   WorkspaceRecord
 } from "../../../shared/types";
 import { Badge } from "../components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "../components/ui/alert-dialog";
 import { Button } from "../components/ui/button";
 import {
   Card,
@@ -37,12 +52,23 @@ import {
   CardTitle
 } from "../components/ui/card";
 import { Checkbox } from "../components/ui/checkbox";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle
+} from "../components/ui/sheet";
 import { Textarea } from "../components/ui/textarea";
 import {
+  createForgeSession,
+  deleteForgeSession,
   downloadForgeTemplate,
   generateForgeTemplate,
+  getForgeSession,
   getWorkspaceAiSettings,
-  getForgeFollowUp
+  getForgeFollowUp,
+  listForgeSessions
 } from "../lib/api";
 import { cn } from "../lib/utils";
 import { FilePreviewPane } from "./assets/file-preview-pane";
@@ -77,6 +103,17 @@ export function ForgeView({
   const [warning, setWarning] = useState<string>();
   const [isDownloading, setIsDownloading] = useState(false);
   const [aiSettings, setAiSettings] = useState<WorkspaceAiSettings>();
+  const [activeSessionId, setActiveSessionId] = useState<string>();
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<ForgeSessionListResponse>();
+  const [historyError, setHistoryError] = useState<string>();
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [loadingSessionId, setLoadingSessionId] = useState<string>();
+  const [sessionToDelete, setSessionToDelete] = useState<ForgeSessionSummary>();
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
+  const historyScope = `${workspace.id}\u0000${token}`;
+  const historyScopeRef = useRef(historyScope);
+  historyScopeRef.current = historyScope;
   const tree = useMemo(() => buildTemplateTree(template?.files ?? []), [template?.files]);
   const selectedFile = useMemo(
     () => templateFilePreview(template, selectedPath),
@@ -96,6 +133,27 @@ export function ForgeView({
     };
   }, [token, workspace.id]);
 
+  useEffect(() => {
+    setPhase("idle");
+    setRequirement("");
+    setAnswers([]);
+    setFollowUp(undefined);
+    setAnswer("");
+    setSelectedOptions([]);
+    setTemplate(undefined);
+    setSelectedPath(undefined);
+    setError(undefined);
+    setWarning(undefined);
+    setActiveSessionId(undefined);
+    setHistory(undefined);
+    setHistoryError(undefined);
+    setHistoryOpen(false);
+    setIsHistoryLoading(false);
+    setLoadingSessionId(undefined);
+    setSessionToDelete(undefined);
+    setIsDeletingSession(false);
+  }, [token, workspace.id]);
+
   async function startInterview() {
     const normalized = requirement.trim();
     if (!normalized || usableSkills.length === 0) return;
@@ -108,10 +166,14 @@ export function ForgeView({
     setWorkingLabel("Reviewing the requirement and workspace Skills…");
     setPhase("working");
     try {
+      const session = await createForgeSession(token, workspace.id, normalized);
+      setActiveSessionId(session.id);
+      addSessionToLoadedHistory(session);
       await handleFollowUp(await getForgeFollowUp(token, workspace.id, {
         requirement: normalized,
-        answers: []
-      }), normalized, []);
+        answers: [],
+        sessionId: session.id
+      }), normalized, [], session.id);
     } catch (caught) {
       setError(errorMessage(caught));
       setPhase("idle");
@@ -130,8 +192,9 @@ export function ForgeView({
     try {
       await handleFollowUp(await getForgeFollowUp(token, workspace.id, {
         requirement: requirement.trim(),
-        answers: nextAnswers
-      }), requirement.trim(), nextAnswers);
+        answers: nextAnswers,
+        ...(activeSessionId ? { sessionId: activeSessionId } : {})
+      }), requirement.trim(), nextAnswers, activeSessionId);
     } catch (caught) {
       setAnswers(answers);
       setError(errorMessage(caught));
@@ -142,7 +205,8 @@ export function ForgeView({
   async function handleFollowUp(
     response: HarnessFollowUpResponse,
     normalizedRequirement: string,
-    nextAnswers: HarnessInterviewAnswer[]
+    nextAnswers: HarnessInterviewAnswer[],
+    sessionId?: string
   ) {
     setWarning(response.warning);
     if (!response.ready && response.question) {
@@ -156,12 +220,104 @@ export function ForgeView({
     setWorkingLabel("Selecting workspace Skills and composing the project harness…");
     const result = await generateForgeTemplate(token, workspace.id, {
       requirement: normalizedRequirement,
-      answers: nextAnswers
+      answers: nextAnswers,
+      ...(sessionId ? { sessionId } : {})
     });
     setTemplate(result);
     setSelectedPath(result.files[0]?.path);
     setWarning(result.warning ?? response.warning);
     setPhase("complete");
+    if (history) void refreshHistory();
+  }
+
+  async function refreshHistory() {
+    const requestScope = historyScope;
+    setIsHistoryLoading(true);
+    setHistoryError(undefined);
+    try {
+      const result = await listForgeSessions(token, workspace.id);
+      if (historyScopeRef.current === requestScope) setHistory(result);
+    } catch (caught) {
+      if (historyScopeRef.current === requestScope) setHistoryError(errorMessage(caught));
+    } finally {
+      if (historyScopeRef.current === requestScope) setIsHistoryLoading(false);
+    }
+  }
+
+  function addSessionToLoadedHistory(session: ForgeSessionDetail) {
+    setHistory((current) => current ? {
+      ...current,
+      sessions: [toSessionSummary(session), ...current.sessions]
+        .slice(0, current.cache.maxSessions)
+    } : current);
+  }
+
+  async function restoreSession(summary: ForgeSessionSummary) {
+    setLoadingSessionId(summary.id);
+    setHistoryError(undefined);
+    setError(undefined);
+    try {
+      const session = await getForgeSession(token, workspace.id, summary.id);
+      setActiveSessionId(session.id);
+      setRequirement(session.requirement);
+      setAnswers(session.answers);
+      setFollowUp(session.followUp);
+      setAnswer("");
+      setSelectedOptions([]);
+      setTemplate(session.template);
+      setSelectedPath(session.template?.files[0]?.path);
+      setWarning(session.template?.warning ?? session.followUp?.warning);
+      setHistoryOpen(false);
+
+      if (session.template) {
+        setPhase("complete");
+        return;
+      }
+      if (session.followUp && !session.followUp.ready && session.followUp.question) {
+        setPhase("question");
+        return;
+      }
+
+      setWorkingLabel("Resuming project discovery…");
+      setPhase("working");
+      const nextFollowUp = session.followUp ?? await getForgeFollowUp(token, workspace.id, {
+        requirement: session.requirement,
+        answers: session.answers,
+        sessionId: session.id
+      });
+      await handleFollowUp(
+        nextFollowUp,
+        session.requirement,
+        session.answers,
+        session.id
+      );
+    } catch (caught) {
+      const message = errorMessage(caught);
+      setHistoryError(message);
+      setError(message);
+      setPhase("idle");
+    } finally {
+      setLoadingSessionId(undefined);
+    }
+  }
+
+  async function removeSession() {
+    if (!sessionToDelete) return;
+    setIsDeletingSession(true);
+    setHistoryError(undefined);
+    try {
+      await deleteForgeSession(token, workspace.id, sessionToDelete.id);
+      setHistory((current) => current ? {
+        ...current,
+        sessions: current.sessions.filter((item) => item.id !== sessionToDelete.id)
+      } : current);
+      if (activeSessionId === sessionToDelete.id) resetBuilder();
+      setSessionToDelete(undefined);
+    } catch (caught) {
+      setHistoryError(errorMessage(caught));
+    } finally {
+      setIsDeletingSession(false);
+    }
   }
 
   async function downloadTemplate() {
@@ -186,6 +342,7 @@ export function ForgeView({
   }
 
   function resetBuilder() {
+    setActiveSessionId(undefined);
     setPhase("idle");
     setRequirement("");
     setAnswers([]);
@@ -232,12 +389,30 @@ export function ForgeView({
             reviewable starter framework from Skills already in {workspace.name}.
           </p>
         </div>
-        {phase !== "idle" ? (
-          <Button type="button" variant="outline" onClick={resetBuilder}>
-            <RotateCcw className="h-4 w-4" aria-hidden="true" />
-            Start over
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setHistoryOpen(true);
+              void refreshHistory();
+            }}
+          >
+            <History className="h-4 w-4" aria-hidden="true" />
+            History
+            {history?.sessions.length ? (
+              <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px]">
+                {history.sessions.length}
+              </Badge>
+            ) : null}
           </Button>
-        ) : null}
+          {phase !== "idle" ? (
+            <Button type="button" variant="outline" onClick={resetBuilder}>
+              <RotateCcw className="h-4 w-4" aria-hidden="true" />
+              Start over
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {error ? (
@@ -429,8 +604,227 @@ export function ForgeView({
           </CardContent>
         </Card>
       </div>
+
+      <ForgeHistoryPanel
+        open={historyOpen}
+        history={history}
+        error={historyError}
+        loading={isHistoryLoading}
+        loadingSessionId={loadingSessionId}
+        activeSessionId={activeSessionId}
+        sessionToDelete={sessionToDelete}
+        deleting={isDeletingSession}
+        onOpenChange={(open) => {
+          setHistoryOpen(open);
+          if (!open) setHistoryError(undefined);
+        }}
+        onRefresh={() => void refreshHistory()}
+        onRestore={(session) => void restoreSession(session)}
+        onRequestDelete={setSessionToDelete}
+        onDeleteOpenChange={(open) => {
+          if (!open && !isDeletingSession) setSessionToDelete(undefined);
+        }}
+        onConfirmDelete={() => void removeSession()}
+      />
     </section>
   );
+}
+
+function ForgeHistoryPanel({
+  open,
+  history,
+  error,
+  loading,
+  loadingSessionId,
+  activeSessionId,
+  sessionToDelete,
+  deleting,
+  onOpenChange,
+  onRefresh,
+  onRestore,
+  onRequestDelete,
+  onDeleteOpenChange,
+  onConfirmDelete
+}: {
+  open: boolean;
+  history?: ForgeSessionListResponse;
+  error?: string;
+  loading: boolean;
+  loadingSessionId?: string;
+  activeSessionId?: string;
+  sessionToDelete?: ForgeSessionSummary;
+  deleting: boolean;
+  onOpenChange: (open: boolean) => void;
+  onRefresh: () => void;
+  onRestore: (session: ForgeSessionSummary) => void;
+  onRequestDelete: (session: ForgeSessionSummary) => void;
+  onDeleteOpenChange: (open: boolean) => void;
+  onConfirmDelete: () => void;
+}) {
+  return (
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
+          <SheetHeader className="shrink-0 border-b p-6 pr-12">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <SheetTitle className="flex items-center gap-2">
+                  <History className="h-5 w-5 text-blue-700" aria-hidden="true" />
+                  Forge history
+                </SheetTitle>
+                <SheetDescription className="mt-2 leading-5">
+                  Resume your private sessions in this workspace. Details are loaded only when you
+                  open a session.
+                </SheetDescription>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={loading}
+                onClick={onRefresh}
+              >
+                <RotateCcw className={cn("h-4 w-4", loading && "animate-spin")} aria-hidden="true" />
+                <span className="sr-only">Refresh history</span>
+              </Button>
+            </div>
+          </SheetHeader>
+
+          <div className="min-h-0 flex-1 overflow-auto p-4">
+            {error ? (
+              <div className="mb-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
+              </div>
+            ) : null}
+
+            {loading && !history ? (
+              <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                Loading session summaries…
+              </div>
+            ) : history?.sessions.length ? (
+              <div className="space-y-2">
+                {history.sessions.map((session) => {
+                  const restoring = loadingSessionId === session.id;
+                  return (
+                    <div
+                      key={session.id}
+                      className="flex items-stretch gap-1 rounded-lg border bg-background p-1 shadow-sm"
+                    >
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-auto min-w-0 flex-1 items-start justify-start whitespace-normal px-3 py-3 text-left"
+                        disabled={Boolean(loadingSessionId)}
+                        onClick={() => onRestore(session)}
+                      >
+                        {restoring ? (
+                          <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-blue-700" aria-hidden="true" />
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="line-clamp-2 block text-sm font-medium leading-5">
+                            {session.title}
+                          </span>
+                          <span className="mt-2 flex flex-wrap items-center gap-1.5">
+                            <Badge
+                              variant={session.status === "complete" ? "default" : "secondary"}
+                              className="text-[10px]"
+                            >
+                              {session.status === "complete" ? "Ready" : "In progress"}
+                            </Badge>
+                            {activeSessionId === session.id ? (
+                              <Badge variant="outline" className="text-[10px]">Open</Badge>
+                            ) : null}
+                            <span className="text-[11px] font-normal text-muted-foreground">
+                              {session.answerCount} answer{session.answerCount === 1 ? "" : "s"}
+                              {" · "}{formatSessionTime(session.updatedAt)}
+                            </span>
+                          </span>
+                        </span>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="mt-1 shrink-0 text-muted-foreground hover:text-destructive"
+                        disabled={Boolean(loadingSessionId)}
+                        onClick={() => onRequestDelete(session)}
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        <span className="sr-only">Delete {session.title}</span>
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : !loading ? (
+              <div className="flex min-h-48 flex-col items-center justify-center rounded-lg border border-dashed px-6 text-center">
+                <History className="mb-3 h-6 w-6 text-muted-foreground" aria-hidden="true" />
+                <p className="text-sm font-medium">No Forge sessions yet</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Start discovery and your progress will appear here.
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="shrink-0 border-t bg-muted/25 px-5 py-3 text-[11px] leading-4 text-muted-foreground">
+            Keeps the latest {history?.cache.maxSessions ?? 12} sessions for up to
+            {" "}{history?.cache.ttlDays ?? 30} days. Session responses are marked no-store and
+            are never shared with other workspace members.
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <AlertDialog open={Boolean(sessionToDelete)} onOpenChange={onDeleteOpenChange}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this Forge session?</AlertDialogTitle>
+            <AlertDialogDescription>
+              “{sessionToDelete?.title}” and its generated preview will be removed from your
+              workspace history. Downloaded ZIP files are not affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={onConfirmDelete}
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+              Delete session
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+function toSessionSummary(session: ForgeSessionDetail): ForgeSessionSummary {
+  return {
+    id: session.id,
+    title: session.title,
+    status: session.status,
+    answerCount: session.answerCount,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    expiresAt: session.expiresAt
+  };
+}
+
+function formatSessionTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Recently";
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
 
 function DiscoverySummary({

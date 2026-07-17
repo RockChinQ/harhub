@@ -80,7 +80,8 @@ function createSeedState(): AppState {
     oauthStates: [],
     deviceAuthorizations: [],
     sessions: [],
-    workspaceAiConfigurations: []
+    workspaceAiConfigurations: [],
+    forgeSessions: []
   };
 }
 
@@ -96,6 +97,7 @@ function normalizeState(state: AppState): AppState {
   state.deviceAuthorizations ??= [];
   state.sessions ??= [];
   state.workspaceAiConfigurations ??= [];
+  state.forgeSessions ??= [];
 
   if (state.accounts.length === 0 || state.workspaces.length === 0) {
     return createSeedState();
@@ -135,5 +137,6 @@ function hasLegacyWorkspacePaths(state: AppState): boolean {
 function needsStateMigration(state: AppState): boolean {
   return !Array.isArray(state.assetShares) ||
     !Array.isArray(state.workspaceAiConfigurations) ||
+    !Array.isArray(state.forgeSessions) ||
     hasLegacyWorkspacePaths(state);
 }

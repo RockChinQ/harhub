@@ -105,6 +105,13 @@ is unavailable, Forge uses a bounded guided interview and deterministic fallback
 composition. Generated ZIPs still contain the full selected Skill packages from
 configured S3-compatible storage.
 
+Forge also keeps resumable session history per workspace and account. Only the
+latest 12 sessions are retained for each account in a workspace, inactive
+entries expire after 30 days, and oversized generated previews are rejected.
+History list responses contain summaries only; details are fetched on demand.
+All Forge session, interview, generation, and download responses use private
+`no-store` cache headers so browsers and intermediaries do not retain them.
+
 ## Auth And Invitations
 
 Optional hosted auth settings:

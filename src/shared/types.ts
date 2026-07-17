@@ -313,6 +313,7 @@ export interface HarnessFollowUpComponent {
 export interface HarnessFollowUpRequest {
   requirement: string;
   answers: HarnessInterviewAnswer[];
+  sessionId?: string;
 }
 
 export interface HarnessFollowUpResponse {
@@ -363,4 +364,31 @@ export interface HarnessTemplateResponse {
   selectedAssets: HarnessTemplateAssetSelection[];
   files: HarnessTemplateFile[];
   warning?: string;
+}
+
+export type ForgeSessionStatus = "interviewing" | "complete";
+
+export interface ForgeSessionSummary {
+  id: string;
+  title: string;
+  status: ForgeSessionStatus;
+  answerCount: number;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+}
+
+export interface ForgeSessionDetail extends ForgeSessionSummary {
+  requirement: string;
+  answers: HarnessInterviewAnswer[];
+  followUp?: HarnessFollowUpResponse;
+  template?: HarnessTemplateResponse;
+}
+
+export interface ForgeSessionListResponse {
+  sessions: ForgeSessionSummary[];
+  cache: {
+    maxSessions: number;
+    ttlDays: number;
+  };
 }

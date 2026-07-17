@@ -3,6 +3,7 @@ export * from "./asset-shares.js";
 export * from "./catalog-store.js";
 export * from "./database.js";
 export * from "./device-authorization.js";
+export * from "./forge-sessions.js";
 export * from "./invitations.js";
 export * from "./paths.js";
 export * from "./store.js";

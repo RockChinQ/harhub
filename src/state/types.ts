@@ -5,7 +5,8 @@ import type {
   AuthProvider,
   WorkspaceInvitation,
   WorkspaceMembership,
-  WorkspaceRecord
+  WorkspaceRecord,
+  ForgeSessionDetail
 } from "../shared/types.js";
 
 export interface AccountRecord extends AccountProfile {
@@ -67,6 +68,7 @@ export interface AppState {
   deviceAuthorizations: OAuthDeviceAuthorizationRecord[];
   sessions: SessionRecord[];
   workspaceAiConfigurations: WorkspaceAiConfigurationRecord[];
+  forgeSessions: ForgeSessionCacheRecord[];
 }
 
 export interface AuthContext {
@@ -88,4 +90,9 @@ export interface WorkspaceAiConfigurationRecord {
   apiKeyLastFour?: string;
   updatedAt: string;
   updatedByAccountId: string;
+}
+
+export interface ForgeSessionCacheRecord extends ForgeSessionDetail {
+  workspaceId: string;
+  accountId: string;
 }
