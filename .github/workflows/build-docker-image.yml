@@ -85,6 +85,8 @@ jobs:
     steps:
       - name: Redeploy Portainer stack
         shell: bash
+        env:
+          EXPECTED_DIGEST: ${{ needs.build.outputs.digest }}
         run: |
           set -euo pipefail
           PORTAINER_URL="${PORTAINER_URL%/}"
@@ -106,6 +108,35 @@ jobs:
               'any(.[]; .name == $name and (.value | type == "string") and (.value | length > 0))' \
               <<< "$STACK_ENV" >/dev/null
           done
+
+          IMAGE_FILTER=$(jq -nc --arg image "$IMAGE" '{reference: [$image]}')
+          IMAGE_READY=false
+          for ATTEMPT in $(seq 1 12); do
+            curl --fail-with-body --silent --show-error \
+              -X POST --get \
+              "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/images/create" \
+              -H "Authorization: Bearer $JWT" \
+              --data-urlencode "fromImage=rockchin/harhub" \
+              --data-urlencode "tag=deploy-dev" \
+              -o /tmp/portainer-image-pull.jsonl
+            jq -e -s 'all(.[]; (.error // "") == "")' \
+              /tmp/portainer-image-pull.jsonl >/dev/null
+
+            IMAGE_LIST=$(curl --fail-with-body --silent --show-error --get \
+              "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/images/json" \
+              -H "Authorization: Bearer $JWT" \
+              --data-urlencode "filters=$IMAGE_FILTER")
+            DIGEST_MATCH=$(jq -r --arg expected "$EXPECTED_DIGEST" \
+              'any(.[0].RepoDigests[]?; endswith("@" + $expected))' \
+              <<< "$IMAGE_LIST")
+            echo "pull_attempt=$ATTEMPT expected_digest=$EXPECTED_DIGEST digest_match=$DIGEST_MATCH"
+            if [[ "$DIGEST_MATCH" == "true" ]]; then
+              IMAGE_READY=true
+              break
+            fi
+            sleep 5
+          done
+          [[ "$IMAGE_READY" == "true" ]]
 
           DEPLOY_BODY=$(jq -n \
             --arg repo_ref "refs/heads/main" \
@@ -154,6 +185,9 @@ jobs:
               -H "Authorization: Bearer $JWT" \
               --data-urlencode "filters=$FILTER" || true)
             TAG_IMAGE_ID=$(jq -r '.[0].Id // empty' <<< "$IMAGE_LIST" 2>/dev/null || true)
+            TAG_HAS_EXPECTED_DIGEST=$(jq -r --arg expected "$EXPECTED_DIGEST" \
+              'any(.[0].RepoDigests[]?; endswith("@" + $expected))' \
+              <<< "$IMAGE_LIST" 2>/dev/null || true)
 
             CONTAINER_JSON=$(curl --silent --show-error \
               "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/containers/harhub/json" \
@@ -161,8 +195,8 @@ jobs:
             CONTAINER_IMAGE_ID=$(jq -r '.Image // empty' <<< "$CONTAINER_JSON" 2>/dev/null || true)
             CONTAINER_HEALTH=$(jq -r '.State.Health.Status // empty' <<< "$CONTAINER_JSON" 2>/dev/null || true)
 
-            echo "attempt=$ATTEMPT tag_image=${TAG_IMAGE_ID:0:19} container_image=${CONTAINER_IMAGE_ID:0:19} health=$CONTAINER_HEALTH"
-            if [[ -n "$TAG_IMAGE_ID" && "$CONTAINER_IMAGE_ID" == "$TAG_IMAGE_ID" && "$CONTAINER_HEALTH" == "healthy" ]]; then
+            echo "attempt=$ATTEMPT digest_match=$TAG_HAS_EXPECTED_DIGEST tag_image=${TAG_IMAGE_ID:0:19} container_image=${CONTAINER_IMAGE_ID:0:19} health=$CONTAINER_HEALTH"
+            if [[ "$TAG_HAS_EXPECTED_DIGEST" == "true" && -n "$TAG_IMAGE_ID" && "$CONTAINER_IMAGE_ID" == "$TAG_IMAGE_ID" && "$CONTAINER_HEALTH" == "healthy" ]]; then
               VERIFIED=true
               break
             fi
