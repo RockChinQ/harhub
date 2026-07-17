@@ -381,19 +381,54 @@ export function ForgeView({
     setRetryAction(undefined);
   }
 
+  if (!aiSettings) {
+    return (
+      <section className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
+        <Card className="w-full max-w-lg shadow-sm">
+          <CardContent className="flex min-h-64 flex-col items-center justify-center p-8 text-center">
+            <Loader2 className="h-6 w-6 animate-spin text-blue-700" aria-hidden="true" />
+            <p className="mt-4 text-sm font-medium">Checking workspace AI configuration…</p>
+          </CardContent>
+        </Card>
+      </section>
+    );
+  }
+
+  if (!aiSettings.configured) {
+    return (
+      <section className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
+        <Card className="w-full max-w-lg shadow-sm">
+          <CardContent className="flex flex-col items-center p-8 text-center sm:p-10">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+              <Bot className="h-6 w-6" aria-hidden="true" />
+            </div>
+            <h1 className="mt-5 text-xl font-semibold tracking-tight">
+              Configure workspace AI to use Forge
+            </h1>
+            <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
+              {aiSettings.canManage
+                ? "Forge needs a tested OpenAI-compatible provider before it can ask follow-up questions and generate a project framework."
+                : "Forge needs workspace AI before it can ask follow-up questions and generate a project framework. Ask a workspace owner or admin to configure it."
+              }
+            </p>
+            <Button type="button" className="mt-6" onClick={onOpenWorkspaceSettings}>
+              <Settings2 className="h-4 w-4" aria-hidden="true" />
+              Open workspace settings
+            </Button>
+          </CardContent>
+        </Card>
+      </section>
+    );
+  }
+
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto pb-2">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="mb-2 flex items-center gap-2">
-            <Badge variant={aiSettings?.configured ? "default" : "secondary"} className="gap-1">
+            <Badge className="gap-1">
               <Sparkles className="h-3 w-3" aria-hidden="true" />
-              {aiSettings?.configured
-                ? `Workspace AI · ${aiSettings.model}`
-                : aiSettings
-                  ? "AI not configured"
-                  : "Checking workspace AI"
-              }
+              Workspace AI · {aiSettings.model}
             </Badge>
             <span className="text-xs text-muted-foreground">
               {usableSkills.length} workspace Skill{usableSkills.length === 1 ? "" : "s"} available
@@ -496,25 +531,7 @@ export function ForgeView({
                     already know.
                   </p>
                 </div>
-                {aiSettings && !aiSettings.configured ? (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-                    <div className="font-medium">Workspace AI is required</div>
-                    <p className="mt-1 text-xs leading-5">
-                      Configure and test an AI provider before starting Forge. Failed AI requests
-                      are retried automatically, then stop with a manual Retry action.
-                    </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="mt-3"
-                      onClick={onOpenWorkspaceSettings}
-                    >
-                      <Settings2 className="h-4 w-4" aria-hidden="true" />
-                      Configure AI
-                    </Button>
-                  </div>
-                ) : usableSkills.length === 0 ? (
+                {usableSkills.length === 0 ? (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
                     This workspace has no usable Skills yet. Upload and validate at least one Skill
                     before generating a workspace-based harness.
@@ -536,8 +553,7 @@ export function ForgeView({
                   className="w-full"
                   disabled={
                     !requirement.trim() ||
-                    usableSkills.length === 0 ||
-                    !aiSettings?.configured
+                    usableSkills.length === 0
                   }
                   onClick={() => void startInterview()}
                 >
