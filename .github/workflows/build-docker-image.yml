@@ -57,6 +57,8 @@ jobs:
           platforms: linux/amd64
           push: true
           pull: true
+          build-args: |
+            GIT_REVISION=${{ github.sha }}
           tags: |
             rockchin/harhub:${{ steps.tags.outputs.release_tag }}
             rockchin/harhub:${{ github.sha }}
@@ -86,7 +88,7 @@ jobs:
       - name: Redeploy Portainer stack
         shell: bash
         env:
-          EXPECTED_DIGEST: ${{ needs.build.outputs.digest }}
+          EXPECTED_REVISION: ${{ github.sha }}
         run: |
           set -euo pipefail
           PORTAINER_URL="${PORTAINER_URL%/}"
@@ -126,11 +128,17 @@ jobs:
               "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/images/json" \
               -H "Authorization: Bearer $JWT" \
               --data-urlencode "filters=$IMAGE_FILTER")
-            DIGEST_MATCH=$(jq -r --arg expected "$EXPECTED_DIGEST" \
-              'any(.[0].RepoDigests[]?; endswith("@" + $expected))' \
-              <<< "$IMAGE_LIST")
-            echo "pull_attempt=$ATTEMPT expected_digest=$EXPECTED_DIGEST digest_match=$DIGEST_MATCH"
-            if [[ "$DIGEST_MATCH" == "true" ]]; then
+            TAG_IMAGE_ID=$(jq -r '.[0].Id // empty' <<< "$IMAGE_LIST")
+            TAG_REVISION=""
+            if [[ -n "$TAG_IMAGE_ID" ]]; then
+              TAG_IMAGE_JSON=$(curl --fail-with-body --silent --show-error \
+                "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/images/$TAG_IMAGE_ID/json" \
+                -H "Authorization: Bearer $JWT")
+              TAG_REVISION=$(jq -r '.Config.Labels["org.opencontainers.image.revision"] // empty' \
+                <<< "$TAG_IMAGE_JSON")
+            fi
+            echo "pull_attempt=$ATTEMPT expected_revision=$EXPECTED_REVISION image_revision=$TAG_REVISION"
+            if [[ "$TAG_REVISION" == "$EXPECTED_REVISION" ]]; then
               IMAGE_READY=true
               break
             fi
@@ -165,6 +173,7 @@ jobs:
         shell: bash
         env:
           EXPECTED_DIGEST: ${{ needs.build.outputs.digest }}
+          EXPECTED_REVISION: ${{ github.sha }}
         run: |
           set -euo pipefail
           PORTAINER_URL="${PORTAINER_URL%/}"
@@ -185,9 +194,14 @@ jobs:
               -H "Authorization: Bearer $JWT" \
               --data-urlencode "filters=$FILTER" || true)
             TAG_IMAGE_ID=$(jq -r '.[0].Id // empty' <<< "$IMAGE_LIST" 2>/dev/null || true)
-            TAG_HAS_EXPECTED_DIGEST=$(jq -r --arg expected "$EXPECTED_DIGEST" \
-              'any(.[0].RepoDigests[]?; endswith("@" + $expected))' \
-              <<< "$IMAGE_LIST" 2>/dev/null || true)
+            TAG_REVISION=""
+            if [[ -n "$TAG_IMAGE_ID" ]]; then
+              TAG_IMAGE_JSON=$(curl --silent --show-error \
+                "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/images/$TAG_IMAGE_ID/json" \
+                -H "Authorization: Bearer $JWT" || true)
+              TAG_REVISION=$(jq -r '.Config.Labels["org.opencontainers.image.revision"] // empty' \
+                <<< "$TAG_IMAGE_JSON" 2>/dev/null || true)
+            fi
 
             CONTAINER_JSON=$(curl --silent --show-error \
               "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/containers/harhub/json" \
@@ -195,8 +209,12 @@ jobs:
             CONTAINER_IMAGE_ID=$(jq -r '.Image // empty' <<< "$CONTAINER_JSON" 2>/dev/null || true)
             CONTAINER_HEALTH=$(jq -r '.State.Health.Status // empty' <<< "$CONTAINER_JSON" 2>/dev/null || true)
 
-            echo "attempt=$ATTEMPT digest_match=$TAG_HAS_EXPECTED_DIGEST tag_image=${TAG_IMAGE_ID:0:19} container_image=${CONTAINER_IMAGE_ID:0:19} health=$CONTAINER_HEALTH"
-            if [[ "$TAG_HAS_EXPECTED_DIGEST" == "true" && -n "$TAG_IMAGE_ID" && "$CONTAINER_IMAGE_ID" == "$TAG_IMAGE_ID" && "$CONTAINER_HEALTH" == "healthy" ]]; then
+            REVISION_MATCH=false
+            if [[ "$TAG_REVISION" == "$EXPECTED_REVISION" ]]; then
+              REVISION_MATCH=true
+            fi
+            echo "attempt=$ATTEMPT revision_match=$REVISION_MATCH tag_image=${TAG_IMAGE_ID:0:19} container_image=${CONTAINER_IMAGE_ID:0:19} health=$CONTAINER_HEALTH"
+            if [[ "$TAG_REVISION" == "$EXPECTED_REVISION" && -n "$TAG_IMAGE_ID" && "$CONTAINER_IMAGE_ID" == "$TAG_IMAGE_ID" && "$CONTAINER_HEALTH" == "healthy" ]]; then
               VERIFIED=true
               break
             fi

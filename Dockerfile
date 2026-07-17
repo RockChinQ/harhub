@@ -16,6 +16,8 @@ RUN npm prune --omit=dev
 # --- Runtime stage ---
 FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
+ARG GIT_REVISION=unknown
+LABEL org.opencontainers.image.revision=$GIT_REVISION
 ENV NODE_ENV=production \
     PORT=3310 \
     HOST=0.0.0.0
