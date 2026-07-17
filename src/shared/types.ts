@@ -71,6 +71,40 @@ export interface WorkspaceMembership {
   updatedAt?: string;
 }
 
+export type AiProvider = "openai-compatible";
+
+export interface WorkspaceAiSettings {
+  workspaceId: string;
+  provider: AiProvider;
+  baseUrl: string;
+  model: string;
+  configured: boolean;
+  apiKeyHint?: string;
+  updatedAt?: string;
+  canManage: boolean;
+}
+
+export interface WorkspaceAiSettingsUpdate {
+  provider: AiProvider;
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
+  clearApiKey?: boolean;
+}
+
+export interface WorkspaceAiConnectionTestRequest {
+  provider: AiProvider;
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
+}
+
+export interface WorkspaceAiConnectionTestResult {
+  ok: true;
+  model: string;
+  latencyMs: number;
+}
+
 export type WorkspaceInvitationStatus = "pending" | "accepted" | "revoked";
 
 export interface WorkspaceInvitation {
@@ -252,4 +286,107 @@ export interface ValidationIssue {
   path?: string;
   skillId?: string;
   assetId?: string;
+}
+
+export type HarnessBuilderMode = "llm";
+
+export interface HarnessInterviewAnswer {
+  question: string;
+  answer: string;
+}
+
+export type HarnessFollowUpComponentType = "single-select" | "multi-select" | "text";
+
+export interface HarnessFollowUpOption {
+  label: string;
+  description?: string;
+}
+
+export interface HarnessFollowUpComponent {
+  type: HarnessFollowUpComponentType;
+  options: HarnessFollowUpOption[];
+  placeholder?: string;
+  allowCustom?: boolean;
+  maxSelections?: number;
+}
+
+export interface HarnessFollowUpRequest {
+  requirement: string;
+  answers: HarnessInterviewAnswer[];
+  sessionId?: string;
+}
+
+export interface HarnessFollowUpResponse {
+  mode: HarnessBuilderMode;
+  ready: boolean;
+  question?: string;
+  component?: HarnessFollowUpComponent;
+}
+
+export interface HarnessTemplateFile {
+  path: string;
+  content: string;
+}
+
+export interface HarnessTemplateProfile {
+  name: string;
+  slug: string;
+  summary: string;
+  targetUsers: string[];
+  goals: string[];
+  constraints: string[];
+  successCriteria: string[];
+  stackNotes: string[];
+}
+
+export interface HarnessWorkspaceAssetSummary {
+  id: string;
+  kind: AssetKind;
+  name: string;
+  displayName: string;
+  slug: string;
+  description: string;
+  health: AssetHealth;
+  fileCount: number;
+  size: number;
+}
+
+export interface HarnessTemplateAssetSelection extends HarnessWorkspaceAssetSummary {
+  reason: string;
+  installPath: string;
+}
+
+export interface HarnessTemplateResponse {
+  mode: HarnessBuilderMode;
+  generatedAt: string;
+  profile: HarnessTemplateProfile;
+  selectedAssets: HarnessTemplateAssetSelection[];
+  files: HarnessTemplateFile[];
+}
+
+export type ForgeSessionStatus = "interviewing" | "complete";
+
+export interface ForgeSessionSummary {
+  id: string;
+  title: string;
+  status: ForgeSessionStatus;
+  answerCount: number;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+}
+
+export interface ForgeSessionDetail extends ForgeSessionSummary {
+  requirement: string;
+  answers: HarnessInterviewAnswer[];
+  followUp?: HarnessFollowUpResponse;
+  template?: HarnessTemplateResponse;
+}
+
+export interface ForgeSessionListResponse {
+  sessions: ForgeSessionSummary[];
+  cache: {
+    maxSessions: number;
+    ttlDays: number;
+  };
 }

@@ -110,6 +110,25 @@ export async function signInWithPassword(input: {
   return toPublicAccount(account);
 }
 
+export async function signInForDevelopment(input: {
+  email: string;
+  inviteToken?: string;
+}): Promise<AccountProfile> {
+  const state = await loadState();
+  const email = normalizeEmail(input.email);
+  if (!email) throw new Error("A valid email is required.");
+
+  const account = findOrCreateAccountByEmail(state, {
+    email,
+    name: email.split("@")[0] ?? "User"
+  });
+  acceptMatchingPendingInvitations(state, account, input.inviteToken);
+  ensureAccountHasWorkspace(state, account);
+  account.updatedAt = new Date().toISOString();
+  await saveState(state);
+  return toPublicAccount(account);
+}
+
 export async function createEmailLoginCode(input: {
   email: string;
   inviteToken?: string;

@@ -1,6 +1,7 @@
-import { Github, KeyRound, Loader2, Mail, Send } from "lucide-react";
+import { Github, KeyRound, Loader2, LogIn, Mail, Send } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import {
   Card,
@@ -12,6 +13,7 @@ import {
 import { Input } from "../components/ui/input";
 import { Separator } from "../components/ui/separator";
 import {
+  developmentLogin,
   getAuthConfig,
   login,
   requestEmailCode,
@@ -35,6 +37,7 @@ export function AuthScreen({
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState<string | undefined>(error);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDevelopmentLoginSubmitting, setIsDevelopmentLoginSubmitting] = useState(false);
   const [authConfig, setAuthConfig] = useState<AuthConfigResponse>();
   const [isAuthConfigLoading, setIsAuthConfigLoading] = useState(true);
   const [emailCode, setEmailCode] = useState("");
@@ -74,6 +77,19 @@ export function AuthScreen({
     }
   }
 
+  async function submitDevelopmentLogin() {
+    setIsDevelopmentLoginSubmitting(true);
+    setMessage(undefined);
+    try {
+      const response = await developmentLogin({ email, inviteToken });
+      onAuthenticated(response);
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsDevelopmentLoginSubmitting(false);
+    }
+  }
+
   async function sendEmailCode() {
     setIsSendingCode(true);
     setMessage(undefined);
@@ -109,7 +125,9 @@ export function AuthScreen({
   }
 
   const hasOAuth = Boolean(authConfig?.oauth.google || authConfig?.oauth.github);
-  const hasEmailAuth = Boolean(authConfig?.password || authConfig?.emailCode);
+  const hasEmailAuth = Boolean(
+    authConfig?.developmentLogin || authConfig?.password || authConfig?.emailCode
+  );
   const hasAnyAuth = Boolean(hasOAuth || hasEmailAuth);
   const hasBothOAuthProviders = Boolean(authConfig?.oauth.google && authConfig?.oauth.github);
 
@@ -161,9 +179,43 @@ export function AuthScreen({
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     autoComplete="email"
+                    placeholder={authConfig.developmentLogin ? "admin@harhub.local" : undefined}
                     required
                   />
                 </label>
+              ) : null}
+
+              {authConfig.developmentLogin ? (
+                <div className="grid gap-3 rounded-lg border border-amber-200 bg-amber-50/70 p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className="border-amber-300 bg-background text-amber-900"
+                    >
+                      Development mode
+                    </Badge>
+                    <span className="text-xs text-amber-900/80">
+                      Password verification is bypassed.
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={isLoading || isDevelopmentLoginSubmitting || !email.trim()}
+                    onClick={() => void submitDevelopmentLogin()}
+                  >
+                    {isDevelopmentLoginSubmitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <LogIn className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    Continue as this account
+                  </Button>
+                </div>
+              ) : null}
+
+              {authConfig.developmentLogin && (authConfig.password || authConfig.emailCode) ? (
+                <Separator />
               ) : null}
 
               {authConfig.password ? (

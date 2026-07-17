@@ -5,7 +5,8 @@ import type {
   AuthProvider,
   WorkspaceInvitation,
   WorkspaceMembership,
-  WorkspaceRecord
+  WorkspaceRecord,
+  ForgeSessionDetail
 } from "../shared/types.js";
 
 export interface AccountRecord extends AccountProfile {
@@ -66,6 +67,8 @@ export interface AppState {
   oauthStates: OAuthStateRecord[];
   deviceAuthorizations: OAuthDeviceAuthorizationRecord[];
   sessions: SessionRecord[];
+  workspaceAiConfigurations: WorkspaceAiConfigurationRecord[];
+  forgeSessions: ForgeSessionCacheRecord[];
 }
 
 export interface AuthContext {
@@ -76,4 +79,20 @@ export interface AuthContext {
 export interface WorkspaceContext extends AuthContext {
   workspace: WorkspaceRecord;
   membership: WorkspaceMembership;
+}
+
+export interface WorkspaceAiConfigurationRecord {
+  workspaceId: string;
+  provider: "openai-compatible";
+  baseUrl: string;
+  model: string;
+  encryptedApiKey?: string;
+  apiKeyLastFour?: string;
+  updatedAt: string;
+  updatedByAccountId: string;
+}
+
+export interface ForgeSessionCacheRecord extends ForgeSessionDetail {
+  workspaceId: string;
+  accountId: string;
 }

@@ -7,6 +7,12 @@ export function sendError(res: Response, error: unknown, status: number): void {
   });
 }
 
+export function setPrivateNoStore(res: Response): void {
+  res.setHeader("Cache-Control", "private, no-store, max-age=0");
+  res.setHeader("Pragma", "no-cache");
+  res.vary("Authorization");
+}
+
 export function hasErrors(issues: ValidationIssue[]): boolean {
   return issues.some((issue) => issue.severity === "error");
 }

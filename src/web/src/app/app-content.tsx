@@ -9,6 +9,7 @@ import { AccountView } from "../views/account-view";
 import { AssetsView } from "../views/assets/assets-view";
 import { SkillDetailView } from "../views/assets/skill-detail-view";
 import { WorkspaceView } from "../views/workspace-view";
+import { ForgeView } from "../views/forge-view";
 import type { AppRoute, AppShellView } from "./types";
 
 export function AppContent({
@@ -86,6 +87,14 @@ export function AppContent({
             onBack={() => onNavigate({ view: "assets" })}
             onChanged={onRefreshAssets}
             onDeleted={() => onNavigate({ view: "assets" })}
+          />
+        ) : null}
+        {view === "forge" && activeWorkspace ? (
+          <ForgeView
+            token={token}
+            workspace={activeWorkspace}
+            assets={assets}
+            onOpenWorkspaceSettings={() => onNavigate({ view: "workspace" })}
           />
         ) : null}
         {view === "workspace" && activeWorkspace ? (

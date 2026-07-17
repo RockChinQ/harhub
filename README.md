@@ -34,6 +34,9 @@ is intentionally Skills-first.
 - Validate packages against the Agent Skills `SKILL.md` format.
 - Search and browse Skills in a workspace.
 - Preview Skill metadata and package files.
+- Use Forge's AI-guided interview to compose a downloadable project harness
+  from the current workspace's Skills, with workspace-scoped provider settings
+  managed by owners and admins, plus private bounded session history.
 - Publish revocable public share pages with verified zip downloads and Harhub or
   Agent Skills CLI install commands.
 - Manage Skills from the web UI or CLI.
@@ -77,6 +80,7 @@ Then open:
 
 ```text
 App and API: http://127.0.0.1:3310/skills
+Forge:       http://127.0.0.1:3310/forge
 Docs:        http://127.0.0.1:3310/docs/
 ```
 
@@ -92,6 +96,12 @@ For local development:
 ```bash
 npm run dev
 ```
+
+The development server exposes a development-only sign-in option: enter any
+account email and continue without a password. The API is enabled only while
+`npm run dev` runs with `NODE_ENV=development`; production and combined-server
+startup do not expose this shortcut. Set `HARHUB_DEV_LOGIN_ENABLED=false` to
+disable it during local development.
 
 Fixed local ports:
 

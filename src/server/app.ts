@@ -7,6 +7,7 @@ import { MAX_UPLOAD_BYTES } from "./config.js";
 import { registerAssetRoutes } from "./routes/assets.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerHealthRoutes } from "./routes/health.js";
+import { registerForgeRoutes } from "./routes/forge.js";
 import { registerLegacySkillRoutes } from "./routes/legacy-skills.js";
 import { registerOAuthDeviceRoutes } from "./routes/oauth-device.js";
 import { registerShareRoutes } from "./routes/shares.js";
@@ -32,6 +33,7 @@ export function createServerApp() {
   registerOAuthDeviceRoutes(app);
   registerShareRoutes(app);
   registerWorkspaceRoutes(app);
+  registerForgeRoutes(app);
   registerAssetRoutes(app, upload);
   registerSkillRoutes(app);
   registerLegacySkillRoutes(app);

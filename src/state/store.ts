@@ -79,7 +79,9 @@ function createSeedState(): AppState {
     emailLoginCodes: [],
     oauthStates: [],
     deviceAuthorizations: [],
-    sessions: []
+    sessions: [],
+    workspaceAiConfigurations: [],
+    forgeSessions: []
   };
 }
 
@@ -94,6 +96,8 @@ function normalizeState(state: AppState): AppState {
   state.oauthStates ??= [];
   state.deviceAuthorizations ??= [];
   state.sessions ??= [];
+  state.workspaceAiConfigurations ??= [];
+  state.forgeSessions ??= [];
 
   if (state.accounts.length === 0 || state.workspaces.length === 0) {
     return createSeedState();
@@ -121,6 +125,14 @@ function normalizeState(state: AppState): AppState {
     workspace.updatedAt ??= workspace.createdAt;
   }
 
+  for (const session of state.forgeSessions) {
+    if (session.followUp && session.followUp.mode !== "llm") delete session.followUp;
+    if (session.template && session.template.mode !== "llm") {
+      delete session.template;
+      session.status = "interviewing";
+    }
+  }
+
   return state;
 }
 
@@ -131,5 +143,16 @@ function hasLegacyWorkspacePaths(state: AppState): boolean {
 }
 
 function needsStateMigration(state: AppState): boolean {
-  return !Array.isArray(state.assetShares) || hasLegacyWorkspacePaths(state);
+  return !Array.isArray(state.assetShares) ||
+    !Array.isArray(state.workspaceAiConfigurations) ||
+    !Array.isArray(state.forgeSessions) ||
+    hasLegacyForgeResponses(state) ||
+    hasLegacyWorkspacePaths(state);
+}
+
+function hasLegacyForgeResponses(state: AppState): boolean {
+  return (state.forgeSessions ?? []).some((session) =>
+    (session.followUp && session.followUp.mode !== "llm") ||
+    (session.template && session.template.mode !== "llm")
+  );
 }

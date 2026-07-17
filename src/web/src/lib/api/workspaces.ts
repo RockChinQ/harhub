@@ -1,4 +1,10 @@
-import type { WorkspaceRole } from "../../../../shared/types";
+import type {
+  WorkspaceAiConnectionTestRequest,
+  WorkspaceAiConnectionTestResult,
+  WorkspaceAiSettings,
+  WorkspaceAiSettingsUpdate,
+  WorkspaceRole
+} from "../../../../shared/types";
 import { JSON_HEADERS, request } from "./request";
 import type {
   WorkspaceMemberMutationResponse,
@@ -101,4 +107,46 @@ export async function updateWorkspace(
     headers: JSON_HEADERS,
     body: JSON.stringify(input)
   });
+}
+
+export function getWorkspaceAiSettings(
+  token: string,
+  workspaceId: string
+): Promise<WorkspaceAiSettings> {
+  return request<WorkspaceAiSettings>(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/ai-settings`,
+    { token }
+  );
+}
+
+export function saveWorkspaceAiSettings(
+  token: string,
+  workspaceId: string,
+  input: WorkspaceAiSettingsUpdate
+): Promise<WorkspaceAiSettings> {
+  return request<WorkspaceAiSettings>(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/ai-settings`,
+    {
+      token,
+      method: "PUT",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(input)
+    }
+  );
+}
+
+export function testWorkspaceAiConnection(
+  token: string,
+  workspaceId: string,
+  input: WorkspaceAiConnectionTestRequest
+): Promise<WorkspaceAiConnectionTestResult> {
+  return request<WorkspaceAiConnectionTestResult>(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/ai-settings/test`,
+    {
+      token,
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(input)
+    }
+  );
 }

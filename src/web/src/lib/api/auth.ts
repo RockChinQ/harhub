@@ -22,6 +22,17 @@ export async function login(input: {
   });
 }
 
+export async function developmentLogin(input: {
+  email: string;
+  inviteToken?: string;
+}): Promise<AuthResponse> {
+  return request<AuthResponse>("/api/auth/dev-login", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(input)
+  });
+}
+
 export async function requestEmailCode(input: {
   email: string;
   inviteToken?: string;

@@ -4,6 +4,7 @@ export type View =
   | "share"
   | "assets"
   | "asset-detail"
+  | "forge"
   | "workspace"
   | "account";
 

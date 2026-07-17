@@ -8,6 +8,7 @@ import {
   Plus,
   ScrollText,
   Server,
+  Sparkles,
   Settings,
 } from "lucide-react"
 
@@ -36,7 +37,7 @@ import {
 import { createWorkspace, type SessionResponse } from "@/lib/api"
 import type { WorkspaceRecord } from "../../../shared/types"
 
-type AppSidebarView = "assets" | "asset-detail" | "workspace" | "account"
+type AppSidebarView = "assets" | "asset-detail" | "forge" | "workspace" | "account"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   token: string
@@ -115,6 +116,18 @@ export function AppSidebar({
               icon: ScrollText,
               disabled: true,
               badge: "Soon",
+            },
+          ]}
+        />
+        <NavMain
+          label="Create"
+          items={[
+            {
+              title: "Forge",
+              url: "/forge",
+              icon: Sparkles,
+              isActive: view === "forge",
+              onSelect: () => onNavigate({ view: "forge" }),
             },
           ]}
         />

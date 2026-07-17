@@ -80,6 +80,39 @@ and `.harhub/workspaces/<workspace-id>/assets.json`. This fallback is intended
 for local development and small self-managed demos. Skill uploads still require
 S3-compatible object storage.
 
+## Forge AI
+
+Forge can use any OpenAI-compatible chat completions endpoint to ask follow-up
+questions and select relevant Skills. Owners and admins configure the base URL,
+model, and API key separately for each workspace from **Workspace Settings →
+Forge AI**. Provider credentials are not global environment settings.
+The **Test connection** action sends one minimal JSON chat request using the
+current form values without saving them. A blank API key field uses the
+workspace's already encrypted key when one exists.
+
+API keys are encrypted before they enter Postgres or local JSON state and are
+never returned to the browser. Hosted and multi-instance deployments must set a
+stable encryption key on every server instance:
+
+```bash
+HARHUB_ENCRYPTION_KEY=replace-with-a-long-random-secret
+```
+
+For local development, Harhub generates `.harhub/secrets.key` with private file
+permissions when `HARHUB_ENCRYPTION_KEY` is absent. Keep that file stable while
+workspace credentials exist. Forge requires a configured workspace API key. A
+failed interview or composition request is retried automatically up to three
+times; if all attempts fail, the session remains resumable and the page offers a
+manual Retry action. Generated ZIPs contain the full selected Skill packages
+from configured S3-compatible storage.
+
+Forge also keeps resumable session history per workspace and account. Only the
+latest 12 sessions are retained for each account in a workspace, inactive
+entries expire after 30 days, and oversized generated previews are rejected.
+History list responses contain summaries only; details are fetched on demand.
+All Forge session, interview, generation, and download responses use private
+`no-store` cache headers so browsers and intermediaries do not retain them.
+
 ## Auth And Invitations
 
 Optional hosted auth settings:
