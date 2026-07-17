@@ -86,11 +86,15 @@ export function ForgeView({
   token,
   workspace,
   assets,
+  routedSessionId,
+  onNavigateSession,
   onOpenWorkspaceSettings
 }: {
   token: string;
   workspace: WorkspaceRecord;
   assets: AssetRecord[];
+  routedSessionId?: string;
+  onNavigateSession: (sessionId?: string) => void;
   onOpenWorkspaceSettings: () => void;
 }) {
   const usableSkills = assets.filter(
@@ -119,7 +123,10 @@ export function ForgeView({
   const [isDeletingSession, setIsDeletingSession] = useState(false);
   const historyScope = `${workspace.id}\u0000${token}`;
   const historyScopeRef = useRef(historyScope);
+  const routeSessionLoadRef = useRef<string | undefined>(undefined);
+  const routedSessionIdRef = useRef(routedSessionId);
   historyScopeRef.current = historyScope;
+  routedSessionIdRef.current = routedSessionId;
   const tree = useMemo(() => buildTemplateTree(template?.files ?? []), [template?.files]);
   const selectedFile = useMemo(
     () => templateFilePreview(template, selectedPath),
@@ -138,6 +145,27 @@ export function ForgeView({
       active = false;
     };
   }, [token, workspace.id]);
+
+  useEffect(() => {
+    if (!routedSessionId) {
+      routeSessionLoadRef.current = undefined;
+      setLoadingSessionId(undefined);
+      if (activeSessionId) clearBuilderState();
+      return;
+    }
+    if (routedSessionId === activeSessionId) {
+      routeSessionLoadRef.current = undefined;
+      setLoadingSessionId(undefined);
+      return;
+    }
+
+    const loadKey = `${workspace.id}\u0000${routedSessionId}`;
+    if (routeSessionLoadRef.current === loadKey) return;
+    routeSessionLoadRef.current = loadKey;
+    void restoreSessionById(routedSessionId).finally(() => {
+      if (routeSessionLoadRef.current === loadKey) routeSessionLoadRef.current = undefined;
+    });
+  }, [activeSessionId, routedSessionId, token, workspace.id]);
 
   useEffect(() => {
     setPhase("idle");
@@ -179,6 +207,7 @@ export function ForgeView({
       return;
     }
     setActiveSessionId(session.id);
+    onNavigateSession(session.id);
     addSessionToLoadedHistory(session);
     await requestFollowUp({
       requirement: normalized,
@@ -297,13 +326,29 @@ export function ForgeView({
     } : current);
   }
 
-  async function restoreSession(summary: ForgeSessionSummary) {
-    setLoadingSessionId(summary.id);
+  function openSession(summary: ForgeSessionSummary) {
+    setHistoryOpen(false);
+    if (summary.id === routedSessionId) return;
+    onNavigateSession(summary.id);
+  }
+
+  async function restoreSessionById(sessionId: string) {
+    setLoadingSessionId(sessionId);
     setHistoryError(undefined);
     setError(undefined);
     setRetryAction(undefined);
+    setRequirement("");
+    setAnswers([]);
+    setFollowUp(undefined);
+    setAnswer("");
+    setSelectedOptions([]);
+    setTemplate(undefined);
+    setSelectedPath(undefined);
+    setWorkingLabel("Loading Forge session…");
+    setPhase("working");
     try {
-      const session = await getForgeSession(token, workspace.id, summary.id);
+      const session = await getForgeSession(token, workspace.id, sessionId);
+      if (routedSessionIdRef.current !== sessionId) return;
       const storedTemplate = session.template?.mode === "llm" ? session.template : undefined;
       const storedFollowUp = session.followUp?.mode === "llm" ? session.followUp : undefined;
       setActiveSessionId(session.id);
@@ -336,12 +381,13 @@ export function ForgeView({
         await requestFollowUp(input);
       }
     } catch (caught) {
+      if (routedSessionIdRef.current !== sessionId) return;
       const message = errorMessage(caught);
       setHistoryError(message);
       setError(message);
       setPhase("idle");
     } finally {
-      setLoadingSessionId(undefined);
+      if (routedSessionIdRef.current === sessionId) setLoadingSessionId(undefined);
     }
   }
 
@@ -355,7 +401,10 @@ export function ForgeView({
         ...current,
         sessions: current.sessions.filter((item) => item.id !== sessionToDelete.id)
       } : current);
-      if (activeSessionId === sessionToDelete.id) resetBuilder();
+      if (
+        activeSessionId === sessionToDelete.id ||
+        routedSessionId === sessionToDelete.id
+      ) resetBuilder();
       setSessionToDelete(undefined);
     } catch (caught) {
       setHistoryError(errorMessage(caught));
@@ -385,7 +434,7 @@ export function ForgeView({
     }
   }
 
-  function resetBuilder() {
+  function clearBuilderState() {
     setActiveSessionId(undefined);
     setPhase("idle");
     setRequirement("");
@@ -397,6 +446,11 @@ export function ForgeView({
     setSelectedPath(undefined);
     setError(undefined);
     setRetryAction(undefined);
+  }
+
+  function resetBuilder() {
+    clearBuilderState();
+    onNavigateSession(undefined);
   }
 
   if (!aiSettings) {
@@ -478,7 +532,7 @@ export function ForgeView({
             }}
           >
             <History className="h-4 w-4" aria-hidden="true" />
-            History
+            Sessions
             {history?.sessions.length ? (
               <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px]">
                 {history.sessions.length}
@@ -733,7 +787,7 @@ export function ForgeView({
           if (!open) setHistoryError(undefined);
         }}
         onRefresh={() => void refreshHistory()}
-        onRestore={(session) => void restoreSession(session)}
+        onRestore={openSession}
         onRequestDelete={setSessionToDelete}
         onDeleteOpenChange={(open) => {
           if (!open && !isDeletingSession) setSessionToDelete(undefined);
@@ -784,11 +838,11 @@ function ForgeHistoryPanel({
               <div>
                 <SheetTitle className="flex items-center gap-2">
                   <History className="h-5 w-5 text-blue-700" aria-hidden="true" />
-                  Forge history
+                  Forge sessions
                 </SheetTitle>
                 <SheetDescription className="mt-2 leading-5">
-                  Resume your private sessions in this workspace. Details are loaded only when you
-                  open a session.
+                  Open a private task session in this workspace. Each session has its own URL and
+                  can be resumed directly.
                 </SheetDescription>
               </div>
               <Button

@@ -16,7 +16,10 @@ export function routeFromPath(pathname: string): AppRoute {
   }
 
   if (section === "workspace") return { view: "workspace" };
-  if (section === "forge") return { view: "forge" };
+  if (section === "forge") {
+    const forgeSessionId = segments[1] ? decodeRoutePart(segments[1]) : undefined;
+    return forgeSessionId ? { view: "forge", forgeSessionId } : { view: "forge" };
+  }
   if (section === "account") return { view: "account" };
   if (section === "device") return { view: "device" };
   if (section === "s" && segments[1]) {
@@ -31,6 +34,7 @@ export function normalizeRoute(route: AppRoute): AppRoute {
     return { view: "assets" };
   }
   if (route.view === "share" && !route.shareToken) return { view: "assets" };
+  if (route.view === "forge" && !route.forgeSessionId) return { view: "forge" };
   return route;
 }
 
@@ -39,7 +43,11 @@ export function pathForRoute(route: AppRoute): string {
     return `/skills/${encodeURIComponent(route.assetQuery)}`;
   }
   if (route.view === "workspace") return "/workspace";
-  if (route.view === "forge") return "/forge";
+  if (route.view === "forge") {
+    return route.forgeSessionId
+      ? `/forge/${encodeURIComponent(route.forgeSessionId)}`
+      : "/forge";
+  }
   if (route.view === "account") return "/account";
   if (route.view === "device") return "/device";
   if (route.view === "share" && route.shareToken) {
