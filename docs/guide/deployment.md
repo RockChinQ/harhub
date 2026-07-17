@@ -100,10 +100,11 @@ HARHUB_ENCRYPTION_KEY=replace-with-a-long-random-secret
 
 For local development, Harhub generates `.harhub/secrets.key` with private file
 permissions when `HARHUB_ENCRYPTION_KEY` is absent. Keep that file stable while
-workspace credentials exist. Without a workspace API key, or when its provider
-is unavailable, Forge uses a bounded guided interview and deterministic fallback
-composition. Generated ZIPs still contain the full selected Skill packages from
-configured S3-compatible storage.
+workspace credentials exist. Forge requires a configured workspace API key. A
+failed interview or composition request is retried automatically up to three
+times; if all attempts fail, the session remains resumable and the page offers a
+manual Retry action. Generated ZIPs contain the full selected Skill packages
+from configured S3-compatible storage.
 
 Forge also keeps resumable session history per workspace and account. Only the
 latest 12 sessions are retained for each account in a workspace, inactive

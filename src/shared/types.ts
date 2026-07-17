@@ -288,7 +288,7 @@ export interface ValidationIssue {
   assetId?: string;
 }
 
-export type HarnessBuilderMode = "llm" | "local-fallback";
+export type HarnessBuilderMode = "llm";
 
 export interface HarnessInterviewAnswer {
   question: string;
@@ -321,7 +321,6 @@ export interface HarnessFollowUpResponse {
   ready: boolean;
   question?: string;
   component?: HarnessFollowUpComponent;
-  warning?: string;
 }
 
 export interface HarnessTemplateFile {
@@ -363,7 +362,6 @@ export interface HarnessTemplateResponse {
   profile: HarnessTemplateProfile;
   selectedAssets: HarnessTemplateAssetSelection[];
   files: HarnessTemplateFile[];
-  warning?: string;
 }
 
 export type ForgeSessionStatus = "interviewing" | "complete";

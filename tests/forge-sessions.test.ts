@@ -48,7 +48,7 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
       "ws_demo",
       { requirement: resumable.requirement, answers, sessionId: resumable.id },
       {
-        mode: "local-fallback",
+        mode: "llm",
         ready: false,
         question: "What should it do?",
         component: {
@@ -72,6 +72,27 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
     const restoredTemplate = await getForgeSession("acct_demo", "ws_demo", resumable.id);
     assert.equal(restoredTemplate.status, "complete");
     assert.equal(restoredTemplate.template?.files[0]?.content, "# Project harness\n");
+
+    const legacy = await createForgeSession("acct_demo", "ws_demo", "Legacy local response");
+    const legacyState = await loadState();
+    const legacyRecord = legacyState.forgeSessions.find((item) => item.id === legacy.id);
+    assert.ok(legacyRecord);
+    legacyRecord.followUp = {
+      mode: "local-fallback" as "llm",
+      ready: false,
+      question: "Legacy question",
+      component: { type: "text", options: [] }
+    };
+    legacyRecord.template = {
+      ...exampleTemplate("# Legacy generated content\n"),
+      mode: "local-fallback" as "llm"
+    };
+    legacyRecord.status = "complete";
+    await saveState(legacyState);
+    const migratedLegacy = await getForgeSession("acct_demo", "ws_demo", legacy.id);
+    assert.equal(migratedLegacy.followUp, undefined);
+    assert.equal(migratedLegacy.template, undefined);
+    assert.equal(migratedLegacy.status, "interviewing");
 
     const oversized = await createForgeSession("acct_demo", "ws_demo", "Build an oversized project");
     await assert.rejects(
@@ -132,6 +153,25 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
     assertPrivateNoStore(createResponse);
     const apiSession = await createResponse.json() as { id: string; title: string };
 
+    const missingAiResponse = await fetch(
+      `${baseUrl}/api/workspaces/ws_demo/forge/follow-up`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          requirement: "Browser history API verification",
+          answers: [],
+          sessionId: apiSession.id
+        })
+      }
+    );
+    assert.equal(missingAiResponse.status, 409);
+    assertPrivateNoStore(missingAiResponse);
+    assert.match(
+      (await missingAiResponse.json() as { error: string }).error,
+      /Forge AI is not configured/
+    );
+
     const listResponse = await fetch(`${baseUrl}/api/workspaces/ws_demo/forge/sessions`, {
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -168,7 +208,7 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
 
 function exampleTemplate(content: string): HarnessTemplateResponse {
   return {
-    mode: "local-fallback",
+    mode: "llm",
     generatedAt: new Date().toISOString(),
     profile: {
       name: "Project",

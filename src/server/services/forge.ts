@@ -3,7 +3,6 @@ import JSZip from "jszip";
 import type {
   AssetCatalog,
   AssetRecord,
-  HarnessBuilderMode,
   HarnessFollowUpComponent,
   HarnessFollowUpRequest,
   HarnessFollowUpResponse,
@@ -18,7 +17,10 @@ import { loadStoredSkill } from "./skill-packages.js";
 
 const MAX_FOLLOW_UPS = 3;
 const MAX_LIST_ITEMS = 6;
+const MAX_SELECTED_ASSETS = 4;
 const MAX_ARCHIVE_SKILL_BYTES = 25 * 1024 * 1024;
+const AI_REQUEST_ATTEMPTS = 3;
+const AI_RETRY_DELAYS_MS = [250, 750];
 
 interface ForgeTemplateSpec {
   name: string;
@@ -79,12 +81,12 @@ export async function createHarnessFollowUp(
   workspaceAssets: HarnessWorkspaceAssetSummary[],
   aiConfiguration?: ForgeAiConfiguration
 ): Promise<HarnessFollowUpResponse> {
-  const fallback = createLocalHarnessFollowUp(input);
-  if (!aiConfiguration || fallback.ready) return fallback;
+  if (input.answers.length >= MAX_FOLLOW_UPS) return { mode: "llm", ready: true };
+  const configuration = requireForgeAiConfiguration(aiConfiguration);
 
-  try {
+  return withAiRetries(async () => {
     const payload = await requestJson({
-      ...aiConfiguration,
+      ...configuration,
       maxTokens: 700,
       system: [
         "You run a concise project discovery interview for an agent harness template.",
@@ -118,90 +120,7 @@ export async function createHarnessFollowUp(
       question: ready ? undefined : question,
       component: ready ? undefined : component
     };
-  } catch {
-    return {
-      ...fallback,
-      warning: "AI is temporarily unavailable, so Harhub used the guided fallback."
-    };
-  }
-}
-
-export function createLocalHarnessFollowUp(
-  input: HarnessFollowUpRequest
-): HarnessFollowUpResponse {
-  const questions = [
-    {
-      question: "Who will use this project most often, and in what setting?",
-      component: {
-        type: "single-select",
-        allowCustom: true,
-        options: [
-          {
-            label: "Internal engineering team",
-            description: "Developers collaborating in a shared repository and delivery process."
-          },
-          {
-            label: "Operations specialists",
-            description: "Operators running repeatable internal workflows and incident tasks."
-          },
-          {
-            label: "Customer-facing teams",
-            description: "Support, success, or sales teams serving external users."
-          },
-          {
-            label: "Individual developers",
-            description: "A personal workflow optimized for one primary maintainer."
-          }
-        ]
-      } satisfies HarnessFollowUpComponent
-    },
-    {
-      question: "Which first-version workflows must be especially clear and reliable?",
-      component: {
-        type: "multi-select",
-        allowCustom: true,
-        maxSelections: 2,
-        options: [
-          {
-            label: "Create and review work",
-            description: "Move from a request through implementation and approval."
-          },
-          {
-            label: "Search and reuse knowledge",
-            description: "Find the right context or reusable asset quickly."
-          },
-          {
-            label: "Automate a repeated task",
-            description: "Turn a manual routine into a consistent agent workflow."
-          },
-          {
-            label: "Publish and share results",
-            description: "Package outputs for reliable use by another person or system."
-          }
-        ]
-      } satisfies HarnessFollowUpComponent
-    },
-    {
-      question: "What outcome would prove this project is successful?",
-      component: {
-        type: "text",
-        placeholder: "Example: A release manager can prepare a reviewed release in under 15 minutes…",
-        options: []
-      } satisfies HarnessFollowUpComponent
-    }
-  ];
-  const next = questions[input.answers.length];
-
-  if (!next || input.answers.length >= MAX_FOLLOW_UPS) {
-    return { mode: "local-fallback", ready: true };
-  }
-
-  return {
-    mode: "local-fallback",
-    ready: false,
-    question: next.question,
-    component: next.component
-  };
+  });
 }
 
 export async function createHarnessTemplate(
@@ -209,12 +128,10 @@ export async function createHarnessTemplate(
   workspaceAssets: HarnessWorkspaceAssetSummary[],
   aiConfiguration?: ForgeAiConfiguration
 ): Promise<HarnessTemplateResponse> {
-  const fallbackSpec = createLocalTemplateSpec(input, workspaceAssets);
-  if (!aiConfiguration) return buildHarnessTemplate(fallbackSpec, "local-fallback", workspaceAssets);
-
-  try {
+  const configuration = requireForgeAiConfiguration(aiConfiguration);
+  return withAiRetries(async () => {
     const payload = await requestJson({
-      ...aiConfiguration,
+      ...configuration,
       maxTokens: 2400,
       system: [
         "You turn a project discovery interview into a structured project harness brief.",
@@ -246,24 +163,12 @@ export async function createHarnessTemplate(
         workspaceSkills: workspaceAssets.map(assetPromptSummary)
       }, null, 2)
     });
-    const spec = sanitizeTemplateSpec(payload, fallbackSpec);
-    if (!spec.selectedAssets.some((selection) =>
-      workspaceAssets.some((asset) => asset.id === selection.assetId)
-    )) {
-      spec.selectedAssets = fallbackSpec.selectedAssets;
-    }
-    return buildHarnessTemplate(spec, "llm", workspaceAssets);
-  } catch {
-    return {
-      ...buildHarnessTemplate(fallbackSpec, "local-fallback", workspaceAssets),
-      warning: "AI is temporarily unavailable, so Harhub generated a reviewable fallback template."
-    };
-  }
+    return buildHarnessTemplate(readTemplateSpec(payload, workspaceAssets), workspaceAssets);
+  });
 }
 
 export function buildHarnessTemplate(
   spec: ForgeTemplateSpec,
-  mode: HarnessBuilderMode,
   workspaceAssets: HarnessWorkspaceAssetSummary[] = []
 ): HarnessTemplateResponse {
   const slug = slugify(spec.name) || "project-harness";
@@ -294,7 +199,7 @@ export function buildHarnessTemplate(
   ];
 
   return {
-    mode,
+    mode: "llm",
     generatedAt: new Date().toISOString(),
     profile,
     selectedAssets,
@@ -302,69 +207,27 @@ export function buildHarnessTemplate(
   };
 }
 
-function createLocalTemplateSpec(
-  input: HarnessFollowUpRequest,
+function readTemplateSpec(
+  payload: Record<string, unknown>,
   workspaceAssets: HarnessWorkspaceAssetSummary[]
 ): ForgeTemplateSpec {
-  const firstLine = input.requirement.split(/\r?\n/).find((line) => line.trim())?.trim() ?? "Project";
-  const name = projectNameFromRequirement(firstLine);
-  const answers = input.answers.map((item) => item.answer);
-
+  if (!isRecord(payload.workflow)) throw new Error("AI template workflow is required");
+  const workflow = payload.workflow;
   return {
-    name,
-    summary: input.requirement.trim(),
-    targetUsers: answers[0] ? [answers[0]] : ["Define the primary users"],
-    goals: [input.requirement.trim()],
-    constraints: input.answers.length
-      ? input.answers.map((item) => `${item.question} ${item.answer}`)
-      : ["Confirm scope, ownership, and delivery constraints before implementation"],
-    successCriteria: answers[2] ? [answers[2]] : ["Agree on an observable success signal"],
-    stackNotes: ["Confirm the technical stack and supported agent tools during planning"],
-    agentRules: [
-      "Read the project brief and delivery workflow before changing code",
-      "Keep implementation aligned with the stated first-version goal",
-      "Turn missing product details into explicit open questions",
-      "Run relevant checks and record evidence before claiming completion"
-    ],
-    selectedAssets: selectLocalAssets(input, workspaceAssets),
+    name: readRequiredAiString(payload.name, "name"),
+    summary: readRequiredAiString(payload.summary, "summary"),
+    targetUsers: readRequiredAiStringList(payload.targetUsers, "targetUsers"),
+    goals: readRequiredAiStringList(payload.goals, "goals"),
+    constraints: readAiStringList(payload.constraints, "constraints"),
+    successCriteria: readRequiredAiStringList(payload.successCriteria, "successCriteria"),
+    stackNotes: readAiStringList(payload.stackNotes, "stackNotes"),
+    agentRules: readRequiredAiStringList(payload.agentRules, "agentRules"),
+    selectedAssets: readAssetSelections(payload.selectedAssets, workspaceAssets),
     workflow: {
-      name: "Plan, implement, and verify",
-      objective: answers[1] ?? "Deliver the smallest reliable version of the requested project",
-      steps: [
-        "Confirm the current goal and unresolved questions",
-        "Inspect the repository and identify the smallest coherent change",
-        "Implement the change with focused tests",
-        "Run verification and update the harness changelog"
-      ],
-      verification: [
-        "Relevant automated checks pass",
-        "The primary user workflow is exercised end to end",
-        "Known risks and skipped checks are recorded"
-      ]
-    }
-  };
-}
-
-function sanitizeTemplateSpec(
-  payload: Record<string, unknown>,
-  fallback: ForgeTemplateSpec
-): ForgeTemplateSpec {
-  const workflow = isRecord(payload.workflow) ? payload.workflow : {};
-  return {
-    name: readString(payload.name) ?? fallback.name,
-    summary: readString(payload.summary) ?? fallback.summary,
-    targetUsers: listOrFallback(payload.targetUsers, fallback.targetUsers),
-    goals: listOrFallback(payload.goals, fallback.goals),
-    constraints: listOrFallback(payload.constraints, fallback.constraints),
-    successCriteria: listOrFallback(payload.successCriteria, fallback.successCriteria),
-    stackNotes: listOrFallback(payload.stackNotes, fallback.stackNotes),
-    agentRules: listOrFallback(payload.agentRules, fallback.agentRules),
-    selectedAssets: readAssetSelections(payload.selectedAssets, fallback.selectedAssets),
-    workflow: {
-      name: readString(workflow.name) ?? fallback.workflow.name,
-      objective: readString(workflow.objective) ?? fallback.workflow.objective,
-      steps: listOrFallback(workflow.steps, fallback.workflow.steps),
-      verification: listOrFallback(workflow.verification, fallback.workflow.verification)
+      name: readRequiredAiString(workflow.name, "workflow.name"),
+      objective: readRequiredAiString(workflow.objective, "workflow.objective"),
+      steps: readRequiredAiStringList(workflow.steps, "workflow.steps"),
+      verification: readRequiredAiStringList(workflow.verification, "workflow.verification")
     }
   };
 }
@@ -433,46 +296,24 @@ export async function createHarnessTemplateArchive(
   };
 }
 
-function selectLocalAssets(
-  input: HarnessFollowUpRequest,
-  assets: HarnessWorkspaceAssetSummary[]
-): Array<{ assetId: string; reason: string }> {
-  const requestText = [
-    input.requirement,
-    ...input.answers.flatMap((item) => [item.question, item.answer])
-  ].join(" ").toLowerCase();
-  const tokens = new Set(requestText.match(/[a-z0-9][a-z0-9-]{2,}/g) ?? []);
-  const ranked = assets.map((asset, index) => {
-    const searchable = `${asset.name} ${asset.displayName} ${asset.description}`.toLowerCase();
-    const score = Array.from(tokens).reduce(
-      (total, token) => total + (searchable.includes(token) ? 1 : 0),
-      0
-    );
-    return { asset, index, score };
-  }).sort((left, right) => right.score - left.score || left.index - right.index);
-  const matched = ranked.filter((item) => item.score > 0);
-  const selected = (matched.length ? matched : ranked).slice(0, 3);
-
-  return selected.map(({ asset, score }) => ({
-    assetId: asset.id,
-    reason: score > 0
-      ? "Matches terms in the project requirement and should be reviewed for this baseline."
-      : "Available in this workspace; review its fit before adopting the generated baseline."
-  }));
-}
-
 function readAssetSelections(
   value: unknown,
-  fallback: Array<{ assetId: string; reason: string }>
+  workspaceAssets: HarnessWorkspaceAssetSummary[]
 ): Array<{ assetId: string; reason: string }> {
-  if (!Array.isArray(value)) return fallback;
-  const selections = value.flatMap((item) => {
-    if (!isRecord(item)) return [];
-    const assetId = readString(item.assetId);
-    const reason = readString(item.reason);
-    return assetId && reason ? [{ assetId, reason }] : [];
-  }).slice(0, MAX_LIST_ITEMS);
-  return selections.length ? selections : fallback;
+  if (!Array.isArray(value)) throw new Error("AI template selectedAssets must be an array");
+  const availableIds = new Set(workspaceAssets.map((item) => item.id));
+  const seen = new Set<string>();
+  return value.slice(0, MAX_SELECTED_ASSETS).map((item, index) => {
+    if (!isRecord(item)) throw new Error(`AI template selectedAssets[${index}] is invalid`);
+    const assetId = readRequiredAiString(item.assetId, `selectedAssets[${index}].assetId`);
+    const reason = readRequiredAiString(item.reason, `selectedAssets[${index}].reason`);
+    if (!availableIds.has(assetId)) {
+      throw new Error(`AI template selected unknown workspace asset ${assetId}`);
+    }
+    if (seen.has(assetId)) throw new Error(`AI template selected asset ${assetId} more than once`);
+    seen.add(assetId);
+    return { assetId, reason };
+  });
 }
 
 function resolveSelectedAssets(
@@ -540,6 +381,44 @@ async function requestJson({
   return parsed;
 }
 
+function requireForgeAiConfiguration(
+  configuration: ForgeAiConfiguration | undefined
+): ForgeAiConfiguration {
+  if (!configuration) {
+    throw new Error(
+      "Forge AI is not configured for this workspace. Configure and test it in Workspace Settings, then retry."
+    );
+  }
+  return configuration;
+}
+
+async function withAiRetries<T>(request: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= AI_REQUEST_ATTEMPTS; attempt += 1) {
+    try {
+      return await request();
+    } catch (error) {
+      lastError = error;
+      if (attempt < AI_REQUEST_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, AI_RETRY_DELAYS_MS[attempt - 1]));
+      }
+    }
+  }
+  throw new Error(
+    `AI request failed after ${AI_REQUEST_ATTEMPTS} attempts: ${aiErrorMessage(lastError)}`
+  );
+}
+
+function aiErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.name === "TimeoutError") {
+    return "The AI provider did not respond before the request timed out.";
+  }
+  if (error instanceof TypeError && error.message === "fetch failed") {
+    return "Could not connect to the AI provider. Check the Base URL and server network access.";
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
 async function readProviderError(response: Response): Promise<string | undefined> {
   const text = await response.text().catch(() => "");
   if (!text) return undefined;
@@ -571,12 +450,6 @@ function readString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim();
   return normalized ? normalized.slice(0, 4_000) : undefined;
-}
-
-function readStringList(value: unknown, limit = MAX_LIST_ITEMS): string[] {
-  if (!Array.isArray(value)) return [];
-  return Array.from(new Set(value.map(readString).filter((item): item is string => Boolean(item))))
-    .slice(0, limit);
 }
 
 function readFollowUpComponent(value: unknown): HarnessFollowUpComponent | undefined {
@@ -617,9 +490,26 @@ function readFollowUpComponent(value: unknown): HarnessFollowUpComponent | undef
   };
 }
 
-function listOrFallback(value: unknown, fallback: string[]): string[] {
-  const items = readStringList(value);
-  return items.length ? items : fallback;
+function readRequiredAiString(value: unknown, label: string): string {
+  const result = readString(value);
+  if (!result) throw new Error(`AI template ${label} is required`);
+  return result;
+}
+
+function readAiStringList(value: unknown, label: string): string[] {
+  if (!Array.isArray(value)) throw new Error(`AI template ${label} must be an array`);
+  const items = value.slice(0, MAX_LIST_ITEMS).map((item, index) => {
+    const result = readString(item);
+    if (!result) throw new Error(`AI template ${label}[${index}] must be a non-empty string`);
+    return result;
+  });
+  return Array.from(new Set(items));
+}
+
+function readRequiredAiStringList(value: unknown, label: string): string[] {
+  const items = readAiStringList(value, label);
+  if (items.length === 0) throw new Error(`AI template ${label} cannot be empty`);
+  return items;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -633,19 +523,6 @@ function slugify(value: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 64);
-}
-
-function projectNameFromRequirement(value: string): string {
-  const withoutLead = value
-    .replace(/^(build|create|develop|make|implement)\s+(?:an?\s+)?/i, "")
-    .replace(/[。.!?？].*$/, "")
-    .trim();
-  const englishName = withoutLead.split(/\b(?:that|which|who|where|for)\b/i)[0]?.trim();
-  const words = englishName?.split(/\s+/).filter(Boolean) ?? [];
-  if (words.length > 0 && words.every((word) => /^[\w'-]+$/.test(word))) {
-    return words.slice(0, 6).join(" ").slice(0, 48);
-  }
-  return withoutLead.slice(0, 32).trim() || "Project Harness";
 }
 
 function validateFrameworkFiles(files: HarnessTemplateFile[]): void {

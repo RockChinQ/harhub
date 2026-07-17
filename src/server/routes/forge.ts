@@ -115,7 +115,7 @@ export function registerForgeRoutes(app: Express): void {
       );
       res.json(response);
     } catch (error) {
-      sendError(res, error, 400);
+      sendForgeOperationError(res, error);
     }
   });
 
@@ -140,7 +140,7 @@ export function registerForgeRoutes(app: Express): void {
       );
       res.json(template);
     } catch (error) {
-      sendError(res, error, 400);
+      sendForgeOperationError(res, error);
     }
   });
 
@@ -226,5 +226,15 @@ function sendForgeError(
   const status = error instanceof Error && error.message === "Forge session not found."
     ? 404
     : 400;
+  sendError(res, error, status);
+}
+
+function sendForgeOperationError(res: Response, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  const status = message.startsWith("AI request failed after ")
+    ? 502
+    : message.startsWith("Forge AI is not configured")
+      ? 409
+      : 400;
   sendError(res, error, status);
 }

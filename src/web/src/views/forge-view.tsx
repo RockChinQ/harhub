@@ -26,6 +26,7 @@ import type {
   ForgeSessionListResponse,
   ForgeSessionSummary,
   HarnessFollowUpComponent,
+  HarnessFollowUpRequest,
   HarnessFollowUpResponse,
   HarnessInterviewAnswer,
   HarnessTemplateResponse,
@@ -74,7 +75,11 @@ import { cn } from "../lib/utils";
 import { FilePreviewPane } from "./assets/file-preview-pane";
 import { FileTree } from "./assets/file-tree";
 
-type BuilderPhase = "idle" | "question" | "working" | "complete";
+type BuilderPhase = "idle" | "question" | "working" | "failed" | "complete";
+
+type ForgeRetryAction =
+  | { kind: "start" }
+  | { kind: "follow-up" | "generate"; input: HarnessFollowUpRequest };
 
 export function ForgeView({
   token,
@@ -100,7 +105,7 @@ export function ForgeView({
   const [selectedPath, setSelectedPath] = useState<string>();
   const [workingLabel, setWorkingLabel] = useState("");
   const [error, setError] = useState<string>();
-  const [warning, setWarning] = useState<string>();
+  const [retryAction, setRetryAction] = useState<ForgeRetryAction>();
   const [isDownloading, setIsDownloading] = useState(false);
   const [aiSettings, setAiSettings] = useState<WorkspaceAiSettings>();
   const [activeSessionId, setActiveSessionId] = useState<string>();
@@ -143,7 +148,7 @@ export function ForgeView({
     setTemplate(undefined);
     setSelectedPath(undefined);
     setError(undefined);
-    setWarning(undefined);
+    setRetryAction(undefined);
     setActiveSessionId(undefined);
     setHistory(undefined);
     setHistoryError(undefined);
@@ -158,26 +163,27 @@ export function ForgeView({
     const normalized = requirement.trim();
     if (!normalized || usableSkills.length === 0) return;
     setError(undefined);
-    setWarning(undefined);
+    setRetryAction(undefined);
     setTemplate(undefined);
     setAnswers([]);
     setAnswer("");
     setSelectedOptions([]);
     setWorkingLabel("Reviewing the requirement and workspace Skills…");
     setPhase("working");
+    let session: ForgeSessionDetail;
     try {
-      const session = await createForgeSession(token, workspace.id, normalized);
-      setActiveSessionId(session.id);
-      addSessionToLoadedHistory(session);
-      await handleFollowUp(await getForgeFollowUp(token, workspace.id, {
-        requirement: normalized,
-        answers: [],
-        sessionId: session.id
-      }), normalized, [], session.id);
+      session = await createForgeSession(token, workspace.id, normalized);
     } catch (caught) {
-      setError(errorMessage(caught));
-      setPhase("idle");
+      setForgeFailure({ kind: "start" }, caught);
+      return;
     }
+    setActiveSessionId(session.id);
+    addSessionToLoadedHistory(session);
+    await requestFollowUp({
+      requirement: normalized,
+      answers: [],
+      sessionId: session.id
+    });
   }
 
   async function submitAnswer() {
@@ -186,29 +192,28 @@ export function ForgeView({
     if (!question || !normalized) return;
     const nextAnswers = [...answers, { question, answer: normalized }];
     setAnswers(nextAnswers);
-    setError(undefined);
-    setWorkingLabel("Finding the next useful question…");
-    setPhase("working");
-    try {
-      await handleFollowUp(await getForgeFollowUp(token, workspace.id, {
-        requirement: requirement.trim(),
-        answers: nextAnswers,
-        ...(activeSessionId ? { sessionId: activeSessionId } : {})
-      }), requirement.trim(), nextAnswers, activeSessionId);
-    } catch (caught) {
-      setAnswers(answers);
-      setError(errorMessage(caught));
-      setPhase("question");
-    }
+    await requestFollowUp({
+      requirement: requirement.trim(),
+      answers: nextAnswers,
+      ...(activeSessionId ? { sessionId: activeSessionId } : {})
+    });
   }
 
-  async function handleFollowUp(
-    response: HarnessFollowUpResponse,
-    normalizedRequirement: string,
-    nextAnswers: HarnessInterviewAnswer[],
-    sessionId?: string
-  ) {
-    setWarning(response.warning);
+  async function requestFollowUp(input: HarnessFollowUpRequest) {
+    setError(undefined);
+    setRetryAction(undefined);
+    setWorkingLabel(input.answers.length
+      ? "Finding the next useful question…"
+      : "Reviewing the requirement and workspace Skills…");
+    setPhase("working");
+    let response: HarnessFollowUpResponse;
+    try {
+      response = await getForgeFollowUp(token, workspace.id, input);
+    } catch (caught) {
+      setForgeFailure({ kind: "follow-up", input }, caught);
+      return;
+    }
+
     if (!response.ready && response.question) {
       setFollowUp(response);
       setAnswer("");
@@ -216,18 +221,43 @@ export function ForgeView({
       setPhase("question");
       return;
     }
+    await requestTemplate(input);
+  }
 
+  async function requestTemplate(input: HarnessFollowUpRequest) {
+    setError(undefined);
+    setRetryAction(undefined);
     setWorkingLabel("Selecting workspace Skills and composing the project harness…");
-    const result = await generateForgeTemplate(token, workspace.id, {
-      requirement: normalizedRequirement,
-      answers: nextAnswers,
-      ...(sessionId ? { sessionId } : {})
-    });
+    setPhase("working");
+    let result: HarnessTemplateResponse;
+    try {
+      result = await generateForgeTemplate(token, workspace.id, input);
+    } catch (caught) {
+      setForgeFailure({ kind: "generate", input }, caught);
+      return;
+    }
     setTemplate(result);
     setSelectedPath(result.files[0]?.path);
-    setWarning(result.warning ?? response.warning);
     setPhase("complete");
     if (history) void refreshHistory();
+  }
+
+  async function retryFailedOperation() {
+    const action = retryAction;
+    if (!action) return;
+    if (action.kind === "start") {
+      await startInterview();
+      return;
+    }
+    setAnswers(action.input.answers);
+    if (action.kind === "follow-up") await requestFollowUp(action.input);
+    else await requestTemplate(action.input);
+  }
+
+  function setForgeFailure(action: ForgeRetryAction, caught: unknown) {
+    setError(errorMessage(caught));
+    setRetryAction(action);
+    setPhase("failed");
   }
 
   async function refreshHistory() {
@@ -256,41 +286,37 @@ export function ForgeView({
     setLoadingSessionId(summary.id);
     setHistoryError(undefined);
     setError(undefined);
+    setRetryAction(undefined);
     try {
       const session = await getForgeSession(token, workspace.id, summary.id);
+      const storedTemplate = session.template?.mode === "llm" ? session.template : undefined;
+      const storedFollowUp = session.followUp?.mode === "llm" ? session.followUp : undefined;
       setActiveSessionId(session.id);
       setRequirement(session.requirement);
       setAnswers(session.answers);
-      setFollowUp(session.followUp);
+      setFollowUp(storedFollowUp);
       setAnswer("");
       setSelectedOptions([]);
-      setTemplate(session.template);
-      setSelectedPath(session.template?.files[0]?.path);
-      setWarning(session.template?.warning ?? session.followUp?.warning);
+      setTemplate(storedTemplate);
+      setSelectedPath(storedTemplate?.files[0]?.path);
       setHistoryOpen(false);
 
-      if (session.template) {
+      if (storedTemplate) {
         setPhase("complete");
         return;
       }
-      if (session.followUp && !session.followUp.ready && session.followUp.question) {
+      if (storedFollowUp && !storedFollowUp.ready && storedFollowUp.question) {
         setPhase("question");
         return;
       }
 
-      setWorkingLabel("Resuming project discovery…");
-      setPhase("working");
-      const nextFollowUp = session.followUp ?? await getForgeFollowUp(token, workspace.id, {
+      const input = {
         requirement: session.requirement,
         answers: session.answers,
         sessionId: session.id
-      });
-      await handleFollowUp(
-        nextFollowUp,
-        session.requirement,
-        session.answers,
-        session.id
-      );
+      };
+      if (storedFollowUp?.ready) await requestTemplate(input);
+      else await requestFollowUp(input);
     } catch (caught) {
       const message = errorMessage(caught);
       setHistoryError(message);
@@ -352,7 +378,7 @@ export function ForgeView({
     setTemplate(undefined);
     setSelectedPath(undefined);
     setError(undefined);
-    setWarning(undefined);
+    setRetryAction(undefined);
   }
 
   return (
@@ -365,7 +391,7 @@ export function ForgeView({
               {aiSettings?.configured
                 ? `Workspace AI · ${aiSettings.model}`
                 : aiSettings
-                  ? "Guided fallback"
+                  ? "AI not configured"
                   : "Checking workspace AI"
               }
             </Badge>
@@ -416,13 +442,25 @@ export function ForgeView({
       </div>
 
       {error ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error}
-        </div>
-      ) : null}
-      {warning ? (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          {warning}
+        <div className="flex flex-col gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between">
+          <p className="leading-5">{error}</p>
+          {retryAction ? (
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void retryFailedOperation()}
+              >
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                Retry
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={onOpenWorkspaceSettings}>
+                <Settings2 className="h-4 w-4" aria-hidden="true" />
+                AI settings
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -458,7 +496,25 @@ export function ForgeView({
                     already know.
                   </p>
                 </div>
-                {usableSkills.length === 0 ? (
+                {aiSettings && !aiSettings.configured ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                    <div className="font-medium">Workspace AI is required</div>
+                    <p className="mt-1 text-xs leading-5">
+                      Configure and test an AI provider before starting Forge. Failed AI requests
+                      are retried automatically, then stop with a manual Retry action.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-3"
+                      onClick={onOpenWorkspaceSettings}
+                    >
+                      <Settings2 className="h-4 w-4" aria-hidden="true" />
+                      Configure AI
+                    </Button>
+                  </div>
+                ) : usableSkills.length === 0 ? (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
                     This workspace has no usable Skills yet. Upload and validate at least one Skill
                     before generating a workspace-based harness.
@@ -478,7 +534,11 @@ export function ForgeView({
                 <Button
                   type="button"
                   className="w-full"
-                  disabled={!requirement.trim() || usableSkills.length === 0}
+                  disabled={
+                    !requirement.trim() ||
+                    usableSkills.length === 0 ||
+                    !aiSettings?.configured
+                  }
                   onClick={() => void startInterview()}
                 >
                   Start discovery
@@ -555,9 +615,7 @@ export function ForgeView({
                 <div className="shrink-0 border-b px-5 py-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-lg font-semibold">{template.profile.name}</h2>
-                    <Badge variant="outline">
-                      {template.mode === "llm" ? "AI composed" : "Fallback draft"}
-                    </Badge>
+                    <Badge variant="outline">AI composed</Badge>
                   </div>
                   <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
                     {template.profile.summary}
@@ -914,7 +972,7 @@ function FollowUpQuestion({
             Follow-up {step}
           </span>
           <Badge variant="outline" className="bg-background/80 text-[10px] uppercase">
-            {response.mode === "llm" ? "AI" : "Guided fallback"}
+            AI
           </Badge>
         </div>
         <p className="mt-2 font-medium leading-6 text-blue-950">{response.question}</p>

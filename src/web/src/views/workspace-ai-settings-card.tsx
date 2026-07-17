@@ -128,7 +128,7 @@ export function WorkspaceAiSettingsCard({
         clearApiKey: true
       });
       applySettings(result);
-      setMessage("Workspace API key removed. Forge will use guided fallback.");
+      setMessage("Workspace API key removed. Forge is unavailable until another key is saved.");
     } catch (caught) {
       setMessage(errorMessage(caught));
     } finally {
@@ -180,7 +180,7 @@ export function WorkspaceAiSettingsCard({
             </CardDescription>
           </div>
           <Badge variant={settings?.configured ? "default" : "secondary"}>
-            {settings?.configured ? "AI configured" : "Guided fallback"}
+            {settings?.configured ? "AI configured" : "AI not configured"}
           </Badge>
         </div>
       </CardHeader>
@@ -275,8 +275,8 @@ export function WorkspaceAiSettingsCard({
                       <AlertDialogHeader>
                         <AlertDialogTitle>Remove this workspace API key?</AlertDialogTitle>
                         <AlertDialogDescription>
-                          Forge will stop calling the configured AI provider and use guided fallback
-                          until another key is saved.
+                          Forge will be unavailable until another workspace API key is saved and
+                          tested.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>

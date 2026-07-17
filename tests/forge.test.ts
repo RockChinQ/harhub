@@ -6,8 +6,9 @@ import JSZip from "jszip";
 
 import {
   buildHarnessTemplate,
+  createHarnessFollowUp,
+  createHarnessTemplate,
   createHarnessTemplateArchive,
-  createLocalHarnessFollowUp,
   testForgeAiConnection,
   workspaceAssetSummaries
 } from "../src/server/services/forge.js";
@@ -17,33 +18,58 @@ import type {
   HarnessWorkspaceAssetSummary
 } from "../src/shared/types.js";
 
-test("asks a bounded sequence of project follow-up questions", () => {
+test("retries Forge AI requests and surfaces the final failure", async (context) => {
   const input = { requirement: "Build a release assistant", answers: [] };
-  const first = createLocalHarnessFollowUp(input);
-
-  assert.equal(first.ready, false);
-  assert.ok(first.question);
-  assert.equal(first.component?.type, "single-select");
-  assert.equal(first.component?.options.length, 4);
-
-  const second = createLocalHarnessFollowUp({
-    ...input,
-    answers: [{ question: first.question ?? "one", answer: "Internal engineering team" }]
+  let attempts = 0;
+  let alwaysFail = false;
+  const server = createServer((_request, response) => {
+    attempts += 1;
+    if (alwaysFail || attempts < 3) {
+      response.writeHead(503, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "provider overloaded" } }));
+      return;
+    }
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({
+        ready: false,
+        question: "Who will use the release assistant?",
+        component: {
+          type: "single-select",
+          options: [
+            { label: "Release engineers" },
+            { label: "Product managers" },
+            { label: "Support teams" }
+          ]
+        }
+      }) } }]
+    }));
   });
-  assert.equal(second.component?.type, "multi-select");
-  assert.equal(second.component?.maxSelections, 2);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => new Promise<void>((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  }));
+  const address = server.address() as AddressInfo;
+  const configuration = {
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    model: "forge-test-model",
+    apiKey: "forge-test-key"
+  };
 
-  const third = createLocalHarnessFollowUp({
-    ...input,
-    answers: [
-      { question: "one", answer: "Internal engineering team" },
-      { question: "two", answer: "Create and review work" }
-    ]
-  });
-  assert.equal(third.component?.type, "text");
-  assert.equal(third.component?.options.length, 0);
+  const followUp = await createHarnessFollowUp(input, [], configuration);
+  assert.equal(attempts, 3);
+  assert.equal(followUp.mode, "llm");
+  assert.equal(followUp.question, "Who will use the release assistant?");
 
-  const complete = createLocalHarnessFollowUp({
+  alwaysFail = true;
+  attempts = 0;
+  await assert.rejects(
+    createHarnessFollowUp(input, [], configuration),
+    /AI request failed after 3 attempts: AI provider returned HTTP 503: provider overloaded/
+  );
+  assert.equal(attempts, 3);
+
+  const complete = await createHarnessFollowUp({
     ...input,
     answers: [
       { question: "one", answer: "one" },
@@ -52,7 +78,19 @@ test("asks a bounded sequence of project follow-up questions", () => {
     ]
   });
   assert.equal(complete.ready, true);
-  assert.equal(complete.question, undefined);
+  assert.equal(attempts, 3);
+});
+
+test("requires workspace AI instead of generating local content", async () => {
+  const input = { requirement: "Build a release assistant", answers: [] };
+  await assert.rejects(
+    createHarnessFollowUp(input, []),
+    /Forge AI is not configured for this workspace/
+  );
+  await assert.rejects(
+    createHarnessTemplate(input, []),
+    /Forge AI is not configured for this workspace/
+  );
 });
 
 test("builds a framework that records selected workspace Skills", () => {
@@ -73,7 +111,7 @@ test("builds a framework that records selected workspace Skills", () => {
       steps: ["Collect changes", "Verify readiness"],
       verification: ["Release notes reviewed"]
     }
-  }, "llm", [skill]);
+  }, [skill]);
 
   assert.equal(template.selectedAssets.length, 1);
   assert.equal(template.selectedAssets[0].id, skill.id);
