@@ -118,6 +118,88 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
       ),
       /Answer every current Forge question/
     );
+    await assert.rejects(
+      beginForgeSessionOperation(
+        "acct_demo",
+        "ws_demo",
+        authoritative.id,
+        "operation-incomplete-generate",
+        "generate",
+        [{ question: "Who is the primary user?", answer: "Release engineers" }]
+      ),
+      /Answer every current Forge question/
+    );
+
+    const priorAnswers = [
+      { question: "Who is it for?", answer: "Release engineers" },
+      { question: "What must work?", answer: "Verified handoffs" }
+    ];
+    const finalQuestion = "Which delivery constraint matters most?";
+    const finalAnswer = { question: finalQuestion, answer: "No downtime" };
+    const skipCurrentQuestion = await createForgeSession(
+      "acct_demo",
+      "ws_demo",
+      "Generate without the current answer"
+    );
+    await recordForgeSessionFollowUp(
+      "acct_demo",
+      "ws_demo",
+      {
+        requirement: skipCurrentQuestion.requirement,
+        answers: priorAnswers,
+        sessionId: skipCurrentQuestion.id
+      },
+      {
+        mode: "llm",
+        ready: false,
+        questions: [{
+          question: finalQuestion,
+          component: { type: "text", options: [] }
+        }]
+      }
+    );
+    const generatedWithoutCurrentAnswer = await beginForgeSessionOperation(
+      "acct_demo",
+      "ws_demo",
+      skipCurrentQuestion.id,
+      "operation-skip-current-answer",
+      "generate"
+    );
+    assert.deepEqual(generatedWithoutCurrentAnswer.input.answers, priorAnswers);
+
+    const answerAndGenerate = await createForgeSession(
+      "acct_demo",
+      "ws_demo",
+      "Save the current answer before generating"
+    );
+    await recordForgeSessionFollowUp(
+      "acct_demo",
+      "ws_demo",
+      {
+        requirement: answerAndGenerate.requirement,
+        answers: priorAnswers,
+        sessionId: answerAndGenerate.id
+      },
+      {
+        mode: "llm",
+        ready: false,
+        questions: [{
+          question: finalQuestion,
+          component: { type: "text", options: [] }
+        }]
+      }
+    );
+    const generatedWithCurrentAnswer = await beginForgeSessionOperation(
+      "acct_demo",
+      "ws_demo",
+      answerAndGenerate.id,
+      "operation-answer-and-generate",
+      "generate",
+      [finalAnswer]
+    );
+    assert.deepEqual(generatedWithCurrentAnswer.input.answers, [...priorAnswers, finalAnswer]);
+    assert.equal(generatedWithCurrentAnswer.session.activeOperation?.operation, "generate");
+
     const begun = await beginForgeSessionOperation(
       "acct_demo",
       "ws_demo",

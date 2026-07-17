@@ -142,10 +142,7 @@ export async function beginForgeSessionOperation(
         answer: answer.answer.trim()
       });
     }
-    if (
-      operation === "follow-up" &&
-      expectedQuestions.some((question) => !submitted.has(question))
-    ) {
+    if (expectedQuestions.some((question) => !submitted.has(question))) {
       throw new Error("Answer every current Forge question before continuing.");
     }
     next.answers.push(...expectedQuestions.flatMap((question) => {
