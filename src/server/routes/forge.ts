@@ -18,6 +18,7 @@ import {
   createHarnessFollowUp,
   createHarnessTemplate,
   createHarnessTemplateArchive,
+  MAX_FORGE_INTERVIEW_ANSWERS,
   workspaceAssetSummaries
 } from "../services/forge.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "../services/workspace-catalogs.js";
@@ -164,9 +165,11 @@ export function registerForgeRoutes(app: Express): void {
 function readInput(value: unknown): HarnessFollowUpRequest {
   if (!isRecord(value)) throw new Error("Expected a JSON object request body");
   const requirement = readRequiredString(value.requirement, "requirement", MAX_REQUIREMENT_CHARS);
-  const answers = Array.isArray(value.answers)
-    ? value.answers.slice(0, 3).map(readAnswer)
-    : [];
+  const rawAnswers = Array.isArray(value.answers) ? value.answers : [];
+  if (rawAnswers.length > MAX_FORGE_INTERVIEW_ANSWERS) {
+    throw new Error(`answers must contain at most ${MAX_FORGE_INTERVIEW_ANSWERS} items`);
+  }
+  const answers = rawAnswers.map(readAnswer);
   const sessionId = value.sessionId === undefined
     ? undefined
     : readRequiredString(value.sessionId, "sessionId", 128);

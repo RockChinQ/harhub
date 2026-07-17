@@ -199,6 +199,20 @@ export function ForgeView({
     });
   }
 
+  async function generateFromCurrentContext() {
+    const question = followUp?.question;
+    const draftAnswer = composeAnswer(followUp?.component, selectedOptions, answer);
+    const nextAnswers = question && draftAnswer
+      ? [...answers, { question, answer: draftAnswer }]
+      : answers;
+    if (nextAnswers !== answers) setAnswers(nextAnswers);
+    await requestTemplate({
+      requirement: requirement.trim(),
+      answers: nextAnswers,
+      ...(activeSessionId ? { sessionId: activeSessionId } : {})
+    });
+  }
+
   async function requestFollowUp(input: HarnessFollowUpRequest) {
     setError(undefined);
     setRetryAction(undefined);
@@ -582,6 +596,7 @@ export function ForgeView({
                     onSelectedOptionsChange={setSelectedOptions}
                     onCustomAnswerChange={setAnswer}
                     onContinue={() => void submitAnswer()}
+                    onGenerate={() => void generateFromCurrentContext()}
                   />
                 ) : null}
                 {phase === "complete" ? (
@@ -941,7 +956,8 @@ function FollowUpQuestion({
   customAnswer,
   onSelectedOptionsChange,
   onCustomAnswerChange,
-  onContinue
+  onContinue,
+  onGenerate
 }: {
   step: number;
   response: HarnessFollowUpResponse;
@@ -950,6 +966,7 @@ function FollowUpQuestion({
   onSelectedOptionsChange: (options: string[]) => void;
   onCustomAnswerChange: (answer: string) => void;
   onContinue: () => void;
+  onGenerate: () => void;
 }) {
   const component = response.component;
   if (!response.question || !component) return null;
@@ -1098,19 +1115,31 @@ function FollowUpQuestion({
           </div>
         ) : null}
 
-        <Button
-          type="button"
-          className="w-full"
-          disabled={!isComplete}
-          onClick={onContinue}
-        >
-          {isComplete ? (
-            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-          ) : (
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          )}
-          Save answer and continue
-        </Button>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button
+            type="button"
+            disabled={!isComplete}
+            onClick={onContinue}
+          >
+            {isComplete ? (
+              <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            )}
+            Save and continue
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onGenerate}
+          >
+            <Sparkles className="h-4 w-4" aria-hidden="true" />
+            Generate framework now
+          </Button>
+        </div>
+        <p className="text-center text-xs leading-5 text-muted-foreground">
+          Generate at any time using the answers so far. A filled current answer is included.
+        </p>
       </div>
     </div>
   );

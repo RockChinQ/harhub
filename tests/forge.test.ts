@@ -68,17 +68,69 @@ test("retries Forge AI requests and surfaces the final failure", async (context)
     /AI request failed after 3 attempts: AI provider returned HTTP 503: provider overloaded/
   );
   assert.equal(attempts, 3);
+});
 
-  const complete = await createHarnessFollowUp({
-    ...input,
-    answers: [
-      { question: "one", answer: "one" },
-      { question: "two", answer: "two" },
-      { question: "three", answer: "three" }
-    ]
+test("lets Forge AI decide when discovery has enough context", async (context) => {
+  const receivedInputs: Array<Record<string, unknown>> = [];
+  let requestCount = 0;
+  const server = createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on("data", (chunk: Buffer) => chunks.push(chunk));
+    request.on("end", () => {
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+        messages: Array<{ role: string; content: string }>;
+      };
+      const userMessage = body.messages.find((message) => message.role === "user");
+      receivedInputs.push(JSON.parse(userMessage?.content ?? "{}") as Record<string, unknown>);
+      const content = requestCount === 0
+        ? { ready: true }
+        : {
+            ready: false,
+            question: "Which deployment constraint matters most?",
+            component: {
+              type: "text",
+              placeholder: "Describe the constraint",
+              options: []
+            }
+          };
+      requestCount += 1;
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify(content) } }]
+      }));
+    });
   });
-  assert.equal(complete.ready, true);
-  assert.equal(attempts, 3);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => new Promise<void>((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  }));
+  const address = server.address() as AddressInfo;
+  const configuration = {
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    model: "forge-test-model",
+    apiKey: "forge-test-key"
+  };
+
+  const readyImmediately = await createHarnessFollowUp(
+    { requirement: "Build a conventional documentation site", answers: [] },
+    [],
+    configuration
+  );
+  assert.equal(readyImmediately.ready, true);
+
+  const fourAnswers = Array.from({ length: 4 }, (_, index) => ({
+    question: `Question ${index + 1}`,
+    answer: `Answer ${index + 1}`
+  }));
+  const needsMoreContext = await createHarnessFollowUp(
+    { requirement: "Build a regulated deployment platform", answers: fourAnswers },
+    [],
+    configuration
+  );
+  assert.equal(needsMoreContext.ready, false);
+  assert.equal(needsMoreContext.question, "Which deployment constraint matters most?");
+  assert.deepEqual(receivedInputs[1]?.answers, fourAnswers);
+  assert.equal(requestCount, 2);
 });
 
 test("requires workspace AI instead of generating local content", async () => {

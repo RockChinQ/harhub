@@ -15,7 +15,7 @@ import type {
 } from "../../shared/types.js";
 import { loadStoredSkill } from "./skill-packages.js";
 
-const MAX_FOLLOW_UPS = 3;
+export const MAX_FORGE_INTERVIEW_ANSWERS = 12;
 const MAX_LIST_ITEMS = 6;
 const MAX_SELECTED_ASSETS = 4;
 const MAX_ARCHIVE_SKILL_BYTES = 25 * 1024 * 1024;
@@ -81,7 +81,9 @@ export async function createHarnessFollowUp(
   workspaceAssets: HarnessWorkspaceAssetSummary[],
   aiConfiguration?: ForgeAiConfiguration
 ): Promise<HarnessFollowUpResponse> {
-  if (input.answers.length >= MAX_FOLLOW_UPS) return { mode: "llm", ready: true };
+  if (input.answers.length >= MAX_FORGE_INTERVIEW_ANSWERS) {
+    return { mode: "llm", ready: true };
+  }
   const configuration = requireForgeAiConfiguration(aiConfiguration);
 
   return withAiRetries(async () => {
@@ -90,16 +92,17 @@ export async function createHarnessFollowUp(
       maxTokens: 700,
       system: [
         "You run a concise project discovery interview for an agent harness template.",
-        "Ask exactly one useful follow-up in the same language as the user's requirement.",
+        "Decide whether the current requirement and answers are sufficient to generate a useful starter framework.",
+        "Set ready to true as soon as the available context is sufficient. There is no target number of questions, and a clear request may need none.",
+        "When more context would materially change the framework, selected assets, workflow, or constraints, set ready to false and ask exactly one useful follow-up in the same language as the user's requirement.",
         "Clarify target users, must-work workflow, constraints, success criteria, or technical context.",
-        "Do not repeat answered questions. Do not ask for information that is already explicit.",
-        `There can be at most ${MAX_FOLLOW_UPS} answered follow-ups.`,
-        "Return only JSON with keys ready, question, and component.",
+        "Do not repeat answered questions, ask for information that is already explicit, or continue merely to reach a question quota.",
+        "Return only JSON with ready and, when ready is false, question and component.",
+        "When ready is true, omit question and component.",
         "When ready is false, component.type is single-select, multi-select, or text.",
         "Use single-select for one mutually exclusive answer, multi-select when several choices may apply, and text when presets would hide important nuance.",
         "Choice components contain 3 to 6 options with short label and optional description, plus allowCustom and optional maxSelections.",
-        "Text components contain a useful placeholder and an empty options array.",
-        "On the first round ready must be false."
+        "Text components contain a useful placeholder and an empty options array."
       ].join(" "),
       user: JSON.stringify({
         ...input,
@@ -108,7 +111,7 @@ export async function createHarnessFollowUp(
     });
     const question = readString(payload.question);
     const component = readFollowUpComponent(payload.component);
-    const ready = input.answers.length > 0 && payload.ready === true;
+    const ready = payload.ready === true;
 
     if (!ready && (!question || !component)) {
       throw new Error("AI follow-up did not match the expected shape");

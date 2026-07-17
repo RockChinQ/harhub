@@ -153,6 +153,27 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
     assertPrivateNoStore(createResponse);
     const apiSession = await createResponse.json() as { id: string; title: string };
 
+    const tooManyAnswersResponse = await fetch(
+      `${baseUrl}/api/workspaces/ws_demo/forge/follow-up`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          requirement: "Browser history API verification",
+          answers: Array.from({ length: 13 }, (_, index) => ({
+            question: `Question ${index + 1}`,
+            answer: `Answer ${index + 1}`
+          })),
+          sessionId: apiSession.id
+        })
+      }
+    );
+    assert.equal(tooManyAnswersResponse.status, 400);
+    assert.match(
+      (await tooManyAnswersResponse.json() as { error: string }).error,
+      /answers must contain at most 12 items/
+    );
+
     const missingAiResponse = await fetch(
       `${baseUrl}/api/workspaces/ws_demo/forge/follow-up`,
       {
