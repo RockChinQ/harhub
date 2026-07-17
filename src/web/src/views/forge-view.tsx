@@ -1594,11 +1594,14 @@ function FollowUpQuestions({
             Answer all {questions.length} focused questions to continue. {completedCount} complete.
           </p>
         ) : null}
-        <div className={cn("grid gap-2", canAnswerAndGenerate && "sm:grid-cols-2")}>
+        <div className={cn(
+          "grid gap-2",
+          canAnswerAndGenerate
+            && "sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]"
+        )}>
           <Button
             type="button"
-            variant={canAnswerAndGenerate ? "outline" : "default"}
-            className="w-full"
+            className="w-full min-w-0 gap-1.5 px-2.5 text-xs"
             disabled={!isComplete}
             onClick={onContinue}
           >
@@ -1612,7 +1615,8 @@ function FollowUpQuestions({
           {canAnswerAndGenerate ? (
             <Button
               type="button"
-              className="w-full"
+              variant="outline"
+              className="w-full min-w-0 gap-1.5 px-2.5 text-xs"
               disabled={!isComplete}
               onClick={onAnswerAndGenerate}
             >
