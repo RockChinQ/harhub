@@ -19,15 +19,13 @@ import type {
   WorkspaceAiConnectionTestResult
 } from "../../shared/types.js";
 import {
-  MAX_FORGE_FOLLOW_UP_QUESTIONS,
-  MAX_FORGE_INTERVIEW_ANSWERS,
   MIN_FORGE_INTERVIEW_ANSWERS
 } from "../../shared/forge.js";
 import { loadStoredSkill } from "./skill-packages.js";
 
 const MAX_LIST_ITEMS = 6;
-const MAX_SELECTED_ASSETS = 4;
 const MAX_ARCHIVE_SKILL_BYTES = 25 * 1024 * 1024;
+const MAX_FORGE_ASSET_DESCRIPTION_CHARS = 360;
 
 const FOLLOW_UP_AI_POLICY: ForgeAiOperationPolicy = {
   maxAttempts: 3,
@@ -238,28 +236,21 @@ export async function testForgeAiConnection(
 
 export async function createHarnessFollowUp(
   input: HarnessFollowUpRequest,
-  workspaceAssets: HarnessWorkspaceAssetSummary[],
+  _workspaceAssets: HarnessWorkspaceAssetSummary[],
   aiConfiguration?: ForgeAiConfiguration,
   operationContext?: ForgeAiOperationContext
 ): Promise<HarnessFollowUpResponse> {
-  if (input.answers.length >= MAX_FORGE_INTERVIEW_ANSWERS) {
-    return { mode: "llm", ready: true };
-  }
   const context = resolveForgeAiOperationContext(
     "follow-up",
     aiConfiguration?.model,
     operationContext
   );
   const configuration = requireForgeAiConfiguration(aiConfiguration, context);
-  const maxQuestions = Math.min(
-    MAX_FORGE_FOLLOW_UP_QUESTIONS,
-    MAX_FORGE_INTERVIEW_ANSWERS - input.answers.length
-  );
 
   return runForgeAiOperation(async ({ signal, attempt, reportActivity }) => {
     const payload = await requestJson({
       ...configuration,
-      maxTokens: 1_200,
+      maxTokens: 2_400,
       system: [
         "You run a concise project discovery interview for an agent harness template.",
         "Decide whether the current requirement and answers are sufficient to generate a useful starter framework.",
@@ -268,8 +259,8 @@ export async function createHarnessFollowUp(
         "Required questions must be essential rather than generic setup questions.",
         "Rank unresolved information by its expected impact on the framework, asset selection, core workflow, constraints, and delivery risk. Put the highest-impact unresolved questions first.",
         `Once at least ${MIN_FORGE_INTERVIEW_ANSWERS} essential answers are recorded, set ready to true as soon as the available context is sufficient. There is no target number beyond that minimum.`,
-        `When more context would materially change the result, set ready to false and return a questions array containing between 1 and ${maxQuestions} useful follow-ups in the same language as the user's requirement.`,
-        "Choose the question count yourself from the unresolved information, with no preferred or default batch size. Do not consistently return two questions.",
+        "When more context would materially change the result, set ready to false and return a questions array containing all and only the useful follow-ups that should be answered next, in the same language as the user's requirement.",
+        "Derive the question count from the requirement's actual unresolved information. There is no preferred or fixed batch size: do not default to 2, 3, or 4 questions.",
         "Ask one question when its answer should determine what to ask next. Ask multiple questions together only when the gaps are independent, equally important, and quick to answer without depending on another answer. Always return the smallest useful batch and never create a large questionnaire.",
         "Minimize user effort. Prefer single-select and multi-select components whenever a small set of concrete options can capture the likely answers, and allow a custom answer when the options may not be exhaustive.",
         "Use a text component only when presets would be misleading. Each text question must ask for one bounded fact that can be answered with a phrase, one sentence, or a short list. Never ask for an essay, a full requirement restatement, or generic elaboration such as 'describe the project in detail'. Avoid multiple text questions in the same batch unless they are unavoidable.",
@@ -283,10 +274,7 @@ export async function createHarnessFollowUp(
         "For each multi-select, decide maxSelections from the question's meaning. Include maxSelections only when there is a real maximum; otherwise omit it so every relevant option may be selected. Never use a fixed default such as 3.",
         "Text components contain an empty options array and a placeholder that demonstrates a short answer rather than inviting a long narrative."
       ].join(" "),
-      user: JSON.stringify({
-        ...input,
-        workspaceSkills: workspaceAssets.map(assetPromptSummary)
-      }, null, 2),
+      user: JSON.stringify(input),
       signal,
       onActivity: reportActivity,
       observability: { context, attempt },
@@ -296,7 +284,7 @@ export async function createHarnessFollowUp(
     const ready = input.answers.length >= MIN_FORGE_INTERVIEW_ANSWERS && payload.ready === true;
     const questions = ready
       ? []
-      : readFollowUpQuestions(payload.questions, maxQuestions);
+      : readFollowUpQuestions(payload.questions);
     if (!ready && questions.length === 0) {
       const legacyQuestion = readString(payload.question);
       const legacyComponent = readFollowUpComponent(payload.component);
@@ -338,7 +326,7 @@ export async function createHarnessTemplate(
   return runForgeAiOperation(async ({ signal, attempt, reportActivity }) => {
     const payload = await requestJson({
       ...configuration,
-      maxTokens: 1_600,
+      maxTokens: 3_200,
       system: [
         "You turn a project discovery interview into a structured project harness brief.",
         "Stay faithful to the user. Put unknown details in constraints or stackNotes instead of inventing facts.",
@@ -360,16 +348,19 @@ export async function createHarnessTemplate(
             verification: ["verification evidence"]
           }
         }),
-        "availableSkills contains selection metadata only. Select at most 4 Skills and use only exact assetId values from that list.",
-        "Select a Skill only when its description materially supports the requirement or delivery workflow.",
+        "First form a coherent project concept from the requirement and interview answers. Then evaluate every availableSkills entry against that concept and use only exact assetId values from the list.",
+        "Select every distinct Skill whose description materially supports the resulting project's users, workflows, implementation, verification, or delivery constraints. The number of selected Skills must emerge from the project concept: there is no preferred or fixed count, and you must not stop at 4 by default.",
+        "Do not select weakly related or redundant Skills merely to increase the count. selectedAssets may be empty when no workspace Skill is genuinely useful.",
+        `Keep the combined sizeBytes of selected Skills at or below ${MAX_ARCHIVE_SKILL_BYTES}, because Harhub copies every selected package into the downloaded framework.`,
         "Never reproduce, summarize, rewrite, or generate Skill instructions or Skill files. Return only each selected assetId and a short reason; Harhub copies the original stored Skill package later.",
-        "Keep the blueprint concise: use 1 to 4 items for each list and 3 to 6 workflow steps. Do not add prose outside the JSON fields.",
+        "Keep the narrative blueprint concise: include only distinct, useful entries in profile lists and only the workflow steps needed by this project. This brevity guidance does not impose a count on selectedAssets.",
+        "Do not add prose outside the JSON fields.",
         "Use the same language as the user's requirement."
       ].join("\n"),
       user: JSON.stringify({
         ...input,
         availableSkills: workspaceAssets.map(generationAssetPromptSummary)
-      }, null, 2),
+      }),
       signal,
       onActivity: reportActivity,
       observability: { context, attempt },
@@ -444,21 +435,12 @@ function readTemplateSpec(
   };
 }
 
-function assetPromptSummary(asset: HarnessWorkspaceAssetSummary) {
-  return {
-    id: asset.id,
-    name: asset.name,
-    displayName: asset.displayName,
-    description: asset.description,
-    health: asset.health
-  };
-}
-
 function generationAssetPromptSummary(asset: HarnessWorkspaceAssetSummary) {
   return {
     id: asset.id,
     name: asset.name,
-    description: asset.description
+    description: asset.description.slice(0, MAX_FORGE_ASSET_DESCRIPTION_CHARS),
+    sizeBytes: asset.size
   };
 }
 
@@ -487,7 +469,7 @@ export async function createHarnessTemplateArchive(
   }
 ): Promise<{ buffer: Buffer; fileName: string }> {
   validateFrameworkFiles(input.files);
-  const selectedIds = new Set(input.selectedAssetIds.slice(0, MAX_LIST_ITEMS));
+  const selectedIds = new Set(input.selectedAssetIds);
   const assets = catalog.assets.filter(
     (asset) => selectedIds.has(asset.id) && asset.kind === "skill" && asset.health !== "error"
   );
@@ -521,19 +503,27 @@ function readAssetSelections(
   workspaceAssets: HarnessWorkspaceAssetSummary[]
 ): Array<{ assetId: string; reason: string }> {
   if (!Array.isArray(value)) throw new Error("AI template selectedAssets must be an array");
-  const availableIds = new Set(workspaceAssets.map((item) => item.id));
+  const availableById = new Map(workspaceAssets.map((item) => [item.id, item]));
   const seen = new Set<string>();
-  return value.slice(0, MAX_SELECTED_ASSETS).map((item, index) => {
+  const selections = value.map((item, index) => {
     if (!isRecord(item)) throw new Error(`AI template selectedAssets[${index}] is invalid`);
     const assetId = readRequiredAiString(item.assetId, `selectedAssets[${index}].assetId`);
     const reason = readRequiredAiString(item.reason, `selectedAssets[${index}].reason`);
-    if (!availableIds.has(assetId)) {
+    if (!availableById.has(assetId)) {
       throw new Error(`AI template selected unknown workspace asset ${assetId}`);
     }
     if (seen.has(assetId)) throw new Error(`AI template selected asset ${assetId} more than once`);
     seen.add(assetId);
     return { assetId, reason };
   });
+  const selectedBytes = selections.reduce(
+    (total, selection) => total + (availableById.get(selection.assetId)?.size ?? 0),
+    0
+  );
+  if (selectedBytes > MAX_ARCHIVE_SKILL_BYTES) {
+    throw new Error("AI template selected Skills that exceed the framework archive size limit");
+  }
+  return selections;
 }
 
 function resolveSelectedAssets(
@@ -1134,15 +1124,11 @@ function readFollowUpComponent(value: unknown): HarnessFollowUpComponent | undef
   };
 }
 
-function readFollowUpQuestions(
-  value: unknown,
-  maxQuestions: number
-): HarnessFollowUpQuestion[] {
+function readFollowUpQuestions(value: unknown): HarnessFollowUpQuestion[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   const questions: HarnessFollowUpQuestion[] = [];
   for (const item of value) {
-    if (questions.length >= maxQuestions) break;
     if (!isRecord(item)) continue;
     const question = readString(item.question);
     const component = readFollowUpComponent(item.component);

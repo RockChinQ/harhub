@@ -11,7 +11,6 @@ import type {
   HarnessInterviewAnswer,
   HarnessTemplateResponse
 } from "../shared/types.js";
-import { MAX_FORGE_INTERVIEW_ANSWERS } from "../shared/forge.js";
 import { requireWorkspaceMembership } from "./records.js";
 import { loadState, saveState } from "./store.js";
 import type { AppState, ForgeSessionCacheRecord } from "./types.js";
@@ -124,11 +123,6 @@ export async function beginForgeSessionOperation(
   const next = structuredClone(current);
 
   if (answers?.length) {
-    if (current.answers.length + answers.length > MAX_FORGE_INTERVIEW_ANSWERS) {
-      throw new Error(
-        `Forge sessions support at most ${MAX_FORGE_INTERVIEW_ANSWERS} interview answers.`
-      );
-    }
     const expectedQuestions = currentForgeQuestions(current.followUp);
     const submitted = new Map<string, HarnessInterviewAnswer>();
     for (const answer of answers) {

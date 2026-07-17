@@ -388,6 +388,17 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
                   placeholder: "Describe the risk",
                   options: []
                 }
+              },
+              {
+                question: "Which operating environment must be supported?",
+                component: {
+                  type: "single-select",
+                  options: [
+                    { label: "Cloud" },
+                    { label: "On premises" },
+                    { label: "Hybrid" }
+                  ]
+                }
               }
             ]
           }
@@ -434,19 +445,20 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
     requiredQuestion.questions?.[0]?.question,
     "Which outcome is most important for the first release?"
   );
-  assert.equal(requiredQuestion.questions?.length, 3);
+  assert.equal(requiredQuestion.questions?.length, 5);
   assert.equal(requiredQuestion.questions?.[1]?.component.maxSelections, 4);
   assert.equal(requiredQuestion.questions?.[2]?.component.maxSelections, undefined);
   assert.match(receivedSystemPrompts[0] ?? "", /Required questions must be essential/);
   assert.match(receivedSystemPrompts[0] ?? "", /Always return sessionTitle/);
   assert.match(receivedSystemPrompts[0] ?? "", /Put the highest-impact unresolved questions first/);
-  assert.match(receivedSystemPrompts[0] ?? "", /Choose the question count yourself/);
-  assert.match(receivedSystemPrompts[0] ?? "", /no preferred or default batch size/);
-  assert.match(receivedSystemPrompts[0] ?? "", /Do not consistently return two questions/);
+  assert.match(receivedSystemPrompts[0] ?? "", /Derive the question count/);
+  assert.match(receivedSystemPrompts[0] ?? "", /no preferred or fixed batch size/);
+  assert.match(receivedSystemPrompts[0] ?? "", /do not default to 2, 3, or 4 questions/);
   assert.match(receivedSystemPrompts[0] ?? "", /Prefer single-select and multi-select/);
   assert.match(receivedSystemPrompts[0] ?? "", /phrase, one sentence, or a short list/);
   assert.match(receivedSystemPrompts[0] ?? "", /Never ask for an essay/);
   assert.match(receivedSystemPrompts[0] ?? "", /Never use a fixed default such as 3/);
+  assert.equal("workspaceSkills" in (receivedInputs[0] ?? {}), false);
 
   const twoAnswers = Array.from({ length: 2 }, (_, index) => ({
     question: `Essential question ${index + 1}`,
@@ -475,15 +487,39 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
     "Which deployment constraint matters most?"
   );
   assert.deepEqual(receivedInputs[2]?.answers, fourAnswers);
-  assert.equal(requestCount, 3);
+
+  const thirteenAnswers = Array.from({ length: 13 }, (_, index) => ({
+    question: `Extended question ${index + 1}`,
+    answer: `Extended answer ${index + 1}`
+  }));
+  const continuesPastLegacyLimit = await createHarnessFollowUp(
+    { requirement: "Build a complex regulated deployment platform", answers: thirteenAnswers },
+    [],
+    configuration
+  );
+  assert.equal(continuesPastLegacyLimit.ready, false);
+  assert.equal(
+    continuesPastLegacyLimit.questions?.[0]?.question,
+    "Which deployment constraint matters most?"
+  );
+  assert.deepEqual(receivedInputs[3]?.answers, thirteenAnswers);
+  assert.equal(requestCount, 4);
 });
 
-test("generates a concise blueprint with compact workspace Skill context", async (context) => {
+test("generates a blueprint with project-driven Skill selection", async (context) => {
   let receivedBody: {
     max_completion_tokens?: number;
     messages?: Array<{ role: string; content: string }>;
   } | undefined;
-  const skill = workspaceSkill();
+  const skills = Array.from({ length: 8 }, (_, index) => ({
+    ...workspaceSkill(),
+    id: `asset:skill:release-support-${index + 1}`,
+    name: `release-support-${index + 1}`,
+    displayName: `Release Support ${index + 1}`,
+    slug: `release-support-${index + 1}`,
+    description: `Supports release workflow responsibility ${index + 1}.`,
+    size: 256 + index
+  }));
   const provider = createServer((request, response) => {
     const chunks: Buffer[] = [];
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -500,7 +536,10 @@ test("generates a concise blueprint with compact workspace Skill context", async
           successCriteria: ["Every release has review evidence"],
           stackNotes: ["Repository stack remains to be confirmed"],
           agentRules: ["Verify the handoff before completion"],
-          selectedAssets: [{ assetId: skill.id, reason: "Supports release documentation" }],
+          selectedAssets: skills.map((skill) => ({
+            assetId: skill.id,
+            reason: `Supports ${skill.displayName}`
+          })),
           workflow: {
             name: "Release handoff",
             objective: "Deliver verified release evidence",
@@ -525,7 +564,7 @@ test("generates a concise blueprint with compact workspace Skill context", async
         { question: "What must work?", answer: "Verified handoffs" }
       ]
     },
-    [skill],
+    skills,
     {
       baseUrl: `http://127.0.0.1:${address.port}/v1`,
       model: "blueprint-model",
@@ -538,16 +577,24 @@ test("generates a concise blueprint with compact workspace Skill context", async
     availableSkills?: Array<Record<string, unknown>>;
   };
   const systemMessage = receivedBody?.messages?.find((message) => message.role === "system");
-  assert.equal(receivedBody?.max_completion_tokens, 1_600);
+  assert.equal(receivedBody?.max_completion_tokens, 3_200);
+  assert.equal(userInput.availableSkills?.length, 8);
   assert.deepEqual(Object.keys(userInput.availableSkills?.[0] ?? {}).sort(), [
     "description",
     "id",
-    "name"
+    "name",
+    "sizeBytes"
   ]);
+  assert.match(systemMessage?.content ?? "", /must not stop at 4 by default/);
+  assert.match(systemMessage?.content ?? "", /does not impose a count on selectedAssets/);
   assert.match(systemMessage?.content ?? "", /Never reproduce, summarize, rewrite, or generate Skill/);
   assert.match(systemMessage?.content ?? "", /copies the original stored Skill package later/);
   assert.equal(template.profile.name, "Release Assistant");
-  assert.equal(template.selectedAssets[0]?.id, skill.id);
+  assert.equal(template.selectedAssets.length, 8);
+  assert.deepEqual(
+    template.selectedAssets.map((asset) => asset.id),
+    skills.map((skill) => skill.id)
+  );
 });
 
 test("requires workspace AI instead of generating local content", async () => {
