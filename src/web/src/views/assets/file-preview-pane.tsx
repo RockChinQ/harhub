@@ -20,6 +20,7 @@ export function FilePreviewPane({ file }: { file?: AssetFilePreview }) {
   }
 
   const isMarkdown = file.isText && isMarkdownFile(file.path);
+  const isSkillMarkdown = isMarkdown && /(?:^|\/)SKILL\.md$/i.test(file.path);
 
   return (
     <div className="flex min-h-0 min-w-0 flex-col">
@@ -53,7 +54,10 @@ export function FilePreviewPane({ file }: { file?: AssetFilePreview }) {
                 </div>
               )}
             >
-              <MarkdownPreview content={file.content ?? ""} />
+              <MarkdownPreview
+                content={file.content ?? ""}
+                showSkillMetadata={isSkillMarkdown}
+              />
             </Suspense>
           ) : (
             <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-zinc-950">
