@@ -213,6 +213,10 @@ export function ForgeView({
   const skillTreeMarkers = useMemo(() => Object.fromEntries(
     skillTrees.map((skill) => [skill.installPath, "Skill"])
   ), [skillTrees]);
+  const defaultCollapsedSkillPaths = useMemo(
+    () => Object.keys(skillTreeMarkers),
+    [skillTreeMarkers]
+  );
   const currentQuestions = useMemo(() => followUpQuestions(followUp), [followUp]);
   const streamingText = useMemo(
     () => workingOperation === "generate"
@@ -1111,6 +1115,7 @@ export function ForgeView({
                       selectedPath={selectedPath}
                       onSelect={setSelectedPath}
                       markers={skillTreeMarkers}
+                      defaultCollapsedPaths={defaultCollapsedSkillPaths}
                     />
                     <div className="mt-3 space-y-2 border-t px-2 pt-3 text-[11px] leading-4">
                       {isSkillTreeLoading ? (
