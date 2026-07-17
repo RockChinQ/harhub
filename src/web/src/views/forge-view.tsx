@@ -402,6 +402,29 @@ export function ForgeView({
     setIsDeletingSession(false);
   }, [token, workspace.id]);
 
+  useEffect(() => {
+    let active = true;
+    const requestScope = historyScope;
+    setIsHistoryLoading(true);
+    setHistoryError(undefined);
+    void listForgeSessions(token, workspace.id)
+      .then((result) => {
+        if (active && historyScopeRef.current === requestScope) setHistory(result);
+      })
+      .catch((caught) => {
+        if (active && historyScopeRef.current === requestScope) {
+          setHistoryError(errorMessage(caught));
+        }
+      })
+      .finally(() => {
+        if (active && historyScopeRef.current === requestScope) setIsHistoryLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [historyScope, token, workspace.id]);
+
   async function startInterview() {
     const normalized = requirement.trim();
     if (!normalized || usableSkills.length === 0) return;
@@ -858,16 +881,20 @@ export function ForgeView({
             variant="outline"
             onClick={() => {
               setHistoryOpen(true);
-              void refreshHistory();
+              if (!history && !isHistoryLoading) void refreshHistory();
             }}
           >
             <History className="h-4 w-4" aria-hidden="true" />
             Sessions
-            {history?.sessions.length ? (
-              <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px]">
-                {history.sessions.length}
-              </Badge>
-            ) : null}
+            <Badge
+              variant="secondary"
+              className="ml-1 min-w-5 justify-center px-1.5 py-0 text-[10px]"
+              aria-label={history
+                ? `${history.sessions.length} sessions`
+                : "Loading session count"}
+            >
+              {history ? history.sessions.length : "…"}
+            </Badge>
           </Button>
           {phase !== "idle" ? (
             <Button type="button" variant="outline" onClick={resetBuilder}>
