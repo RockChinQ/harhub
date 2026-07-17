@@ -8,6 +8,7 @@ import {
   createSession,
   deleteSession,
   getInvitationByToken,
+  signInForDevelopment,
   signInWithOAuthProfile,
   signInWithPassword,
   updateAccountProfile,
@@ -32,11 +33,12 @@ import {
   oauthProviderConfigured,
   oauthRedirectUri
 } from "../services/oauth.js";
-import { PASSWORD_LOGIN_ENABLED } from "../config.js";
+import { DEVELOPMENT_LOGIN_ENABLED, PASSWORD_LOGIN_ENABLED } from "../config.js";
 
 export function registerAuthRoutes(app: Express): void {
   app.get("/api/auth/config", (_req, res) => {
     res.json({
+      developmentLogin: DEVELOPMENT_LOGIN_ENABLED,
       password: PASSWORD_LOGIN_ENABLED,
       emailCode: isEmailDeliveryConfigured(),
       oauth: {
@@ -44,6 +46,26 @@ export function registerAuthRoutes(app: Express): void {
         github: oauthProviderConfigured("github")
       }
     });
+  });
+
+  app.post("/api/auth/dev-login", async (req, res) => {
+    if (!DEVELOPMENT_LOGIN_ENABLED) {
+      res.status(404).json({ error: "Not found." });
+      return;
+    }
+
+    try {
+      const account = await signInForDevelopment({
+        email: String(req.body?.email ?? ""),
+        inviteToken:
+          typeof req.body?.inviteToken === "string" ? req.body.inviteToken : undefined
+      });
+      const token = await createSession(account.id);
+      res.set("Cache-Control", "no-store");
+      res.json({ token, ...(await buildSessionPayload(account)) });
+    } catch (error) {
+      sendError(res, error, 401);
+    }
   });
 
   app.get("/api/session", async (req, res) => {

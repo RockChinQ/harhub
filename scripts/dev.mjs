@@ -5,13 +5,14 @@ const publicUrl =
   process.env.HARHUB_PUBLIC_URL ??
   process.env.HARHUB_APP_URL ??
   "http://127.0.0.1:5176";
+const developmentEnv = { ...process.env, NODE_ENV: "development" };
 const children = [
   spawn(npmCommand, ["run", "dev:api"], {
-    env: { ...process.env, HARHUB_PUBLIC_URL: publicUrl },
+    env: { ...developmentEnv, HARHUB_PUBLIC_URL: publicUrl },
     stdio: "inherit"
   }),
   spawn(npmCommand, ["run", "dev:web"], {
-    env: process.env,
+    env: developmentEnv,
     stdio: "inherit"
   })
 ];

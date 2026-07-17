@@ -9,6 +9,7 @@ export const PASSWORD_LOGIN_ENABLED = readBooleanEnv(
   process.env.HARHUB_PASSWORD_LOGIN_ENABLED,
   true
 );
+export const DEVELOPMENT_LOGIN_ENABLED = isDevelopmentLoginEnabled(process.env);
 export const RESEND_API_KEY = process.env.RESEND_API_KEY ?? process.env.HARHUB_RESEND_API_KEY;
 export const EMAIL_FROM = process.env.HARHUB_EMAIL_FROM ?? "Harhub <onboarding@resend.dev>";
 export const PUBLIC_APP_URL = process.env.HARHUB_PUBLIC_URL ?? process.env.HARHUB_APP_URL;
@@ -16,6 +17,12 @@ export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? process.env.HARH
 export const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? process.env.HARHUB_GOOGLE_CLIENT_SECRET;
 export const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID ?? process.env.HARHUB_GITHUB_CLIENT_ID;
 export const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET ?? process.env.HARHUB_GITHUB_CLIENT_SECRET;
+
+export function isDevelopmentLoginEnabled(
+  env: { NODE_ENV?: string; HARHUB_DEV_LOGIN_ENABLED?: string }
+): boolean {
+  return env.NODE_ENV === "development" && readBooleanEnv(env.HARHUB_DEV_LOGIN_ENABLED, true);
+}
 
 function readBooleanEnv(value: string | undefined, fallback: boolean): boolean {
   if (!value) return fallback;

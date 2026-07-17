@@ -97,6 +97,12 @@ For local development:
 npm run dev
 ```
 
+The development server exposes a development-only sign-in option: enter any
+account email and continue without a password. The API is enabled only while
+`npm run dev` runs with `NODE_ENV=development`; production and combined-server
+startup do not expose this shortcut. Set `HARHUB_DEV_LOGIN_ENABLED=false` to
+disable it during local development.
+
 Fixed local ports:
 
 - Web: `http://127.0.0.1:5176`
