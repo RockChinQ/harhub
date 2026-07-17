@@ -57,7 +57,7 @@ export function SkillMetadataCard({ metadata }: { metadata: Record<string, unkno
       </div>
 
       {intent || argumentHint || bestFor.length > 0 || scenarios.length > 0 || additionalEntries.length > 0 ? (
-        <dl className="mt-5 divide-y divide-zinc-200 border-y border-zinc-200">
+        <dl className="mt-5 divide-y divide-zinc-200 border-t border-zinc-200">
           {intent ? (
             <MetadataRow label="What it does">
               <p>{intent}</p>
