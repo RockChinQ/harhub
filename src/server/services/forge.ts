@@ -269,16 +269,19 @@ export async function createHarnessFollowUp(
         "Rank unresolved information by its expected impact on the framework, asset selection, core workflow, constraints, and delivery risk. Put the highest-impact unresolved questions first.",
         `Once at least ${MIN_FORGE_INTERVIEW_ANSWERS} essential answers are recorded, set ready to true as soon as the available context is sufficient. There is no target number beyond that minimum.`,
         `When more context would materially change the result, set ready to false and return a questions array containing between 1 and ${maxQuestions} useful follow-ups in the same language as the user's requirement.`,
-        "Choose the question count yourself. Prefer 1 or 2; use 3 only when the questions are independently answerable, essential, and useful to ask together. Do not create a large questionnaire.",
+        "Choose the question count yourself from the unresolved information, with no preferred or default batch size. Do not consistently return two questions.",
+        "Ask one question when its answer should determine what to ask next. Ask multiple questions together only when the gaps are independent, equally important, and quick to answer without depending on another answer. Always return the smallest useful batch and never create a large questionnaire.",
+        "Minimize user effort. Prefer single-select and multi-select components whenever a small set of concrete options can capture the likely answers, and allow a custom answer when the options may not be exhaustive.",
+        "Use a text component only when presets would be misleading. Each text question must ask for one bounded fact that can be answered with a phrase, one sentence, or a short list. Never ask for an essay, a full requirement restatement, or generic elaboration such as 'describe the project in detail'. Avoid multiple text questions in the same batch unless they are unavoidable.",
         "Clarify target users, must-work workflow, constraints, success criteria, or technical context.",
         "Do not repeat answered questions, ask for information that is already explicit, or continue merely to reach a question quota.",
         "Return only JSON with sessionTitle, ready and, when ready is false, questions. Each questions item contains question and component.",
         "When ready is true, omit questions.",
         "Each component.type is single-select, multi-select, or text.",
-        "Use single-select for one mutually exclusive answer, multi-select when several choices may apply, and text when presets would hide important nuance.",
+        "Use single-select for one mutually exclusive answer, multi-select when several choices may apply, and text only for concise project-specific information that choices cannot represent accurately.",
         "Choice components contain 3 to 6 options with short label and optional description, plus allowCustom.",
         "For each multi-select, decide maxSelections from the question's meaning. Include maxSelections only when there is a real maximum; otherwise omit it so every relevant option may be selected. Never use a fixed default such as 3.",
-        "Text components contain a useful placeholder and an empty options array."
+        "Text components contain an empty options array and a placeholder that demonstrates a short answer rather than inviting a long narrative."
       ].join(" "),
       user: JSON.stringify({
         ...input,

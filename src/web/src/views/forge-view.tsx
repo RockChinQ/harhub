@@ -838,8 +838,8 @@ export function ForgeView({
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">Forge a project harness</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Describe the project, answer a few focused questions, and Harhub will compose a
-            reviewable starter framework from Skills already in {workspace.name}.
+            Start with a rough idea. The Agent will ask only for material gaps, favor quick
+            choices and short answers, then compose a reviewable framework from Skills in {workspace.name}.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1592,7 +1592,7 @@ function FollowUpQuestion({
       ? component.maxSelections
         ? `Select up to ${selectionLimit}`
         : "Select all that apply"
-      : "Write an answer";
+      : "Short answer";
   const FieldIcon = component.type === "single-select"
     ? MousePointerClick
     : component.type === "multi-select"
@@ -1708,14 +1708,19 @@ function FollowUpQuestion({
         ) : null}
 
         {component.type === "text" ? (
-          <Textarea
-            value={customAnswer}
-            onChange={(event) => onDraftChange({ ...draft, customAnswer: event.target.value })}
-            placeholder={component.placeholder ?? "Add the detail that will help shape the harness…"}
-            className="min-h-28 resize-y"
-            maxLength={2000}
-            autoFocus={autoFocus}
-          />
+          <div className="space-y-1.5">
+            <Textarea
+              value={customAnswer}
+              onChange={(event) => onDraftChange({ ...draft, customAnswer: event.target.value })}
+              placeholder={component.placeholder ?? "A phrase, one sentence, or a short list is enough…"}
+              className="min-h-20 resize-y"
+              maxLength={2000}
+              autoFocus={autoFocus}
+            />
+            <p className="text-xs text-muted-foreground">
+              A phrase, one sentence, or a short list is enough.
+            </p>
+          </div>
         ) : null}
 
         {component.type !== "text" && component.allowCustom ? (

@@ -441,6 +441,11 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
   assert.match(receivedSystemPrompts[0] ?? "", /Always return sessionTitle/);
   assert.match(receivedSystemPrompts[0] ?? "", /Put the highest-impact unresolved questions first/);
   assert.match(receivedSystemPrompts[0] ?? "", /Choose the question count yourself/);
+  assert.match(receivedSystemPrompts[0] ?? "", /no preferred or default batch size/);
+  assert.match(receivedSystemPrompts[0] ?? "", /Do not consistently return two questions/);
+  assert.match(receivedSystemPrompts[0] ?? "", /Prefer single-select and multi-select/);
+  assert.match(receivedSystemPrompts[0] ?? "", /phrase, one sentence, or a short list/);
+  assert.match(receivedSystemPrompts[0] ?? "", /Never ask for an essay/);
   assert.match(receivedSystemPrompts[0] ?? "", /Never use a fixed default such as 3/);
 
   const twoAnswers = Array.from({ length: 2 }, (_, index) => ({
@@ -464,6 +469,7 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
     configuration
   );
   assert.equal(needsMoreContext.ready, false);
+  assert.equal(needsMoreContext.questions?.length, 1);
   assert.equal(
     needsMoreContext.questions?.[0]?.question,
     "Which deployment constraint matters most?"
