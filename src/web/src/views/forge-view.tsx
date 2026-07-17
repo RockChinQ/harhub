@@ -125,6 +125,7 @@ export function ForgeView({
   const historyScopeRef = useRef(historyScope);
   const routeSessionLoadRef = useRef<string | undefined>(undefined);
   const routedSessionIdRef = useRef(routedSessionId);
+  const discoveryScrollRef = useRef<HTMLDivElement | null>(null);
   historyScopeRef.current = historyScope;
   routedSessionIdRef.current = routedSessionId;
   const tree = useMemo(() => buildTemplateTree(template?.files ?? []), [template?.files]);
@@ -166,6 +167,16 @@ export function ForgeView({
       if (routeSessionLoadRef.current === loadKey) routeSessionLoadRef.current = undefined;
     });
   }, [activeSessionId, routedSessionId, token, workspace.id]);
+
+  useEffect(() => {
+    if (phase !== "question" || !followUp?.question) return;
+    const animationFrame = window.requestAnimationFrame(() => {
+      const panel = discoveryScrollRef.current;
+      if (!panel) return;
+      panel.scrollTo({ top: panel.scrollHeight, behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [answers.length, followUp?.question, phase]);
 
   useEffect(() => {
     setPhase("idle");
@@ -583,7 +594,7 @@ export function ForgeView({
               long requirements form.
             </CardDescription>
           </CardHeader>
-          <CardContent className="min-h-0 flex-1 overflow-auto p-5">
+          <CardContent ref={discoveryScrollRef} className="min-h-0 flex-1 overflow-auto p-5">
             {phase === "idle" ? (
               <div className="space-y-4">
                 <div className="space-y-2">
