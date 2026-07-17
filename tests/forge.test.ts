@@ -72,6 +72,7 @@ test("retries Forge AI requests and surfaces the final failure", async (context)
 
 test("lets Forge AI decide when discovery has enough context", async (context) => {
   const receivedInputs: Array<Record<string, unknown>> = [];
+  const receivedSystemPrompts: string[] = [];
   let requestCount = 0;
   const server = createServer((request, response) => {
     const chunks: Buffer[] = [];
@@ -81,10 +82,25 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
         messages: Array<{ role: string; content: string }>;
       };
       const userMessage = body.messages.find((message) => message.role === "user");
+      const systemMessage = body.messages.find((message) => message.role === "system");
       receivedInputs.push(JSON.parse(userMessage?.content ?? "{}") as Record<string, unknown>);
+      receivedSystemPrompts.push(systemMessage?.content ?? "");
       const content = requestCount === 0
-        ? { ready: true }
-        : {
+        ? {
+            ready: false,
+            question: "Which outcome is most important for the first release?",
+            component: {
+              type: "single-select",
+              options: [
+                { label: "Fast onboarding" },
+                { label: "Reliable delivery" },
+                { label: "Easy maintenance" }
+              ]
+            }
+          }
+        : requestCount === 1
+          ? { ready: true }
+          : {
             ready: false,
             question: "Which deployment constraint matters most?",
             component: {
@@ -111,12 +127,29 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
     apiKey: "forge-test-key"
   };
 
-  const readyImmediately = await createHarnessFollowUp(
+  const requiredQuestion = await createHarnessFollowUp(
     { requirement: "Build a conventional documentation site", answers: [] },
     [],
     configuration
   );
-  assert.equal(readyImmediately.ready, true);
+  assert.equal(requiredQuestion.ready, false);
+  assert.equal(
+    requiredQuestion.question,
+    "Which outcome is most important for the first release?"
+  );
+  assert.match(receivedSystemPrompts[0] ?? "", /Required questions must be essential/);
+  assert.match(receivedSystemPrompts[0] ?? "", /Ask the highest-impact unresolved question first/);
+
+  const twoAnswers = Array.from({ length: 2 }, (_, index) => ({
+    question: `Essential question ${index + 1}`,
+    answer: `Essential answer ${index + 1}`
+  }));
+  const readyAfterMinimum = await createHarnessFollowUp(
+    { requirement: "Build a conventional documentation site", answers: twoAnswers },
+    [],
+    configuration
+  );
+  assert.equal(readyAfterMinimum.ready, true);
 
   const fourAnswers = Array.from({ length: 4 }, (_, index) => ({
     question: `Question ${index + 1}`,
@@ -129,8 +162,8 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
   );
   assert.equal(needsMoreContext.ready, false);
   assert.equal(needsMoreContext.question, "Which deployment constraint matters most?");
-  assert.deepEqual(receivedInputs[1]?.answers, fourAnswers);
-  assert.equal(requestCount, 2);
+  assert.deepEqual(receivedInputs[2]?.answers, fourAnswers);
+  assert.equal(requestCount, 3);
 });
 
 test("requires workspace AI instead of generating local content", async () => {
@@ -141,6 +174,16 @@ test("requires workspace AI instead of generating local content", async () => {
   );
   await assert.rejects(
     createHarnessTemplate(input, []),
+    /Answer at least 2 essential follow-up questions/
+  );
+  await assert.rejects(
+    createHarnessTemplate({
+      ...input,
+      answers: [
+        { question: "Who is it for?", answer: "Release engineers" },
+        { question: "What must work?", answer: "Verified release handoffs" }
+      ]
+    }, []),
     /Forge AI is not configured for this workspace/
   );
 });

@@ -174,6 +174,24 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
       /answers must contain at most 12 items/
     );
 
+    const tooFewAnswersResponse = await fetch(
+      `${baseUrl}/api/workspaces/ws_demo/forge/generate`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          requirement: "Browser history API verification",
+          answers: [{ question: "Who is it for?", answer: "Developers" }],
+          sessionId: apiSession.id
+        })
+      }
+    );
+    assert.equal(tooFewAnswersResponse.status, 400);
+    assert.match(
+      (await tooFewAnswersResponse.json() as { error: string }).error,
+      /Answer at least 2 essential follow-up questions/
+    );
+
     const missingAiResponse = await fetch(
       `${baseUrl}/api/workspaces/ws_demo/forge/follow-up`,
       {

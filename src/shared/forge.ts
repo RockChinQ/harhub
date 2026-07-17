@@ -1,0 +1,2 @@
+export const MIN_FORGE_INTERVIEW_ANSWERS = 2;
+export const MAX_FORGE_INTERVIEW_ANSWERS = 12;

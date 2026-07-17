@@ -4,6 +4,7 @@ import type {
   HarnessInterviewAnswer,
   HarnessTemplateFile
 } from "../../shared/types.js";
+import { MAX_FORGE_INTERVIEW_ANSWERS } from "../../shared/forge.js";
 import {
   createForgeSession,
   deleteForgeSession,
@@ -18,7 +19,6 @@ import {
   createHarnessFollowUp,
   createHarnessTemplate,
   createHarnessTemplateArchive,
-  MAX_FORGE_INTERVIEW_ANSWERS,
   workspaceAssetSummaries
 } from "../services/forge.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "../services/workspace-catalogs.js";

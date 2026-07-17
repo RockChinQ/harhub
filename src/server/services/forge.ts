@@ -13,9 +13,12 @@ import type {
   HarnessWorkspaceAssetSummary,
   WorkspaceAiConnectionTestResult
 } from "../../shared/types.js";
+import {
+  MAX_FORGE_INTERVIEW_ANSWERS,
+  MIN_FORGE_INTERVIEW_ANSWERS
+} from "../../shared/forge.js";
 import { loadStoredSkill } from "./skill-packages.js";
 
-export const MAX_FORGE_INTERVIEW_ANSWERS = 12;
 const MAX_LIST_ITEMS = 6;
 const MAX_SELECTED_ASSETS = 4;
 const MAX_ARCHIVE_SKILL_BYTES = 25 * 1024 * 1024;
@@ -93,7 +96,10 @@ export async function createHarnessFollowUp(
       system: [
         "You run a concise project discovery interview for an agent harness template.",
         "Decide whether the current requirement and answers are sufficient to generate a useful starter framework.",
-        "Set ready to true as soon as the available context is sufficient. There is no target number of questions, and a clear request may need none.",
+        `The first ${MIN_FORGE_INTERVIEW_ANSWERS} answered follow-ups are required. Before then, always set ready to false and ask another question.`,
+        "Required questions must be essential rather than generic setup questions.",
+        "Rank unresolved information by its expected impact on the framework, asset selection, core workflow, constraints, and delivery risk. Ask the highest-impact unresolved question first.",
+        `Once at least ${MIN_FORGE_INTERVIEW_ANSWERS} essential answers are recorded, set ready to true as soon as the available context is sufficient. There is no target number beyond that minimum.`,
         "When more context would materially change the framework, selected assets, workflow, or constraints, set ready to false and ask exactly one useful follow-up in the same language as the user's requirement.",
         "Clarify target users, must-work workflow, constraints, success criteria, or technical context.",
         "Do not repeat answered questions, ask for information that is already explicit, or continue merely to reach a question quota.",
@@ -111,7 +117,7 @@ export async function createHarnessFollowUp(
     });
     const question = readString(payload.question);
     const component = readFollowUpComponent(payload.component);
-    const ready = payload.ready === true;
+    const ready = input.answers.length >= MIN_FORGE_INTERVIEW_ANSWERS && payload.ready === true;
 
     if (!ready && (!question || !component)) {
       throw new Error("AI follow-up did not match the expected shape");
@@ -131,6 +137,11 @@ export async function createHarnessTemplate(
   workspaceAssets: HarnessWorkspaceAssetSummary[],
   aiConfiguration?: ForgeAiConfiguration
 ): Promise<HarnessTemplateResponse> {
+  if (input.answers.length < MIN_FORGE_INTERVIEW_ANSWERS) {
+    throw new Error(
+      `Answer at least ${MIN_FORGE_INTERVIEW_ANSWERS} essential follow-up questions before generating a framework.`
+    );
+  }
   const configuration = requireForgeAiConfiguration(aiConfiguration);
   return withAiRetries(async () => {
     const payload = await requestJson({

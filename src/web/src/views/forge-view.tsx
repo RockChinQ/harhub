@@ -33,6 +33,7 @@ import type {
   WorkspaceAiSettings,
   WorkspaceRecord
 } from "../../../shared/types";
+import { MIN_FORGE_INTERVIEW_ANSWERS } from "../../../shared/forge";
 import { Badge } from "../components/ui/badge";
 import {
   AlertDialog,
@@ -329,8 +330,11 @@ export function ForgeView({
         answers: session.answers,
         sessionId: session.id
       };
-      if (storedFollowUp?.ready) await requestTemplate(input);
-      else await requestFollowUp(input);
+      if (storedFollowUp?.ready && input.answers.length >= MIN_FORGE_INTERVIEW_ANSWERS) {
+        await requestTemplate(input);
+      } else {
+        await requestFollowUp(input);
+      }
     } catch (caught) {
       const message = errorMessage(caught);
       setHistoryError(message);
@@ -578,6 +582,28 @@ export function ForgeView({
             ) : (
               <div className="space-y-4">
                 <DiscoverySummary requirement={requirement} answers={answers} />
+                {phase === "question" && answers.length >= MIN_FORGE_INTERVIEW_ANSWERS ? (
+                  <div className="flex flex-col gap-3 rounded-lg border border-blue-200 bg-blue-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-blue-700" aria-hidden="true" />
+                      <div>
+                        <p className="text-sm font-medium text-blue-950">Enough essential context to start</p>
+                        <p className="mt-1 text-xs leading-5 text-blue-800">
+                          You can generate now or answer the current question for a more specific framework.
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="shrink-0 border-blue-300 bg-background text-blue-950 hover:bg-blue-100"
+                      onClick={() => void generateFromCurrentContext()}
+                    >
+                      <Sparkles className="h-4 w-4" aria-hidden="true" />
+                      Generate framework now
+                    </Button>
+                  </div>
+                ) : null}
                 {phase === "working" ? (
                   <div className="flex min-h-40 flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 px-6 text-center">
                     <Loader2 className="mb-3 h-6 w-6 animate-spin text-blue-700" aria-hidden="true" />
@@ -596,7 +622,6 @@ export function ForgeView({
                     onSelectedOptionsChange={setSelectedOptions}
                     onCustomAnswerChange={setAnswer}
                     onContinue={() => void submitAnswer()}
-                    onGenerate={() => void generateFromCurrentContext()}
                   />
                 ) : null}
                 {phase === "complete" ? (
@@ -956,8 +981,7 @@ function FollowUpQuestion({
   customAnswer,
   onSelectedOptionsChange,
   onCustomAnswerChange,
-  onContinue,
-  onGenerate
+  onContinue
 }: {
   step: number;
   response: HarnessFollowUpResponse;
@@ -966,7 +990,6 @@ function FollowUpQuestion({
   onSelectedOptionsChange: (options: string[]) => void;
   onCustomAnswerChange: (answer: string) => void;
   onContinue: () => void;
-  onGenerate: () => void;
 }) {
   const component = response.component;
   if (!response.question || !component) return null;
@@ -1115,31 +1138,19 @@ function FollowUpQuestion({
           </div>
         ) : null}
 
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Button
-            type="button"
-            disabled={!isComplete}
-            onClick={onContinue}
-          >
-            {isComplete ? (
-              <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-            ) : (
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            )}
-            Save and continue
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onGenerate}
-          >
-            <Sparkles className="h-4 w-4" aria-hidden="true" />
-            Generate framework now
-          </Button>
-        </div>
-        <p className="text-center text-xs leading-5 text-muted-foreground">
-          Generate at any time using the answers so far. A filled current answer is included.
-        </p>
+        <Button
+          type="button"
+          className="w-full"
+          disabled={!isComplete}
+          onClick={onContinue}
+        >
+          {isComplete ? (
+            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          )}
+          Save answer and continue
+        </Button>
       </div>
     </div>
   );
