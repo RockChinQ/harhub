@@ -16,6 +16,7 @@ export function routeFromPath(pathname: string): AppRoute {
   }
 
   if (section === "workspace") return { view: "workspace" };
+  if (section === "forge") return { view: "forge" };
   if (section === "account") return { view: "account" };
   if (section === "device") return { view: "device" };
   if (section === "s" && segments[1]) {
@@ -38,6 +39,7 @@ export function pathForRoute(route: AppRoute): string {
     return `/skills/${encodeURIComponent(route.assetQuery)}`;
   }
   if (route.view === "workspace") return "/workspace";
+  if (route.view === "forge") return "/forge";
   if (route.view === "account") return "/account";
   if (route.view === "device") return "/device";
   if (route.view === "share" && route.shareToken) {
@@ -57,6 +59,7 @@ export function replaceBrowserRoute(route: AppRoute): void {
 export function viewTitle(view: View): string {
   if (view === "asset-detail") return "Skill Detail";
   if (view === "workspace") return "Workspace";
+  if (view === "forge") return "Forge";
   if (view === "account") return "Account";
   if (view === "device") return "Authorize Device";
   if (view === "share") return "Shared Skill";

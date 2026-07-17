@@ -79,7 +79,8 @@ function createSeedState(): AppState {
     emailLoginCodes: [],
     oauthStates: [],
     deviceAuthorizations: [],
-    sessions: []
+    sessions: [],
+    workspaceAiConfigurations: []
   };
 }
 
@@ -94,6 +95,7 @@ function normalizeState(state: AppState): AppState {
   state.oauthStates ??= [];
   state.deviceAuthorizations ??= [];
   state.sessions ??= [];
+  state.workspaceAiConfigurations ??= [];
 
   if (state.accounts.length === 0 || state.workspaces.length === 0) {
     return createSeedState();
@@ -131,5 +133,7 @@ function hasLegacyWorkspacePaths(state: AppState): boolean {
 }
 
 function needsStateMigration(state: AppState): boolean {
-  return !Array.isArray(state.assetShares) || hasLegacyWorkspacePaths(state);
+  return !Array.isArray(state.assetShares) ||
+    !Array.isArray(state.workspaceAiConfigurations) ||
+    hasLegacyWorkspacePaths(state);
 }

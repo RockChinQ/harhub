@@ -34,6 +34,9 @@ is intentionally Skills-first.
 - Validate packages against the Agent Skills `SKILL.md` format.
 - Search and browse Skills in a workspace.
 - Preview Skill metadata and package files.
+- Use Forge's AI-guided interview to compose a downloadable project harness
+  from the current workspace's Skills, with workspace-scoped provider settings
+  managed by owners and admins.
 - Publish revocable public share pages with verified zip downloads and Harhub or
   Agent Skills CLI install commands.
 - Manage Skills from the web UI or CLI.
@@ -77,6 +80,7 @@ Then open:
 
 ```text
 App and API: http://127.0.0.1:3310/skills
+Forge:       http://127.0.0.1:3310/forge
 Docs:        http://127.0.0.1:3310/docs/
 ```
 

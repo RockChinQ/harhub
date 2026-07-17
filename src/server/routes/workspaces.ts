@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import type { WorkspaceAiSettingsUpdate } from "../../shared/types.js";
 import {
   acceptWorkspaceInvitation,
   createWorkspaceInvitation,
@@ -6,8 +7,10 @@ import {
   listAccountWorkspaces,
   listWorkspacePendingInvitations,
   listWorkspaceMembers,
+  getWorkspaceAiSettings,
   removeWorkspaceInvitation,
   removeWorkspaceMember,
+  updateWorkspaceAiSettings,
   updateWorkspaceForAccount,
   updateWorkspaceMemberRole
 } from "../../state/index.js";
@@ -60,6 +63,36 @@ export function registerWorkspaceRoutes(app: Express): void {
     }
   });
 
+  app.get("/api/workspaces/:workspaceId/ai-settings", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
+    if (!context) return;
+
+    try {
+      res.json(await getWorkspaceAiSettings(context.account.id, context.workspace.id));
+    } catch (error) {
+      sendError(res, error, 403);
+    }
+  });
+
+  app.put("/api/workspaces/:workspaceId/ai-settings", async (req, res) => {
+    const context = await requireWorkspaceAccess(req, res);
+    if (!context) return;
+    if (!["owner", "admin"].includes(context.membership.role)) {
+      res.status(403).json({ error: "Workspace admin access is required." });
+      return;
+    }
+
+    try {
+      res.json(await updateWorkspaceAiSettings(
+        context.account.id,
+        context.workspace.id,
+        readAiSettingsUpdate(req.body)
+      ));
+    } catch (error) {
+      sendError(res, error, 400);
+    }
+  });
+
   registerMemberRoutes(app);
 
   app.post("/api/invitations/accept", async (req, res) => {
@@ -79,6 +112,23 @@ export function registerWorkspaceRoutes(app: Express): void {
       sendError(res, error, 400);
     }
   });
+}
+
+function readAiSettingsUpdate(value: unknown): WorkspaceAiSettingsUpdate {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Expected a JSON object request body.");
+  }
+  const input = value as Record<string, unknown>;
+  if (input.provider !== "openai-compatible") {
+    throw new Error("Unsupported AI provider.");
+  }
+  return {
+    provider: input.provider,
+    baseUrl: typeof input.baseUrl === "string" ? input.baseUrl : "",
+    model: typeof input.model === "string" ? input.model : "",
+    apiKey: typeof input.apiKey === "string" ? input.apiKey : undefined,
+    clearApiKey: input.clearApiKey === true
+  };
 }
 
 function registerMemberRoutes(app: Express): void {

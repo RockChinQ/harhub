@@ -26,6 +26,7 @@ import {
   type SessionResponse
 } from "../lib/api";
 import { WorkspaceMembersCard } from "./workspace-members-card";
+import { WorkspaceAiSettingsCard } from "./workspace-ai-settings-card";
 
 export function WorkspaceView({
   token,
@@ -155,6 +156,7 @@ export function WorkspaceView({
             </form>
           </CardContent>
         </Card>
+        <WorkspaceAiSettingsCard token={token} workspace={workspace} />
         <WorkspaceMembersCard
           members={members}
           invitations={invitations}
