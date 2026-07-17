@@ -38,9 +38,10 @@ const FOLLOW_UP_AI_POLICY: ForgeAiOperationPolicy = {
 
 const GENERATE_AI_POLICY: ForgeAiOperationPolicy = {
   maxAttempts: 3,
-  attemptTimeoutMs: 60_000,
-  totalTimeoutMs: 125_000,
-  retryDelaysMs: [500, 1_500]
+  attemptTimeoutMs: 75_000,
+  minimumAttemptTimeoutMs: 45_000,
+  totalTimeoutMs: 240_000,
+  retryDelaysMs: [750, 1_500]
 };
 
 const CONNECTION_TEST_AI_POLICY: ForgeAiOperationPolicy = {
@@ -76,7 +77,10 @@ export interface ForgeAiConfiguration {
 
 export interface ForgeAiOperationPolicy {
   maxAttempts: number;
+  /** Maximum provider inactivity before an attempt is aborted. */
   attemptTimeoutMs: number;
+  /** Do not start a retry when the total deadline cannot provide this useful window. */
+  minimumAttemptTimeoutMs?: number;
   totalTimeoutMs: number;
   retryDelaysMs: number[];
 }
@@ -87,6 +91,8 @@ export interface ForgeAiLogEntry {
     | "forge.ai.attempt.started"
     | "forge.ai.attempt.failed"
     | "forge.ai.retry.scheduled"
+    | "forge.ai.response.started"
+    | "forge.ai.response.completed"
     | "forge.ai.operation.succeeded"
     | "forge.ai.operation.failed";
   operationId: string;
@@ -102,6 +108,7 @@ export interface ForgeAiLogEntry {
   code?: ForgeAiFailureCode;
   retryable?: boolean;
   providerStatus?: number;
+  outputChars?: number;
 }
 
 export type ForgeAiLogLevel = "info" | "warn" | "error";
@@ -121,6 +128,7 @@ interface ForgeAiAttemptContext {
   attempt: number;
   signal: AbortSignal;
   timeoutMs: number;
+  reportActivity: () => void;
 }
 
 interface ForgeAiRequestErrorOptions {
@@ -200,13 +208,15 @@ export async function testForgeAiConnection(
     operationContext
   );
   await runForgeAiOperation(
-    async ({ signal, attempt }) => {
+    async ({ signal, attempt, reportActivity }) => {
       const payload = await requestJson({
         ...configuration,
         maxTokens: 700,
         system: "This is a connection test. Return only the JSON object {\"ok\":true}.",
         user: "Confirm that this model can complete an OpenAI-compatible JSON chat request.",
         signal,
+        onActivity: reportActivity,
+        observability: { context, attempt },
         onDelta: (delta) => context.onDelta?.(attempt, delta)
       });
       if (payload.ok !== true) {
@@ -246,7 +256,7 @@ export async function createHarnessFollowUp(
     MAX_FORGE_INTERVIEW_ANSWERS - input.answers.length
   );
 
-  return runForgeAiOperation(async ({ signal, attempt }) => {
+  return runForgeAiOperation(async ({ signal, attempt, reportActivity }) => {
     const payload = await requestJson({
       ...configuration,
       maxTokens: 1_200,
@@ -274,6 +284,8 @@ export async function createHarnessFollowUp(
         workspaceSkills: workspaceAssets.map(assetPromptSummary)
       }, null, 2),
       signal,
+      onActivity: reportActivity,
+      observability: { context, attempt },
       onDelta: (delta) => context.onDelta?.(attempt, delta)
     });
     const ready = input.answers.length >= MIN_FORGE_INTERVIEW_ANSWERS && payload.ready === true;
@@ -317,10 +329,10 @@ export async function createHarnessTemplate(
     operationContext
   );
   const configuration = requireForgeAiConfiguration(aiConfiguration, context);
-  return runForgeAiOperation(async ({ signal, attempt }) => {
+  return runForgeAiOperation(async ({ signal, attempt, reportActivity }) => {
     const payload = await requestJson({
       ...configuration,
-      maxTokens: 2400,
+      maxTokens: 1_600,
       system: [
         "You turn a project discovery interview into a structured project harness brief.",
         "Stay faithful to the user. Put unknown details in constraints or stackNotes instead of inventing facts.",
@@ -342,15 +354,19 @@ export async function createHarnessTemplate(
             verification: ["verification evidence"]
           }
         }),
-        "Select at most 4 Skills. Use only exact assetId values from workspaceSkills.",
+        "availableSkills contains selection metadata only. Select at most 4 Skills and use only exact assetId values from that list.",
         "Select a Skill only when its description materially supports the requirement or delivery workflow.",
+        "Never reproduce, summarize, rewrite, or generate Skill instructions or Skill files. Return only each selected assetId and a short reason; Harhub copies the original stored Skill package later.",
+        "Keep the blueprint concise: use 1 to 4 items for each list and 3 to 6 workflow steps. Do not add prose outside the JSON fields.",
         "Use the same language as the user's requirement."
       ].join("\n"),
       user: JSON.stringify({
         ...input,
-        workspaceSkills: workspaceAssets.map(assetPromptSummary)
+        availableSkills: workspaceAssets.map(generationAssetPromptSummary)
       }, null, 2),
       signal,
+      onActivity: reportActivity,
+      observability: { context, attempt },
       onDelta: (delta) => context.onDelta?.(attempt, delta)
     });
     return buildHarnessTemplate(readTemplateSpec(payload, workspaceAssets), workspaceAssets);
@@ -429,6 +445,14 @@ function assetPromptSummary(asset: HarnessWorkspaceAssetSummary) {
     displayName: asset.displayName,
     description: asset.description,
     health: asset.health
+  };
+}
+
+function generationAssetPromptSummary(asset: HarnessWorkspaceAssetSummary) {
+  return {
+    id: asset.id,
+    name: asset.name,
+    description: asset.description
   };
 }
 
@@ -532,6 +556,8 @@ async function requestJson({
   system,
   user,
   signal,
+  onActivity,
+  observability,
   onDelta
 }: {
   apiKey: string;
@@ -541,8 +567,11 @@ async function requestJson({
   system: string;
   user: string;
   signal: AbortSignal;
+  onActivity?: () => void;
+  observability?: { context: ForgeAiOperationContext; attempt: number };
   onDelta?: (delta: string) => void;
 }): Promise<Record<string, unknown>> {
+  const startedAt = Date.now();
   const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/chat/completions`, {
     method: "POST",
     headers: {
@@ -574,7 +603,31 @@ async function requestJson({
       }
     );
   }
-  const content = await readStreamingResponseContent(response, onDelta);
+  onActivity?.();
+  if (observability) {
+    logForgeAiEvent(
+      observability.context,
+      "info",
+      "forge.ai.response.started",
+      {
+        attempt: observability.attempt,
+        durationMs: Math.max(0, Date.now() - startedAt)
+      }
+    );
+  }
+  const content = await readStreamingResponseContent(response, onDelta, onActivity);
+  if (observability) {
+    logForgeAiEvent(
+      observability.context,
+      "info",
+      "forge.ai.response.completed",
+      {
+        attempt: observability.attempt,
+        durationMs: Math.max(0, Date.now() - startedAt),
+        outputChars: content.length
+      }
+    );
+  }
   if (!content) {
     throw new ForgeAiRequestError("AI response did not contain JSON text.", {
       code: "invalid_response",
@@ -625,6 +678,8 @@ export async function runForgeAiOperation<T>(
   policy: ForgeAiOperationPolicy
 ): Promise<T> {
   const startedAt = Date.now();
+  const deadlineAt = startedAt + policy.totalTimeoutMs;
+  const minimumAttemptTimeoutMs = Math.max(1, policy.minimumAttemptTimeoutMs ?? 1);
   let attempts = 0;
   let lastError: ForgeAiRequestError | undefined;
 
@@ -632,6 +687,7 @@ export async function runForgeAiOperation<T>(
     const elapsedMs = Math.max(0, Date.now() - startedAt);
     const remainingMs = policy.totalTimeoutMs - elapsedMs;
     if (remainingMs <= 0) break;
+    if (attempt > 1 && remainingMs < minimumAttemptTimeoutMs) break;
     const timeoutMs = Math.max(1, Math.min(policy.attemptTimeoutMs, remainingMs));
     attempts = attempt;
     try {
@@ -646,11 +702,21 @@ export async function runForgeAiOperation<T>(
     });
 
     try {
-      const result = await request({
-        attempt,
-        timeoutMs,
-        signal: AbortSignal.timeout(timeoutMs)
-      });
+      const watchdog = createForgeAiActivityWatchdog(
+        policy.attemptTimeoutMs,
+        deadlineAt
+      );
+      let result: T;
+      try {
+        result = await request({
+          attempt,
+          timeoutMs,
+          signal: watchdog.signal,
+          reportActivity: watchdog.reportActivity
+        });
+      } finally {
+        watchdog.dispose();
+      }
       logForgeAiEvent(operation, "info", "forge.ai.operation.succeeded", {
         attempt,
         maxAttempts: policy.maxAttempts,
@@ -672,7 +738,7 @@ export async function runForgeAiOperation<T>(
       const configuredDelay = policy.retryDelaysMs[attempt - 1] ?? 0;
       const delayMs = Math.max(configuredDelay, lastError.retryAfterMs ?? 0);
       const remainingAfterAttempt = policy.totalTimeoutMs - Math.max(0, Date.now() - startedAt);
-      if (delayMs >= remainingAfterAttempt) break;
+      if (delayMs + minimumAttemptTimeoutMs > remainingAfterAttempt) break;
       logForgeAiEvent(operation, "info", "forge.ai.retry.scheduled", {
         attempt,
         maxAttempts: policy.maxAttempts,
@@ -703,6 +769,42 @@ export async function runForgeAiOperation<T>(
     providerStatus: finalError.providerStatus
   });
   throw operationError;
+}
+
+function createForgeAiActivityWatchdog(
+  inactivityTimeoutMs: number,
+  deadlineAt: number
+): {
+  signal: AbortSignal;
+  reportActivity: () => void;
+  dispose: () => void;
+} {
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  const dispose = () => {
+    if (timeout) clearTimeout(timeout);
+    timeout = undefined;
+  };
+  const reportActivity = () => {
+    if (controller.signal.aborted) return;
+    dispose();
+    const remainingMs = deadlineAt - Date.now();
+    if (remainingMs <= 0) {
+      controller.abort(new DOMException("Forge AI exceeded its total deadline.", "TimeoutError"));
+      return;
+    }
+    timeout = setTimeout(() => {
+      controller.abort(new DOMException("Forge AI became inactive.", "TimeoutError"));
+    }, Math.max(1, Math.min(inactivityTimeoutMs, remainingMs)));
+  };
+
+  reportActivity();
+  return {
+    signal: controller.signal,
+    reportActivity,
+    dispose
+  };
 }
 
 function resolveForgeAiOperationContext(
@@ -836,11 +938,14 @@ function logForgeAiEvent(
 
 async function readStreamingResponseContent(
   response: Response,
-  onDelta?: (delta: string) => void
+  onDelta?: (delta: string) => void,
+  onActivity?: () => void
 ): Promise<string> {
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
   if (contentType.includes("application/json")) {
+    onActivity?.();
     const body = await response.json().catch(() => undefined) as unknown;
+    onActivity?.();
     const content = extractMessageContent(body);
     if (content) emitForgeAiDelta(onDelta, content);
     return content ?? "";
@@ -857,6 +962,7 @@ async function readStreamingResponseContent(
   let pending = "";
   let dataLines: string[] = [];
   let content = "";
+  let completeJson = false;
 
   const dispatchEvent = () => {
     if (dataLines.length === 0) return;
@@ -883,6 +989,7 @@ async function readStreamingResponseContent(
     const delta = extractStreamDeltaContent(payload);
     if (!delta) return;
     content += delta;
+    completeJson = completeJson || isCompleteJsonObject(content);
     emitForgeAiDelta(onDelta, delta);
   };
 
@@ -903,13 +1010,28 @@ async function readStreamingResponseContent(
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
+    if (value.byteLength > 0) onActivity?.();
     pending += decoder.decode(value, { stream: true });
     processLines();
+    if (completeJson) {
+      await reader.cancel().catch(() => undefined);
+      return content;
+    }
   }
   pending += decoder.decode();
   if (pending) pending += "\n";
   processLines(true);
   return content;
+}
+
+function isCompleteJsonObject(value: string): boolean {
+  const normalized = stripCodeFence(value);
+  if (!normalized.startsWith("{") || !normalized.endsWith("}")) return false;
+  try {
+    return isRecord(JSON.parse(normalized) as unknown);
+  } catch {
+    return false;
+  }
 }
 
 function extractStreamDeltaContent(value: unknown): string | undefined {

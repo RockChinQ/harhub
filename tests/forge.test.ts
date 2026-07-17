@@ -10,6 +10,7 @@ import {
   createHarnessFollowUp,
   createHarnessTemplate,
   createHarnessTemplateArchive,
+  ForgeAiRequestError,
   runForgeAiOperation,
   testForgeAiConnection,
   workspaceAssetSummaries
@@ -78,6 +79,8 @@ test("retries Forge AI requests and surfaces the final failure", async (context)
 test("streams Forge AI deltas and requests provider streaming", async (context) => {
   let providerStreamSetting: unknown;
   const chunks: string[] = [];
+  const logs: Array<Record<string, unknown>> = [];
+  let delayedEnd: ReturnType<typeof setTimeout> | undefined;
   const content = JSON.stringify({
     ready: false,
     questions: [{
@@ -99,18 +102,20 @@ test("streams Forge AI deltas and requests provider streaming", async (context) 
       for (const delta of [content.slice(0, 30), content.slice(30, 80), content.slice(80)]) {
         response.write(`data: ${JSON.stringify({ choices: [{ delta: { content: delta } }] })}\n\n`);
       }
-      response.end("data: [DONE]\n\n");
+      delayedEnd = setTimeout(() => response.end("data: [DONE]\n\n"), 800);
     });
   });
   await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
   context.after(() => new Promise<void>((resolve, reject) => {
+    if (delayedEnd) clearTimeout(delayedEnd);
     provider.close((error) => error ? reject(error) : resolve());
   }));
   const address = provider.address() as AddressInfo;
   const operation = createObservedForgeAiOperation("follow-up");
-  operation.logger = undefined;
+  operation.logger = (_level, entry) => logs.push(entry);
   operation.onDelta = (_attempt, delta) => chunks.push(delta);
 
+  const startedAt = Date.now();
   const followUp = await createHarnessFollowUp(
     { requirement: "Build a delivery tool", answers: [] },
     [],
@@ -125,6 +130,11 @@ test("streams Forge AI deltas and requests provider streaming", async (context) 
   assert.equal(providerStreamSetting, true);
   assert.equal(chunks.join(""), content);
   assert.equal(followUp.questions?.[0]?.question, "Which delivery path matters most?");
+  assert.ok(Date.now() - startedAt < 600, "complete JSON should not wait for the provider to close");
+  assert.ok(logs.some((entry) => entry.event === "forge.ai.response.started"));
+  assert.ok(logs.some(
+    (entry) => entry.event === "forge.ai.response.completed" && entry.outputChars === content.length
+  ));
 });
 
 test("does not retry provider authentication failures", async (context) => {
@@ -196,6 +206,58 @@ test("bounds Forge AI timeouts and emits structured operation logs", async () =>
   assert.ok(logs.some((entry) => entry.event === "forge.ai.operation.failed"));
   assert.ok(logs.every((entry) => entry.operationId === "timeout-operation"));
   assert.equal(JSON.stringify(logs).includes("bad-key"), false);
+});
+
+test("keeps an active Forge AI attempt alive past the inactivity window", async () => {
+  const result = await runForgeAiOperation(
+    async ({ reportActivity }) => {
+      for (let index = 0; index < 5; index += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        reportActivity();
+      }
+      return "complete";
+    },
+    {
+      operationId: "active-stream-operation",
+      operation: "generate"
+    },
+    {
+      maxAttempts: 1,
+      attemptTimeoutMs: 25,
+      totalTimeoutMs: 120,
+      retryDelaysMs: []
+    }
+  );
+
+  assert.equal(result, "complete");
+});
+
+test("does not schedule a retry without a meaningful timeout window", async () => {
+  let attempts = 0;
+  await assert.rejects(
+    runForgeAiOperation(
+      async () => {
+        attempts += 1;
+        throw new ForgeAiRequestError("temporary failure", {
+          code: "provider_unavailable",
+          retryable: true
+        });
+      },
+      {
+        operationId: "bounded-retry-operation",
+        operation: "generate"
+      },
+      {
+        maxAttempts: 3,
+        attemptTimeoutMs: 100,
+        minimumAttemptTimeoutMs: 50,
+        totalTimeoutMs: 60,
+        retryDelaysMs: [20, 20]
+      }
+    ),
+    (error: unknown) => (error as { failure?: { attempts?: number } }).failure?.attempts === 1
+  );
+  assert.equal(attempts, 1);
 });
 
 test("replays one server-side Forge operation to reentrant subscribers", async () => {
@@ -402,6 +464,78 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
   );
   assert.deepEqual(receivedInputs[2]?.answers, fourAnswers);
   assert.equal(requestCount, 3);
+});
+
+test("generates a concise blueprint with compact workspace Skill context", async (context) => {
+  let receivedBody: {
+    max_completion_tokens?: number;
+    messages?: Array<{ role: string; content: string }>;
+  } | undefined;
+  const skill = workspaceSkill();
+  const provider = createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on("data", (chunk: Buffer) => chunks.push(chunk));
+    request.on("end", () => {
+      receivedBody = JSON.parse(Buffer.concat(chunks).toString("utf8")) as typeof receivedBody;
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({
+          name: "Release Assistant",
+          summary: "Creates a reliable release handoff.",
+          targetUsers: ["Release engineers"],
+          goals: ["Prepare a verified handoff"],
+          constraints: ["Use workspace Skills"],
+          successCriteria: ["Every release has review evidence"],
+          stackNotes: ["Repository stack remains to be confirmed"],
+          agentRules: ["Verify the handoff before completion"],
+          selectedAssets: [{ assetId: skill.id, reason: "Supports release documentation" }],
+          workflow: {
+            name: "Release handoff",
+            objective: "Deliver verified release evidence",
+            steps: ["Review changes", "Prepare notes", "Verify evidence"],
+            verification: ["Reviewer approval"]
+          }
+        }) } }]
+      }));
+    });
+  });
+  await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
+  context.after(() => new Promise<void>((resolve, reject) => {
+    provider.close((error) => error ? reject(error) : resolve());
+  }));
+  const address = provider.address() as AddressInfo;
+
+  const template = await createHarnessTemplate(
+    {
+      requirement: "Build a release assistant",
+      answers: [
+        { question: "Who uses it?", answer: "Release engineers" },
+        { question: "What must work?", answer: "Verified handoffs" }
+      ]
+    },
+    [skill],
+    {
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      model: "blueprint-model",
+      apiKey: "blueprint-key"
+    }
+  );
+
+  const userMessage = receivedBody?.messages?.find((message) => message.role === "user");
+  const userInput = JSON.parse(userMessage?.content ?? "{}") as {
+    availableSkills?: Array<Record<string, unknown>>;
+  };
+  const systemMessage = receivedBody?.messages?.find((message) => message.role === "system");
+  assert.equal(receivedBody?.max_completion_tokens, 1_600);
+  assert.deepEqual(Object.keys(userInput.availableSkills?.[0] ?? {}).sort(), [
+    "description",
+    "id",
+    "name"
+  ]);
+  assert.match(systemMessage?.content ?? "", /Never reproduce, summarize, rewrite, or generate Skill/);
+  assert.match(systemMessage?.content ?? "", /copies the original stored Skill package later/);
+  assert.equal(template.profile.name, "Release Assistant");
+  assert.equal(template.selectedAssets[0]?.id, skill.id);
 });
 
 test("requires workspace AI instead of generating local content", async () => {
