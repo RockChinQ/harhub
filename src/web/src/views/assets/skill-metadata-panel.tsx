@@ -30,6 +30,16 @@ import {
 } from "../../components/ui/alert-dialog";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import {
   createWorkspaceAssetShare,
@@ -64,12 +74,16 @@ export function SkillOverviewPanel({
   const [isSharing, setIsSharing] = useState(false);
   const [share, setShare] = useState<AssetShareResponse | undefined>();
   const [copied, setCopied] = useState<"url" | "cli" | "skills" | undefined>();
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareMessage, setShareMessage] = useState<string | undefined>();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
     setMessage(undefined);
     setShare(undefined);
     setCopied(undefined);
+    setShareDialogOpen(false);
+    setShareMessage(undefined);
     if (!asset) return;
 
     let active = true;
@@ -79,7 +93,7 @@ export function SkillOverviewPanel({
         if (active) setShare(nextShare);
       })
       .catch((caught) => {
-        if (active) setMessage(caught instanceof Error ? caught.message : String(caught));
+        if (active) setShareMessage(caught instanceof Error ? caught.message : String(caught));
       })
       .finally(() => {
         if (active) setIsSharing(false);
@@ -148,13 +162,13 @@ export function SkillOverviewPanel({
 
   async function publishShare() {
     setIsSharing(true);
-    setMessage(undefined);
+    setShareMessage(undefined);
     try {
       const nextShare = await createWorkspaceAssetShare(token, workspace.id, selectedAsset.id);
       setShare(nextShare);
-      setMessage("Public share link created.");
+      setShareMessage("Public sharing is active.");
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : String(caught));
+      setShareMessage(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setIsSharing(false);
     }
@@ -162,13 +176,13 @@ export function SkillOverviewPanel({
 
   async function stopSharing() {
     setIsSharing(true);
-    setMessage(undefined);
+    setShareMessage(undefined);
     try {
       await revokeWorkspaceAssetShare(token, workspace.id, selectedAsset.id);
       setShare(undefined);
-      setMessage("Public share link revoked.");
+      setShareMessage("Public sharing has been revoked.");
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : String(caught));
+      setShareMessage(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setIsSharing(false);
     }
@@ -180,7 +194,7 @@ export function SkillOverviewPanel({
       setCopied(kind);
       window.setTimeout(() => setCopied(undefined), 1800);
     } catch {
-      setMessage("Could not copy to the clipboard.");
+      setShareMessage("Could not copy to the clipboard.");
     }
   }
 
@@ -214,16 +228,106 @@ export function SkillOverviewPanel({
               )}
               Validate
             </Button>
-            {!share ? (
-              <Button type="button" variant="outline" onClick={publishShare} disabled={isSharing}>
-                {isSharing ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  type="button"
+                  variant={share ? "secondary" : "outline"}
+                  disabled={isSharing && !share}
+                >
+                  {isSharing && !share ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  ) : share ? (
+                    <Check className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <Share2 className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  {isSharing && !share ? "Checking…" : share ? "Shared" : "Share"}
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>{share ? "Manage public sharing" : "Share this Skill"}</DialogTitle>
+                  <DialogDescription>
+                    {share
+                      ? "Anyone with this link can view and download the current Skill package."
+                      : "Create a public link and install commands for this Skill package."}
+                  </DialogDescription>
+                </DialogHeader>
+
+                {share ? (
+                  <div className="grid gap-4">
+                    <ShareValue
+                      label="Public link"
+                      value={share.shareUrl}
+                      copied={copied === "url"}
+                      onCopy={() => void copyShareValue("url", share.shareUrl)}
+                      openUrl={share.shareUrl}
+                    />
+                    <ShareValue
+                      label="Harhub CLI"
+                      value={share.cliCommand}
+                      copied={copied === "cli"}
+                      onCopy={() => void copyShareValue("cli", share.cliCommand)}
+                    />
+                    <ShareValue
+                      label="Agent Skills CLI"
+                      value={share.skillsCliCommand}
+                      copied={copied === "skills"}
+                      onCopy={() => void copyShareValue("skills", share.skillsCliCommand)}
+                    />
+                    {shareMessage ? (
+                      <p className="text-sm text-muted-foreground">{shareMessage}</p>
+                    ) : null}
+                    <DialogFooter className="gap-2 sm:justify-between sm:space-x-0">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={isSharing}
+                        onClick={() => void stopSharing()}
+                      >
+                        {isSharing ? (
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <Link2Off className="h-4 w-4" aria-hidden="true" />
+                        )}
+                        Revoke sharing
+                      </Button>
+                      <DialogClose asChild>
+                        <Button type="button" variant="outline">Done</Button>
+                      </DialogClose>
+                    </DialogFooter>
+                  </div>
                 ) : (
-                  <Share2 className="h-4 w-4" aria-hidden="true" />
+                  <div className="grid gap-4">
+                    <div className="rounded-lg border bg-muted/20 p-4 text-sm leading-6 text-muted-foreground">
+                      The generated link is public and does not require a Harhub account. You can
+                      revoke it here at any time.
+                    </div>
+                    {shareMessage ? (
+                      <p className="text-sm text-muted-foreground">{shareMessage}</p>
+                    ) : null}
+                    <DialogFooter>
+                      <DialogClose asChild>
+                        <Button type="button" variant="outline" disabled={isSharing}>Cancel</Button>
+                      </DialogClose>
+                      <Button
+                        type="button"
+                        disabled={isSharing}
+                        onClick={() => void publishShare()}
+                      >
+                        {isSharing ? (
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <Share2 className="h-4 w-4" aria-hidden="true" />
+                        )}
+                        Create public share
+                      </Button>
+                    </DialogFooter>
+                  </div>
                 )}
-                Share
-              </Button>
-            ) : null}
+              </DialogContent>
+            </Dialog>
             <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
               <AlertDialogTrigger asChild>
                 <Button type="button" variant="outline" disabled={isDeleting}>
@@ -264,47 +368,42 @@ export function SkillOverviewPanel({
             </AlertDialog>
           </div>
 
-          {share ? (
-            <div className="grid gap-3 rounded-lg border bg-muted/20 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <div className="text-sm font-medium">Public share</div>
-                  <div className="text-xs text-muted-foreground">Anyone with this link can download the zip.</div>
-                </div>
-                <Button type="button" variant="ghost" size="sm" onClick={stopSharing} disabled={isSharing}>
-                  {isSharing ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Link2Off aria-hidden="true" />}
-                  Revoke
-                </Button>
-              </div>
-              <div className="flex gap-2">
-                <Input readOnly value={share.shareUrl} className="min-w-0 text-xs" />
-                <Button type="button" variant="outline" size="icon" onClick={() => copyShareValue("url", share.shareUrl)} aria-label="Copy public share URL">
-                  {copied === "url" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-                </Button>
-                <Button asChild variant="outline" size="icon">
-                  <a href={share.shareUrl} target="_blank" rel="noreferrer" aria-label="Open public share page">
-                    <ExternalLink aria-hidden="true" />
-                  </a>
-                </Button>
-              </div>
-              <div className="flex gap-2">
-                <Input readOnly value={share.cliCommand} className="min-w-0 font-mono text-xs" />
-                <Button type="button" variant="outline" size="icon" onClick={() => copyShareValue("cli", share.cliCommand)} aria-label="Copy CLI install command">
-                  {copied === "cli" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-                </Button>
-              </div>
-              <div className="flex gap-2">
-                <Input readOnly value={share.skillsCliCommand} className="min-w-0 font-mono text-xs" />
-                <Button type="button" variant="outline" size="icon" onClick={() => copyShareValue("skills", share.skillsCliCommand)} aria-label="Copy Agent Skills CLI install command">
-                  {copied === "skills" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
           <ValidationIssuesList issues={assetIssues} />
           {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ShareValue({
+  label,
+  value,
+  copied,
+  onCopy,
+  openUrl
+}: {
+  label: string;
+  value: string;
+  copied: boolean;
+  onCopy: () => void;
+  openUrl?: string;
+}) {
+  return (
+    <div className="grid gap-1.5">
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="flex min-w-0 gap-2">
+        <Input readOnly value={value} className="min-w-0 font-mono text-xs" />
+        <Button type="button" variant="outline" size="icon" onClick={onCopy} aria-label={`Copy ${label}`}>
+          {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+        </Button>
+        {openUrl ? (
+          <Button asChild variant="outline" size="icon">
+            <a href={openUrl} target="_blank" rel="noreferrer" aria-label="Open public share page">
+              <ExternalLink aria-hidden="true" />
+            </a>
+          </Button>
+        ) : null}
       </div>
     </div>
   );
