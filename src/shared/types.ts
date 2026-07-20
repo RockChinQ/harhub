@@ -401,7 +401,12 @@ export interface ForgeSessionOperation {
   operationId: string;
   operation: Exclude<ForgeAiOperation, "connection-test">;
   startedAt: string;
+  lastActivityAt: string;
   attempt: number;
+  maxAttempts?: number;
+  /** Number of times an interrupted persisted operation was restarted by a new runtime. */
+  recoveryCount: number;
+  progress?: Partial<Record<ForgeGenerationProgressStep, ForgeGenerationProgressStatus>>;
 }
 
 export type ForgeGenerationProgressStep = "context" | "assets" | "compose" | "save";
@@ -464,6 +469,26 @@ export type ForgeOperationStreamEvent =
 
 export type ForgeSessionStatus = "interviewing" | "working" | "failed" | "complete";
 
+export type ForgeMarkdownViewMode = "preview" | "code";
+
+export interface ForgeSessionFollowUpDraft {
+  question: string;
+  selectedOptions: string[];
+  customAnswer: string;
+}
+
+/**
+ * Durable, user-controlled Forge view state. Runtime streams, partial model output,
+ * request controllers, cached file bodies, and open overlays intentionally stay ephemeral.
+ */
+export interface ForgeSessionViewState {
+  followUpDrafts: ForgeSessionFollowUpDraft[];
+  markdownView: ForgeMarkdownViewMode;
+  selectedPath?: string;
+  /** Undefined uses the product defaults; an empty array means every directory is expanded. */
+  collapsedTreePaths?: string[];
+}
+
 export interface ForgeSessionSummary {
   id: string;
   title: string;
@@ -481,6 +506,9 @@ export interface ForgeSessionDetail extends ForgeSessionSummary {
   template?: HarnessTemplateResponse;
   failure?: ForgeAiOperationFailure;
   activeOperation?: ForgeSessionOperation;
+  /** Last terminal or interrupted operation checkpoint retained for diagnostics. */
+  lastOperation?: ForgeSessionOperation;
+  viewState: ForgeSessionViewState;
 }
 
 export interface ForgeSessionListResponse {

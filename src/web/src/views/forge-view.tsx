@@ -24,10 +24,12 @@ import type {
   ForgeAiOperationFailure,
   ForgeGenerationProgressStatus,
   ForgeGenerationProgressStep,
+  ForgeMarkdownViewMode,
   ForgeOperationStreamEvent,
   ForgeSessionDetail,
   ForgeSessionListResponse,
   ForgeSessionSummary,
+  ForgeSessionViewState,
   HarnessFollowUpComponent,
   HarnessFollowUpQuestion,
   HarnessFollowUpResponse,
@@ -74,7 +76,8 @@ import {
   getWorkspaceAssetTree,
   getWorkspaceAiSettings,
   listForgeSessions,
-  streamForgeOperation
+  streamForgeOperation,
+  updateForgeSessionViewState
 } from "../lib/api";
 import { cn } from "../lib/utils";
 import { FilePreviewPane } from "./assets/file-preview-pane";
@@ -156,6 +159,8 @@ export function ForgeView({
   const [answerDrafts, setAnswerDrafts] = useState<FollowUpAnswerDraft[]>([]);
   const [template, setTemplate] = useState<HarnessTemplateResponse>();
   const [selectedPath, setSelectedPath] = useState<string>();
+  const [markdownView, setMarkdownView] = useState<ForgeMarkdownViewMode>("preview");
+  const [collapsedTreePaths, setCollapsedTreePaths] = useState<string[]>();
   const [workingLabel, setWorkingLabel] = useState("");
   const [workingOperation, setWorkingOperation] = useState<"follow-up" | "generate">();
   const [liveOutput, setLiveOutput] = useState("");
@@ -165,6 +170,8 @@ export function ForgeView({
   );
   const [error, setError] = useState<string>();
   const [operationFailure, setOperationFailure] = useState<ForgeAiOperationFailure>();
+  const [sessionPersistenceError, setSessionPersistenceError] = useState<string>();
+  const [sessionPersistenceRetryKey, setSessionPersistenceRetryKey] = useState(0);
   const [retryAction, setRetryAction] = useState<ForgeRetryAction>();
   const [isDownloading, setIsDownloading] = useState(false);
   const [aiSettings, setAiSettings] = useState<WorkspaceAiSettings>();
@@ -192,6 +199,7 @@ export function ForgeView({
   const activeSessionIdRef = useRef<string | undefined>(undefined);
   const discoveryScrollRef = useRef<HTMLDivElement | null>(null);
   const skillFileCacheRef = useRef(new Map<string, AssetFilePreview>());
+  const persistedViewStateRef = useRef<string | undefined>(undefined);
   historyScopeRef.current = historyScope;
   routedSessionIdRef.current = routedSessionId;
   activeSessionIdRef.current = activeSessionId;
@@ -223,6 +231,16 @@ export function ForgeView({
       ? extractFirstPartialJsonString(liveOutput, ["name", "summary"])
       : extractFirstPartialJsonString(liveOutput, ["question"]),
     [liveOutput, workingOperation]
+  );
+  const durableViewState = useMemo(
+    () => createForgeSessionViewState(
+      currentQuestions,
+      answerDrafts,
+      selectedPath,
+      markdownView,
+      collapsedTreePaths
+    ),
+    [answerDrafts, collapsedTreePaths, currentQuestions, markdownView, selectedPath]
   );
 
   useEffect(() => {
@@ -258,6 +276,60 @@ export function ForgeView({
       if (routeSessionLoadRef.current === loadKey) routeSessionLoadRef.current = undefined;
     });
   }, [activeSessionId, routedSessionId, token, workspace.id]);
+
+  useEffect(() => {
+    if (
+      !activeSessionId ||
+      phase === "idle" ||
+      phase === "working"
+    ) return;
+    const serialized = JSON.stringify(durableViewState);
+    if (serialized === persistedViewStateRef.current) return;
+    let active = true;
+    const timeout = window.setTimeout(() => {
+      void persistForgeViewStateWithRetry(
+        token,
+        workspace.id,
+        activeSessionId,
+        durableViewState
+      ).then(() => {
+        if (!active || activeSessionIdRef.current !== activeSessionId) return;
+        persistedViewStateRef.current = serialized;
+        setSessionPersistenceError(undefined);
+      }).catch((caught) => {
+        if (!active || activeSessionIdRef.current !== activeSessionId) return;
+        setSessionPersistenceError(errorMessage(caught));
+      });
+    }, 350);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [
+    activeSessionId,
+    durableViewState,
+    phase,
+    sessionPersistenceRetryKey,
+    token,
+    workspace.id
+  ]);
+
+  useEffect(() => {
+    if (!activeSessionId || phase === "idle" || phase === "working") return;
+    const serialized = JSON.stringify(durableViewState);
+    const flushBeforePageHide = () => {
+      if (serialized === persistedViewStateRef.current) return;
+      void updateForgeSessionViewState(
+        token,
+        workspace.id,
+        activeSessionId,
+        durableViewState,
+        true
+      ).catch(() => undefined);
+    };
+    window.addEventListener("pagehide", flushBeforePageHide);
+    return () => window.removeEventListener("pagehide", flushBeforePageHide);
+  }, [activeSessionId, durableViewState, phase, token, workspace.id]);
 
   useEffect(() => {
     if (phase !== "question" || currentQuestions.length === 0) return;
@@ -383,8 +455,11 @@ export function ForgeView({
     setAnswerDrafts([]);
     setTemplate(undefined);
     setSelectedPath(undefined);
+    setMarkdownView("preview");
+    setCollapsedTreePaths(undefined);
     setError(undefined);
     setOperationFailure(undefined);
+    setSessionPersistenceError(undefined);
     setRetryAction(undefined);
     setWorkingOperation(undefined);
     setLiveOutput("");
@@ -400,6 +475,7 @@ export function ForgeView({
     setLoadingSessionId(undefined);
     setSessionToDelete(undefined);
     setIsDeletingSession(false);
+    persistedViewStateRef.current = undefined;
   }, [token, workspace.id]);
 
   useEffect(() => {
@@ -481,7 +557,8 @@ export function ForgeView({
     sessionId: string,
     operation: "follow-up" | "generate",
     submittedAnswers?: HarnessInterviewAnswer[],
-    reconnectAttempt = 0
+    reconnectAttempt = 0,
+    preserveProgress = false
   ) {
     setError(undefined);
     setOperationFailure(undefined);
@@ -494,7 +571,7 @@ export function ForgeView({
         : "Reviewing the requirement and workspace Skills…");
     setLiveOutput("");
     setLiveAttempt(undefined);
-    if (operation === "generate" && reconnectAttempt === 0) {
+    if (operation === "generate" && reconnectAttempt === 0 && !preserveProgress) {
       setGenerationProgress(initialGenerationProgress());
     }
     setPhase("working");
@@ -618,14 +695,14 @@ export function ForgeView({
           sessionId,
           session.activeOperation.operation,
           undefined,
-          reconnectAttempt + 1
+          reconnectAttempt + 1,
+          true
         );
         return;
       }
       if (session.status === "interviewing" && session.followUp) {
         if (session.followUp.ready) await requestOperation(sessionId, "generate");
         else {
-          setAnswerDrafts([]);
           setPhase("question");
         }
         return;
@@ -648,7 +725,31 @@ export function ForgeView({
     setFollowUp(session.followUp?.mode === "llm" ? session.followUp : undefined);
     const storedTemplate = session.template?.mode === "llm" ? session.template : undefined;
     setTemplate(storedTemplate);
-    if (storedTemplate) setSelectedPath(storedTemplate.files[0]?.path);
+    const restoredQuestions = followUpQuestions(session.followUp);
+    const restoredDrafts = restoreForgeSessionDrafts(restoredQuestions, session.viewState);
+    const restoredSelectedPath = storedTemplate
+      ? session.viewState.selectedPath ?? storedTemplate.files[0]?.path
+      : undefined;
+    setAnswerDrafts(restoredDrafts);
+    setSelectedPath(restoredSelectedPath);
+    setMarkdownView(session.viewState.markdownView);
+    setCollapsedTreePaths(session.viewState.collapsedTreePaths);
+    setGenerationProgress(generationProgressFromSession(session));
+    setLiveAttempt(
+      session.activeOperation?.attempt && session.activeOperation.maxAttempts
+        ? {
+            attempt: session.activeOperation.attempt,
+            maxAttempts: session.activeOperation.maxAttempts
+          }
+        : undefined
+    );
+    persistedViewStateRef.current = JSON.stringify(createForgeSessionViewState(
+      restoredQuestions,
+      restoredDrafts,
+      restoredSelectedPath,
+      session.viewState.markdownView,
+      session.viewState.collapsedTreePaths
+    ));
     addSessionToLoadedHistory(session);
   }
 
@@ -695,6 +796,9 @@ export function ForgeView({
     setAnswerDrafts([]);
     setTemplate(undefined);
     setSelectedPath(undefined);
+    setMarkdownView("preview");
+    setCollapsedTreePaths(undefined);
+    setSessionPersistenceError(undefined);
     setWorkingLabel("Loading Forge session…");
     setPhase("working");
     try {
@@ -702,7 +806,6 @@ export function ForgeView({
       if (routedSessionIdRef.current !== sessionId) return;
       activeSessionIdRef.current = session.id;
       applyServerSession(session);
-      setAnswerDrafts([]);
       setHistoryOpen(false);
 
       if (session.status === "complete" && session.template?.mode === "llm") {
@@ -714,7 +817,7 @@ export function ForgeView({
         return;
       }
       if (session.status === "working" && session.activeOperation) {
-        await requestOperation(session.id, session.activeOperation.operation);
+        await requestOperation(session.id, session.activeOperation.operation, undefined, 0, true);
         return;
       }
       const storedFollowUp = session.followUp?.mode === "llm" ? session.followUp : undefined;
@@ -792,13 +895,17 @@ export function ForgeView({
     setAnswerDrafts([]);
     setTemplate(undefined);
     setSelectedPath(undefined);
+    setMarkdownView("preview");
+    setCollapsedTreePaths(undefined);
     setError(undefined);
     setOperationFailure(undefined);
+    setSessionPersistenceError(undefined);
     setRetryAction(undefined);
     setWorkingOperation(undefined);
     setLiveOutput("");
     setLiveAttempt(undefined);
     setGenerationProgress(initialGenerationProgress());
+    persistedViewStateRef.current = undefined;
   }
 
   function resetBuilder() {
@@ -934,6 +1041,24 @@ export function ForgeView({
               </Button>
             </div>
           ) : null}
+        </div>
+      ) : null}
+
+      {sessionPersistenceError ? (
+        <div className="flex flex-col gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            Session view changes have not been saved yet. {sessionPersistenceError}
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 border-amber-300 bg-background"
+            onClick={() => setSessionPersistenceRetryKey((current) => current + 1)}
+          >
+            <RotateCcw className="h-4 w-4" aria-hidden="true" />
+            Retry save
+          </Button>
         </div>
       ) : null}
 
@@ -1152,11 +1277,14 @@ export function ForgeView({
                       Framework preview
                     </div>
                     <FileTree
+                      key={activeSessionId}
                       nodes={tree}
                       selectedPath={selectedPath}
                       onSelect={setSelectedPath}
                       markers={skillTreeMarkers}
                       defaultCollapsedPaths={defaultCollapsedSkillPaths}
+                      collapsedPaths={collapsedTreePaths}
+                      onCollapsedPathsChange={setCollapsedTreePaths}
                     />
                     <div className="mt-3 space-y-2 border-t px-2 pt-3 text-[11px] leading-4">
                       {isSkillTreeLoading ? (
@@ -1208,7 +1336,11 @@ export function ForgeView({
                       </Button>
                     </div>
                   ) : (
-                    <FilePreviewPane file={selectedFile} />
+                    <FilePreviewPane
+                      file={selectedFile}
+                      markdownView={markdownView}
+                      onMarkdownViewChange={setMarkdownView}
+                    />
                   )}
                 </div>
               </div>
@@ -1456,6 +1588,25 @@ function formatDuration(durationMs: number): string {
 
 function delay(durationMs: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, durationMs));
+}
+
+async function persistForgeViewStateWithRetry(
+  token: string,
+  workspaceId: string,
+  sessionId: string,
+  viewState: ForgeSessionViewState
+): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await updateForgeSessionViewState(token, workspaceId, sessionId, viewState);
+      return;
+    } catch (caught) {
+      lastError = caught;
+      if (attempt < 3) await delay(250 * attempt);
+    }
+  }
+  throw lastError;
 }
 
 function extractFirstPartialJsonString(value: string, keys: string[]): string {
@@ -1921,6 +2072,17 @@ function completedGenerationProgress(): GenerationProgressState {
   };
 }
 
+function generationProgressFromSession(session: ForgeSessionDetail): GenerationProgressState {
+  if (session.status === "complete") return completedGenerationProgress();
+  const operation = session.activeOperation ?? session.lastOperation;
+  return {
+    ...initialGenerationProgress(),
+    ...(operation?.operation === "generate"
+      ? operation.progress
+      : {})
+  };
+}
+
 function templateFilePreview(
   template: HarnessTemplateResponse | undefined,
   selectedPath: string | undefined
@@ -1963,6 +2125,48 @@ function followUpQuestions(
 
 function emptyFollowUpDraft(): FollowUpAnswerDraft {
   return { selectedOptions: [], customAnswer: "" };
+}
+
+function createForgeSessionViewState(
+  questions: HarnessFollowUpQuestion[],
+  drafts: FollowUpAnswerDraft[],
+  selectedPath: string | undefined,
+  markdownView: ForgeMarkdownViewMode,
+  collapsedTreePaths: string[] | undefined
+): ForgeSessionViewState {
+  return {
+    followUpDrafts: questions.flatMap((question, index) => {
+      const draft = drafts[index] ?? emptyFollowUpDraft();
+      return draft.selectedOptions.length > 0 || draft.customAnswer
+        ? [{
+            question: question.question,
+            selectedOptions: [...draft.selectedOptions],
+            customAnswer: draft.customAnswer
+          }]
+        : [];
+    }),
+    markdownView,
+    ...(selectedPath ? { selectedPath } : {}),
+    ...(collapsedTreePaths === undefined
+      ? {}
+      : { collapsedTreePaths: [...collapsedTreePaths] })
+  };
+}
+
+function restoreForgeSessionDrafts(
+  questions: HarnessFollowUpQuestion[],
+  viewState: ForgeSessionViewState
+): FollowUpAnswerDraft[] {
+  const stored = new Map(viewState.followUpDrafts.map((draft) => [draft.question, draft]));
+  return questions.map((question) => {
+    const draft = stored.get(question.question);
+    return draft
+      ? {
+          selectedOptions: [...draft.selectedOptions],
+          customAnswer: draft.customAnswer
+        }
+      : emptyFollowUpDraft();
+  });
 }
 
 function composeFollowUpAnswers(

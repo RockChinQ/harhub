@@ -12,13 +12,17 @@ export function FileTree({
   selectedPath,
   onSelect,
   markers,
-  defaultCollapsedPaths = NO_COLLAPSED_PATHS
+  defaultCollapsedPaths = NO_COLLAPSED_PATHS,
+  collapsedPaths: controlledCollapsedPaths,
+  onCollapsedPathsChange
 }: {
   nodes: AssetFileTreeNode[];
   selectedPath?: string;
   onSelect: (path: string) => void;
   markers?: Readonly<Record<string, string>>;
   defaultCollapsedPaths?: readonly string[];
+  collapsedPaths?: readonly string[];
+  onCollapsedPathsChange?: (paths: string[]) => void;
 }) {
   const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(
     () => new Set(defaultCollapsedPaths)
@@ -27,10 +31,16 @@ export function FileTree({
   const pendingDefaults = defaultCollapsedPaths.filter(
     (path) => !appliedDefaultsRef.current.has(path)
   );
-  const effectiveCollapsedPaths = useMemo(() => {
+  const defaultedCollapsedPaths = useMemo(() => {
     if (pendingDefaults.length === 0) return collapsedPaths;
     return new Set([...collapsedPaths, ...pendingDefaults]);
   }, [collapsedPaths, pendingDefaults]);
+  const effectiveCollapsedPaths = useMemo(
+    () => controlledCollapsedPaths === undefined
+      ? defaultedCollapsedPaths
+      : new Set(controlledCollapsedPaths),
+    [controlledCollapsedPaths, defaultedCollapsedPaths]
+  );
 
   useEffect(() => {
     if (pendingDefaults.length === 0) return;
@@ -39,12 +49,11 @@ export function FileTree({
   }, [pendingDefaults]);
 
   function toggleDirectory(path: string): void {
-    setCollapsedPaths((current) => {
-      const next = new Set(current);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
+    const next = new Set(effectiveCollapsedPaths);
+    if (next.has(path)) next.delete(path);
+    else next.add(path);
+    if (controlledCollapsedPaths === undefined) setCollapsedPaths(next);
+    onCollapsedPathsChange?.([...next].sort());
   }
 
   return (

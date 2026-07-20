@@ -1,15 +1,26 @@
 import { lazy, Suspense, useState } from "react";
 import { Code2, Eye } from "lucide-react";
 
-import type { AssetFilePreview } from "../../../../shared/types";
+import type {
+  AssetFilePreview,
+  ForgeMarkdownViewMode
+} from "../../../../shared/types";
 import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
-
-type MarkdownViewMode = "preview" | "code";
 
 const MarkdownPreview = lazy(() => import("./markdown-preview"));
 
-export function FilePreviewPane({ file }: { file?: AssetFilePreview }) {
-  const [markdownView, setMarkdownView] = useState<MarkdownViewMode>("preview");
+export function FilePreviewPane({
+  file,
+  markdownView: controlledMarkdownView,
+  onMarkdownViewChange
+}: {
+  file?: AssetFilePreview;
+  markdownView?: ForgeMarkdownViewMode;
+  onMarkdownViewChange?: (view: ForgeMarkdownViewMode) => void;
+}) {
+  const [internalMarkdownView, setInternalMarkdownView] =
+    useState<ForgeMarkdownViewMode>("preview");
+  const markdownView = controlledMarkdownView ?? internalMarkdownView;
 
   if (!file) {
     return (
@@ -29,7 +40,11 @@ export function FilePreviewPane({ file }: { file?: AssetFilePreview }) {
         {isMarkdown ? (
           <Tabs
             value={markdownView}
-            onValueChange={(value) => setMarkdownView(value as MarkdownViewMode)}
+            onValueChange={(value) => {
+              const next = value as ForgeMarkdownViewMode;
+              setInternalMarkdownView(next);
+              onMarkdownViewChange?.(next);
+            }}
           >
             <TabsList className="h-8">
               <TabsTrigger value="preview" className="h-6 gap-1.5 px-2.5 text-xs">

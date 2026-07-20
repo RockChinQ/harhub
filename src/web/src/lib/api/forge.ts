@@ -2,6 +2,7 @@ import type {
   ForgeOperationStreamEvent,
   ForgeSessionDetail,
   ForgeSessionListResponse,
+  ForgeSessionViewState,
   HarnessInterviewAnswer
 } from "../../../../shared/types";
 import { ApiRequestError, JSON_HEADERS, request } from "./request";
@@ -49,6 +50,26 @@ export function deleteForgeSession(
   return request(
     `/api/workspaces/${encodeURIComponent(workspaceId)}/forge/sessions/${encodeURIComponent(sessionId)}`,
     { method: "DELETE", cache: "no-store", token }
+  );
+}
+
+export function updateForgeSessionViewState(
+  token: string,
+  workspaceId: string,
+  sessionId: string,
+  viewState: ForgeSessionViewState,
+  keepalive = false
+): Promise<ForgeSessionDetail> {
+  return request(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/forge/sessions/${encodeURIComponent(sessionId)}/view-state`,
+    {
+      method: "PATCH",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(viewState),
+      cache: "no-store",
+      keepalive,
+      token
+    }
   );
 }
 

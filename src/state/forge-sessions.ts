@@ -6,6 +6,9 @@ import type {
   ForgeSessionListResponse,
   ForgeSessionOperation,
   ForgeSessionSummary,
+  ForgeSessionViewState,
+  ForgeGenerationProgressStatus,
+  ForgeGenerationProgressStep,
   HarnessFollowUpRequest,
   HarnessFollowUpResponse,
   HarnessInterviewAnswer,
@@ -21,8 +24,164 @@ export const MAX_FORGE_SESSIONS_PER_ACCOUNT = 12;
 const MAX_FORGE_SESSIONS_TOTAL = 200;
 const MAX_FORGE_SESSION_BYTES = 1_250_000;
 const FORGE_SESSION_TTL_MS = FORGE_SESSION_TTL_DAYS * 24 * 60 * 60 * 1_000;
+let forgeSessionAccessTail: Promise<void> = Promise.resolve();
 
-export async function createForgeSession(
+export function createForgeSession(
+  accountId: string,
+  workspaceId: string,
+  requirement: string
+): Promise<ForgeSessionDetail> {
+  return serializeForgeSessionAccess(() => createForgeSessionImpl(
+    accountId,
+    workspaceId,
+    requirement
+  ));
+}
+
+export function listForgeSessions(
+  accountId: string,
+  workspaceId: string
+): Promise<ForgeSessionListResponse> {
+  return serializeForgeSessionAccess(() => listForgeSessionsImpl(accountId, workspaceId));
+}
+
+export function getForgeSession(
+  accountId: string,
+  workspaceId: string,
+  sessionId: string
+): Promise<ForgeSessionDetail> {
+  return serializeForgeSessionAccess(() => getForgeSessionImpl(accountId, workspaceId, sessionId));
+}
+
+export function deleteForgeSession(
+  accountId: string,
+  workspaceId: string,
+  sessionId: string
+): Promise<void> {
+  return serializeForgeSessionAccess(() => deleteForgeSessionImpl(
+    accountId,
+    workspaceId,
+    sessionId
+  ));
+}
+
+export function beginForgeSessionOperation(
+  accountId: string,
+  workspaceId: string,
+  sessionId: string,
+  operationId: string,
+  operation: ForgeSessionOperation["operation"],
+  answers?: HarnessInterviewAnswer[]
+): Promise<{ input: HarnessFollowUpRequest; session: ForgeSessionDetail }> {
+  return serializeForgeSessionAccess(() => beginForgeSessionOperationImpl(
+    accountId,
+    workspaceId,
+    sessionId,
+    operationId,
+    operation,
+    answers
+  ));
+}
+
+export function recordForgeSessionAttempt(
+  accountId: string,
+  workspaceId: string,
+  sessionId: string,
+  operationId: string,
+  attempt: number,
+  maxAttempts?: number
+): Promise<void> {
+  return serializeForgeSessionAccess(() => recordForgeSessionAttemptImpl(
+    accountId,
+    workspaceId,
+    sessionId,
+    operationId,
+    attempt,
+    maxAttempts
+  ));
+}
+
+export function recordForgeSessionProgress(
+  accountId: string,
+  workspaceId: string,
+  sessionId: string,
+  operationId: string,
+  step: ForgeGenerationProgressStep,
+  status: ForgeGenerationProgressStatus
+): Promise<void> {
+  return serializeForgeSessionAccess(() => recordForgeSessionProgressImpl(
+    accountId,
+    workspaceId,
+    sessionId,
+    operationId,
+    step,
+    status
+  ));
+}
+
+export function updateForgeSessionViewState(
+  accountId: string,
+  workspaceId: string,
+  sessionId: string,
+  viewState: ForgeSessionViewState
+): Promise<ForgeSessionDetail> {
+  return serializeForgeSessionAccess(() => updateForgeSessionViewStateImpl(
+    accountId,
+    workspaceId,
+    sessionId,
+    viewState
+  ));
+}
+
+export function recordForgeSessionFollowUp(
+  accountId: string,
+  workspaceId: string,
+  input: HarnessFollowUpRequest,
+  followUp: HarnessFollowUpResponse,
+  operationId?: string
+): Promise<void> {
+  return serializeForgeSessionAccess(() => recordForgeSessionFollowUpImpl(
+    accountId,
+    workspaceId,
+    input,
+    followUp,
+    operationId
+  ));
+}
+
+export function recordForgeSessionTemplate(
+  accountId: string,
+  workspaceId: string,
+  input: HarnessFollowUpRequest,
+  template: HarnessTemplateResponse,
+  operationId?: string
+): Promise<void> {
+  return serializeForgeSessionAccess(() => recordForgeSessionTemplateImpl(
+    accountId,
+    workspaceId,
+    input,
+    template,
+    operationId
+  ));
+}
+
+export function recordForgeSessionFailure(
+  accountId: string,
+  workspaceId: string,
+  input: HarnessFollowUpRequest,
+  failure: ForgeAiOperationFailure,
+  operationId?: string
+): Promise<void> {
+  return serializeForgeSessionAccess(() => recordForgeSessionFailureImpl(
+    accountId,
+    workspaceId,
+    input,
+    failure,
+    operationId
+  ));
+}
+
+async function createForgeSessionImpl(
   accountId: string,
   workspaceId: string,
   requirement: string
@@ -42,6 +201,7 @@ export async function createForgeSession(
     requirement: normalizedRequirement,
     answers: [],
     answerCount: 0,
+    viewState: defaultForgeSessionViewState(),
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
     expiresAt: expirationFrom(now)
@@ -53,7 +213,7 @@ export async function createForgeSession(
   return toDetail(session);
 }
 
-export async function listForgeSessions(
+async function listForgeSessionsImpl(
   accountId: string,
   workspaceId: string
 ): Promise<ForgeSessionListResponse> {
@@ -75,7 +235,7 @@ export async function listForgeSessions(
   };
 }
 
-export async function getForgeSession(
+async function getForgeSessionImpl(
   accountId: string,
   workspaceId: string,
   sessionId: string
@@ -89,7 +249,7 @@ export async function getForgeSession(
   return toDetail(session);
 }
 
-export async function deleteForgeSession(
+async function deleteForgeSessionImpl(
   accountId: string,
   workspaceId: string,
   sessionId: string
@@ -108,7 +268,7 @@ export async function deleteForgeSession(
   await saveState(state);
 }
 
-export async function beginForgeSessionOperation(
+async function beginForgeSessionOperationImpl(
   accountId: string,
   workspaceId: string,
   sessionId: string,
@@ -121,6 +281,19 @@ export async function beginForgeSessionOperation(
   pruneForgeSessions(state);
   const current = findSession(state, accountId, workspaceId, sessionId);
   const next = structuredClone(current);
+
+  if (
+    current.status === "working" &&
+    current.activeOperation &&
+    current.activeOperation.operation !== operation
+  ) {
+    throw new Error(
+      `The interrupted Forge ${current.activeOperation.operation} operation must be resumed first.`
+    );
+  }
+  if (current.status === "working" && current.activeOperation && answers?.length) {
+    throw new Error("The interrupted Forge operation already saved its submitted answers.");
+  }
 
   if (answers?.length) {
     const expectedQuestions = currentForgeQuestions(current.followUp);
@@ -147,13 +320,23 @@ export async function beginForgeSessionOperation(
   }
 
   const now = nextSessionTime(state);
+  const recoveryCount = current.status === "working" && current.activeOperation
+    ? (current.activeOperation.recoveryCount ?? 0) + 1
+    : 0;
+  if (current.status === "working" && current.activeOperation) {
+    next.lastOperation = structuredClone(current.activeOperation);
+  }
   delete next.failure;
   next.status = "working";
+  next.viewState.followUpDrafts = [];
   next.activeOperation = {
     operationId,
     operation,
     startedAt: now.toISOString(),
-    attempt: 0
+    lastActivityAt: now.toISOString(),
+    attempt: 0,
+    recoveryCount,
+    ...(operation === "generate" ? { progress: {} } : {})
   };
   next.updatedAt = now.toISOString();
   next.expiresAt = expirationFrom(now);
@@ -185,23 +368,84 @@ function currentForgeQuestions(followUp: ForgeSessionDetail["followUp"]): string
   return legacyQuestion ? [legacyQuestion] : [];
 }
 
-export async function recordForgeSessionAttempt(
+async function recordForgeSessionAttemptImpl(
   accountId: string,
   workspaceId: string,
   sessionId: string,
   operationId: string,
-  attempt: number
+  attempt: number,
+  maxAttempts?: number
 ): Promise<void> {
   const state = await loadState();
   requireWorkspaceMembership(state, accountId, workspaceId);
   const session = findSession(state, accountId, workspaceId, sessionId);
   if (session.activeOperation?.operationId !== operationId) return;
+  const now = nextSessionTime(state);
   session.activeOperation.attempt = attempt;
+  session.activeOperation.maxAttempts = maxAttempts;
+  session.activeOperation.lastActivityAt = now.toISOString();
+  session.updatedAt = now.toISOString();
+  session.expiresAt = expirationFrom(now);
   assertSessionSize(session);
   await saveState(state);
 }
 
-export async function recordForgeSessionFollowUp(
+async function recordForgeSessionProgressImpl(
+  accountId: string,
+  workspaceId: string,
+  sessionId: string,
+  operationId: string,
+  step: ForgeGenerationProgressStep,
+  status: ForgeGenerationProgressStatus
+): Promise<void> {
+  const state = await loadState();
+  requireWorkspaceMembership(state, accountId, workspaceId);
+  const session = findSession(state, accountId, workspaceId, sessionId);
+  if (
+    session.activeOperation?.operationId !== operationId ||
+    session.activeOperation.operation !== "generate"
+  ) return;
+  const now = nextSessionTime(state);
+  session.activeOperation.progress ??= {};
+  session.activeOperation.progress[step] = status;
+  session.activeOperation.lastActivityAt = now.toISOString();
+  session.updatedAt = now.toISOString();
+  session.expiresAt = expirationFrom(now);
+  assertSessionSize(session);
+  await saveState(state);
+}
+
+async function updateForgeSessionViewStateImpl(
+  accountId: string,
+  workspaceId: string,
+  sessionId: string,
+  viewState: ForgeSessionViewState
+): Promise<ForgeSessionDetail> {
+  const state = await loadState();
+  requireWorkspaceMembership(state, accountId, workspaceId);
+  pruneForgeSessions(state);
+  const current = findSession(state, accountId, workspaceId, sessionId);
+  if (current.status === "working") {
+    throw new Error("Forge view state cannot change while an operation is running.");
+  }
+  validateForgeSessionViewState(current, viewState);
+  const next = structuredClone(current);
+  const now = nextSessionTime(state);
+  next.viewState = structuredClone(viewState);
+  next.updatedAt = now.toISOString();
+  next.expiresAt = expirationFrom(now);
+  assertSessionSize(next);
+  state.forgeSessions = state.forgeSessions.map((item) => (
+    item.id === next.id && item.accountId === accountId && item.workspaceId === workspaceId
+      ? next
+      : item
+  ));
+  pruneForgeSessions(state);
+  await saveState(state);
+  return toDetail(next);
+}
+
+async function recordForgeSessionFollowUpImpl(
   accountId: string,
   workspaceId: string,
   input: HarnessFollowUpRequest,
@@ -212,8 +456,13 @@ export async function recordForgeSessionFollowUp(
   await updateForgeSession(accountId, workspaceId, input, (session, now) => {
     assertCurrentForgeOperation(session, operationId);
     const next = structuredClone(session);
+    if (next.activeOperation) {
+      next.activeOperation.lastActivityAt = now.toISOString();
+      next.lastOperation = structuredClone(next.activeOperation);
+    }
     delete next.failure;
     delete next.activeOperation;
+    next.viewState.followUpDrafts = [];
     return {
       ...next,
       ...(!session.followUp && followUp.sessionTitle
@@ -229,7 +478,7 @@ export async function recordForgeSessionFollowUp(
   });
 }
 
-export async function recordForgeSessionTemplate(
+async function recordForgeSessionTemplateImpl(
   accountId: string,
   workspaceId: string,
   input: HarnessFollowUpRequest,
@@ -240,8 +489,15 @@ export async function recordForgeSessionTemplate(
   await updateForgeSession(accountId, workspaceId, input, (session, now) => {
     assertCurrentForgeOperation(session, operationId);
     const next = structuredClone(session);
+    if (next.activeOperation) {
+      next.activeOperation.progress ??= {};
+      next.activeOperation.progress.save = "complete";
+      next.activeOperation.lastActivityAt = now.toISOString();
+      next.lastOperation = structuredClone(next.activeOperation);
+    }
     delete next.failure;
     delete next.activeOperation;
+    next.viewState.followUpDrafts = [];
     return {
       ...next,
       title: normalizeSessionTitle(template.profile.name),
@@ -255,7 +511,7 @@ export async function recordForgeSessionTemplate(
   });
 }
 
-export async function recordForgeSessionFailure(
+async function recordForgeSessionFailureImpl(
   accountId: string,
   workspaceId: string,
   input: HarnessFollowUpRequest,
@@ -266,6 +522,10 @@ export async function recordForgeSessionFailure(
   await updateForgeSession(accountId, workspaceId, input, (session, now) => {
     assertCurrentForgeOperation(session, operationId);
     const next = structuredClone(session);
+    if (next.activeOperation) {
+      next.activeOperation.lastActivityAt = now.toISOString();
+      next.lastOperation = structuredClone(next.activeOperation);
+    }
     delete next.activeOperation;
     return {
       ...next,
@@ -400,11 +660,86 @@ function toDetail(session: ForgeSessionCacheRecord): ForgeSessionDetail {
     ...toSummary(session),
     requirement: session.requirement,
     answers: structuredClone(session.answers),
+    viewState: structuredClone(session.viewState ?? defaultForgeSessionViewState()),
     ...(session.followUp ? { followUp: structuredClone(session.followUp) } : {}),
     ...(session.template ? { template: structuredClone(session.template) } : {}),
     ...(session.failure ? { failure: structuredClone(session.failure) } : {}),
     ...(session.activeOperation
       ? { activeOperation: structuredClone(session.activeOperation) }
+      : {}),
+    ...(session.lastOperation
+      ? { lastOperation: structuredClone(session.lastOperation) }
       : {})
   };
+}
+
+function defaultForgeSessionViewState(): ForgeSessionViewState {
+  return {
+    followUpDrafts: [],
+    markdownView: "preview"
+  };
+}
+
+function validateForgeSessionViewState(
+  session: ForgeSessionCacheRecord,
+  viewState: ForgeSessionViewState
+): void {
+  const currentQuestions = new Map(
+    session.followUp?.questions?.map((item) => [item.question.trim(), item.component]) ?? []
+  );
+  if (currentQuestions.size === 0 && session.followUp?.question && session.followUp.component) {
+    currentQuestions.set(session.followUp.question.trim(), session.followUp.component);
+  }
+  const draftQuestions = new Set<string>();
+  for (const draft of viewState.followUpDrafts) {
+    const component = currentQuestions.get(draft.question);
+    if (!component) {
+      throw new Error("Forge draft does not match the current session questions.");
+    }
+    if (draftQuestions.has(draft.question)) {
+      throw new Error("Forge drafts contain a duplicate question.");
+    }
+    draftQuestions.add(draft.question);
+    if (new Set(draft.selectedOptions).size !== draft.selectedOptions.length) {
+      throw new Error("Forge draft contains a duplicate selected option.");
+    }
+    const allowedOptions = new Set(component.options.map((option) => option.label));
+    if (draft.selectedOptions.some((option) => !allowedOptions.has(option))) {
+      throw new Error("Forge draft contains an option that is not available.");
+    }
+    const maxSelections = component.type === "single-select"
+      ? 1
+      : component.type === "multi-select"
+        ? component.maxSelections ?? component.options.length
+        : 0;
+    if (draft.selectedOptions.length > maxSelections) {
+      throw new Error("Forge draft exceeds the question selection limit.");
+    }
+    if (component.type !== "text" && !component.allowCustom && draft.customAnswer) {
+      throw new Error("Forge draft does not allow a custom answer.");
+    }
+  }
+  if (viewState.selectedPath && !session.template) {
+    throw new Error("Forge preview selection requires a completed framework.");
+  }
+  if (viewState.selectedPath && session.template) {
+    const isGeneratedFile = session.template.files.some(
+      (file) => file.path === viewState.selectedPath
+    );
+    const isSelectedSkillFile = session.template.selectedAssets.some(
+      (asset) => viewState.selectedPath?.startsWith(`${asset.installPath}/`)
+    );
+    if (!isGeneratedFile && !isSelectedSkillFile) {
+      throw new Error("Forge preview selection is not part of this framework.");
+    }
+  }
+}
+
+function serializeForgeSessionAccess<T>(action: () => Promise<T>): Promise<T> {
+  const result = forgeSessionAccessTail.then(action, action);
+  forgeSessionAccessTail = result.then(
+    () => undefined,
+    () => undefined
+  );
+  return result;
 }

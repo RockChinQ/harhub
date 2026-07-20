@@ -27,8 +27,11 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
       loadState,
       recordForgeSessionFailure,
       recordForgeSessionFollowUp,
+      recordForgeSessionAttempt,
+      recordForgeSessionProgress,
       recordForgeSessionTemplate,
-      saveState
+      saveState,
+      updateForgeSessionViewState
     } = await import("../src/state/index.js");
 
     const created = [];
@@ -61,6 +64,7 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
           component: {
             type: "multi-select",
             options: [{ label: "Review changes" }, { label: "Prepare a handoff" }],
+            allowCustom: true,
             maxSelections: 2
           }
         }]
@@ -70,6 +74,32 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
     assert.equal(restoredQuestion.title, "Release Readiness");
     assert.equal(restoredQuestion.answerCount, 1);
     assert.equal(restoredQuestion.followUp?.questions?.[0]?.question, "What should it do?");
+
+    await updateForgeSessionViewState("acct_demo", "ws_demo", resumable.id, {
+      followUpDrafts: [{
+        question: "What should it do?",
+        selectedOptions: ["Review changes"],
+        customAnswer: "Include a concise approval summary"
+      }],
+      markdownView: "preview"
+    });
+    const restoredDraft = await getForgeSession("acct_demo", "ws_demo", resumable.id);
+    assert.deepEqual(restoredDraft.viewState.followUpDrafts, [{
+      question: "What should it do?",
+      selectedOptions: ["Review changes"],
+      customAnswer: "Include a concise approval summary"
+    }]);
+    await assert.rejects(
+      updateForgeSessionViewState("acct_demo", "ws_demo", resumable.id, {
+        followUpDrafts: [{
+          question: "A stale question",
+          selectedOptions: [],
+          customAnswer: "stale"
+        }],
+        markdownView: "preview"
+      }),
+      /does not match the current session questions/
+    );
 
     const template = exampleTemplate("# Project harness\n");
     await recordForgeSessionTemplate(
@@ -82,6 +112,17 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
     assert.equal(restoredTemplate.status, "complete");
     assert.equal(restoredTemplate.title, "Project");
     assert.equal(restoredTemplate.template?.files[0]?.content, "# Project harness\n");
+    assert.deepEqual(restoredTemplate.viewState.followUpDrafts, []);
+    await updateForgeSessionViewState("acct_demo", "ws_demo", resumable.id, {
+      followUpDrafts: [],
+      markdownView: "code",
+      selectedPath: "AGENTS.md",
+      collapsedTreePaths: [".harness/skills/example"]
+    });
+    const restoredPreview = await getForgeSession("acct_demo", "ws_demo", resumable.id);
+    assert.equal(restoredPreview.viewState.markdownView, "code");
+    assert.equal(restoredPreview.viewState.selectedPath, "AGENTS.md");
+    assert.deepEqual(restoredPreview.viewState.collapsedTreePaths, [".harness/skills/example"]);
 
     const authoritative = await createForgeSession(
       "acct_demo",
@@ -129,6 +170,52 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
       ),
       /Answer every current Forge question/
     );
+
+    const concurrentSave = await createForgeSession(
+      "acct_demo",
+      "ws_demo",
+      "Serialize draft persistence with operation start"
+    );
+    const concurrentQuestion = "What is the release boundary?";
+    await recordForgeSessionFollowUp(
+      "acct_demo",
+      "ws_demo",
+      { requirement: concurrentSave.requirement, answers: [], sessionId: concurrentSave.id },
+      {
+        mode: "llm",
+        ready: false,
+        questions: [{
+          question: concurrentQuestion,
+          component: { type: "text", options: [] }
+        }]
+      }
+    );
+    await Promise.all([
+      updateForgeSessionViewState("acct_demo", "ws_demo", concurrentSave.id, {
+        followUpDrafts: [{
+          question: concurrentQuestion,
+          selectedOptions: [],
+          customAnswer: "Only the API workflow"
+        }],
+        markdownView: "preview"
+      }),
+      beginForgeSessionOperation(
+        "acct_demo",
+        "ws_demo",
+        concurrentSave.id,
+        "operation-after-concurrent-draft-save",
+        "follow-up",
+        [{ question: concurrentQuestion, answer: "Only the API workflow" }]
+      )
+    ]);
+    const concurrentResult = await getForgeSession(
+      "acct_demo",
+      "ws_demo",
+      concurrentSave.id
+    );
+    assert.equal(concurrentResult.status, "working");
+    assert.deepEqual(concurrentResult.viewState.followUpDrafts, []);
+    assert.equal(concurrentResult.answers[0]?.answer, "Only the API workflow");
 
     const priorAnswers = [
       { question: "Who is it for?", answer: "Release engineers" },
@@ -199,6 +286,57 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
     );
     assert.deepEqual(generatedWithCurrentAnswer.input.answers, [...priorAnswers, finalAnswer]);
     assert.equal(generatedWithCurrentAnswer.session.activeOperation?.operation, "generate");
+    await recordForgeSessionAttempt(
+      "acct_demo",
+      "ws_demo",
+      answerAndGenerate.id,
+      "operation-answer-and-generate",
+      2,
+      3
+    );
+    await recordForgeSessionProgress(
+      "acct_demo",
+      "ws_demo",
+      answerAndGenerate.id,
+      "operation-answer-and-generate",
+      "compose",
+      "active"
+    );
+    const persistedCheckpoint = await getForgeSession(
+      "acct_demo",
+      "ws_demo",
+      answerAndGenerate.id
+    );
+    assert.equal(persistedCheckpoint.activeOperation?.attempt, 2);
+    assert.equal(persistedCheckpoint.activeOperation?.maxAttempts, 3);
+    assert.equal(persistedCheckpoint.activeOperation?.progress?.compose, "active");
+    await assert.rejects(
+      beginForgeSessionOperation(
+        "acct_demo",
+        "ws_demo",
+        answerAndGenerate.id,
+        "operation-wrong-recovery-kind",
+        "follow-up"
+      ),
+      /generate operation must be resumed first/
+    );
+
+    const recoveredGeneration = await beginForgeSessionOperation(
+      "acct_demo",
+      "ws_demo",
+      answerAndGenerate.id,
+      "operation-after-runtime-restart",
+      "generate"
+    );
+    assert.equal(recoveredGeneration.session.activeOperation?.recoveryCount, 1);
+    assert.equal(recoveredGeneration.session.activeOperation?.attempt, 0);
+    assert.deepEqual(recoveredGeneration.session.activeOperation?.progress, {});
+    assert.equal(
+      recoveredGeneration.session.lastOperation?.operationId,
+      "operation-answer-and-generate"
+    );
+    assert.equal(recoveredGeneration.session.lastOperation?.progress?.compose, "active");
+    assert.deepEqual(recoveredGeneration.input.answers, [...priorAnswers, finalAnswer]);
 
     const begun = await beginForgeSessionOperation(
       "acct_demo",
@@ -238,6 +376,7 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
     assert.equal(failed.status, "failed");
     assert.equal(failed.failure?.operationId, "operation-one");
     assert.equal(failed.activeOperation, undefined);
+    assert.equal(failed.lastOperation?.operationId, "operation-one");
 
     const retry = await beginForgeSessionOperation(
       "acct_demo",
@@ -265,10 +404,10 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
       template,
       "operation-two"
     );
-    assert.equal(
-      (await getForgeSession("acct_demo", "ws_demo", authoritative.id)).status,
-      "complete"
-    );
+    const completed = await getForgeSession("acct_demo", "ws_demo", authoritative.id);
+    assert.equal(completed.status, "complete");
+    assert.equal(completed.lastOperation?.operationId, "operation-two");
+    assert.equal(completed.lastOperation?.progress?.save, "complete");
 
     const legacySingle = await createForgeSession(
       "acct_demo",
@@ -391,6 +530,22 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
     assertPrivateNoStore(createResponse);
     const apiSession = await createResponse.json() as { id: string; title: string };
 
+    const viewStateResponse = await fetch(
+      `${baseUrl}/api/workspaces/ws_demo/forge/sessions/${apiSession.id}/view-state`,
+      {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ followUpDrafts: [], markdownView: "code" })
+      }
+    );
+    assert.equal(viewStateResponse.status, 200);
+    assertPrivateNoStore(viewStateResponse);
+    assert.equal(
+      (await viewStateResponse.json() as { viewState: { markdownView: string } })
+        .viewState.markdownView,
+      "code"
+    );
+
     const missingAiResponse = await fetch(
       `${baseUrl}/api/workspaces/ws_demo/forge/sessions/${apiSession.id}/follow-up`,
       {
@@ -432,7 +587,12 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
     );
     assert.equal(detailResponse.status, 200);
     assertPrivateNoStore(detailResponse);
-    assert.equal((await detailResponse.json() as { title: string }).title, apiSession.title);
+    const apiDetail = await detailResponse.json() as {
+      title: string;
+      viewState: { markdownView: string };
+    };
+    assert.equal(apiDetail.title, apiSession.title);
+    assert.equal(apiDetail.viewState.markdownView, "code");
 
     const deleteResponse = await fetch(
       `${baseUrl}/api/workspaces/ws_demo/forge/sessions/${apiSession.id}`,

@@ -131,6 +131,22 @@ function normalizeState(state: AppState): AppState {
       delete session.template;
       session.status = "interviewing";
     }
+    session.viewState ??= {
+      followUpDrafts: [],
+      markdownView: "preview"
+    };
+    session.viewState.followUpDrafts ??= [];
+    session.viewState.markdownView = session.viewState.markdownView === "code"
+      ? "code"
+      : "preview";
+    if (session.activeOperation) {
+      session.activeOperation.lastActivityAt ??= session.activeOperation.startedAt;
+      session.activeOperation.recoveryCount ??= 0;
+    }
+    if (session.lastOperation) {
+      session.lastOperation.lastActivityAt ??= session.lastOperation.startedAt;
+      session.lastOperation.recoveryCount ??= 0;
+    }
   }
 
   return state;
@@ -147,6 +163,7 @@ function needsStateMigration(state: AppState): boolean {
     !Array.isArray(state.workspaceAiConfigurations) ||
     !Array.isArray(state.forgeSessions) ||
     hasLegacyForgeResponses(state) ||
+    hasLegacyForgeSessionPersistence(state) ||
     hasLegacyWorkspacePaths(state);
 }
 
@@ -154,5 +171,19 @@ function hasLegacyForgeResponses(state: AppState): boolean {
   return (state.forgeSessions ?? []).some((session) =>
     (session.followUp && session.followUp.mode !== "llm") ||
     (session.template && session.template.mode !== "llm")
+  );
+}
+
+function hasLegacyForgeSessionPersistence(state: AppState): boolean {
+  return (state.forgeSessions ?? []).some((session) =>
+    !session.viewState ||
+    (session.activeOperation && (
+      !session.activeOperation.lastActivityAt ||
+      session.activeOperation.recoveryCount === undefined
+    )) ||
+    (session.lastOperation && (
+      !session.lastOperation.lastActivityAt ||
+      session.lastOperation.recoveryCount === undefined
+    ))
   );
 }

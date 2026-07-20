@@ -3,7 +3,9 @@ import type {
   ForgeAiOperationFailure,
   ForgeGenerationProgressStep,
   ForgeGenerationProgressStatus,
+  ForgeSessionFollowUpDraft,
   ForgeSessionOperation,
+  ForgeSessionViewState,
   HarnessFollowUpRequest,
   HarnessInterviewAnswer
 } from "../../shared/types.js";
@@ -17,7 +19,9 @@ import {
   recordForgeSessionAttempt,
   recordForgeSessionFailure,
   recordForgeSessionFollowUp,
-  recordForgeSessionTemplate
+  recordForgeSessionProgress,
+  recordForgeSessionTemplate,
+  updateForgeSessionViewState
 } from "../../state/index.js";
 import { requireWorkspaceAccess } from "../auth.js";
 import {
@@ -37,6 +41,10 @@ import { sendError, setPrivateNoStore } from "../utils/http.js";
 
 const MAX_REQUIREMENT_CHARS = 6_000;
 const MAX_ANSWER_CHARS = 2_000;
+const MAX_VIEW_PATH_CHARS = 1_024;
+const MAX_VIEW_PATHS = 500;
+const MAX_VIEW_DRAFTS = 50;
+const MAX_DRAFT_OPTIONS = 100;
 
 export function registerForgeRoutes(app: Express): void {
   app.get("/api/workspaces/:workspaceId/forge/sessions", async (req, res) => {
@@ -105,6 +113,26 @@ export function registerForgeRoutes(app: Express): void {
       sendForgeError(res, error);
     }
   });
+
+  app.patch(
+    "/api/workspaces/:workspaceId/forge/sessions/:sessionId/view-state",
+    async (req, res) => {
+      const context = await requireWorkspaceAccess(req, res);
+      if (!context) return;
+      setPrivateNoStore(res);
+
+      try {
+        res.json(await updateForgeSessionViewState(
+          context.account.id,
+          context.workspace.id,
+          readRequiredString(req.params.sessionId, "sessionId", 128),
+          readForgeSessionViewState(req.body)
+        ));
+      } catch (error) {
+        sendForgeError(res, error);
+      }
+    }
+  );
 
   registerForgeOperationRoute(app, "follow-up");
   registerForgeOperationRoute(app, "generate");
@@ -199,7 +227,6 @@ async function executeForgeOperation({
 }): Promise<void> {
   let input: HarnessFollowUpRequest | undefined;
   try {
-    publishGenerationProgress(stream, operation, "context", "active");
     const started = await beginForgeSessionOperation(
       accountId,
       workspaceId,
@@ -215,8 +242,44 @@ async function executeForgeOperation({
       operation,
       session: started.session
     });
-    publishGenerationProgress(stream, operation, "context", "complete");
-    publishGenerationProgress(stream, operation, "assets", "active");
+    if ((started.session.activeOperation?.recoveryCount ?? 0) > 0) {
+      console.info(JSON.stringify({
+        timestamp: new Date().toISOString(),
+        event: "forge.ai.session.recovered",
+        operationId: stream.operationId,
+        operation,
+        recoveryCount: started.session.activeOperation?.recoveryCount,
+        workspaceId,
+        sessionId
+      }));
+    }
+    await publishGenerationProgress(
+      stream,
+      operation,
+      "context",
+      "active",
+      accountId,
+      workspaceId,
+      sessionId
+    );
+    await publishGenerationProgress(
+      stream,
+      operation,
+      "context",
+      "complete",
+      accountId,
+      workspaceId,
+      sessionId
+    );
+    await publishGenerationProgress(
+      stream,
+      operation,
+      "assets",
+      "active",
+      accountId,
+      workspaceId,
+      sessionId
+    );
     const configuration = await getWorkspaceAiRuntimeConfiguration(accountId, workspaceId);
     const observed = createObservedForgeAiOperation(operation, {
       operationId: stream.operationId,
@@ -238,7 +301,8 @@ async function executeForgeOperation({
           workspaceId,
           sessionId,
           stream.operationId,
-          attempt
+          attempt,
+          maxAttempts
         );
       } catch (error) {
         logForgeStateWriteError(
@@ -260,7 +324,15 @@ async function executeForgeOperation({
 
     const catalog = await loadOrCreateWorkspaceAssetCatalog(workspace);
     const assets = workspaceAssetSummaries(catalog.assets);
-    publishGenerationProgress(stream, operation, "assets", "complete");
+    await publishGenerationProgress(
+      stream,
+      operation,
+      "assets",
+      "complete",
+      accountId,
+      workspaceId,
+      sessionId
+    );
     if (operation === "follow-up") {
       const followUp = await createHarnessFollowUp(input, assets, configuration, observed);
       await recordForgeSessionFollowUp(
@@ -280,10 +352,34 @@ async function executeForgeOperation({
       return;
     }
 
-    publishGenerationProgress(stream, operation, "compose", "active");
+    await publishGenerationProgress(
+      stream,
+      operation,
+      "compose",
+      "active",
+      accountId,
+      workspaceId,
+      sessionId
+    );
     const template = await createHarnessTemplate(input, assets, configuration, observed);
-    publishGenerationProgress(stream, operation, "compose", "complete");
-    publishGenerationProgress(stream, operation, "save", "active");
+    await publishGenerationProgress(
+      stream,
+      operation,
+      "compose",
+      "complete",
+      accountId,
+      workspaceId,
+      sessionId
+    );
+    await publishGenerationProgress(
+      stream,
+      operation,
+      "save",
+      "active",
+      accountId,
+      workspaceId,
+      sessionId
+    );
     await recordForgeSessionTemplate(
       accountId,
       workspaceId,
@@ -291,7 +387,15 @@ async function executeForgeOperation({
       template,
       stream.operationId
     );
-    publishGenerationProgress(stream, operation, "save", "complete");
+    await publishGenerationProgress(
+      stream,
+      operation,
+      "save",
+      "complete",
+      accountId,
+      workspaceId,
+      sessionId
+    );
     stream.publish({
       type: "complete",
       operationId: stream.operationId,
@@ -336,12 +440,15 @@ async function executeForgeOperation({
   }
 }
 
-function publishGenerationProgress(
+async function publishGenerationProgress(
   stream: ForgeOperationStream,
   operation: ForgeSessionOperation["operation"],
   step: ForgeGenerationProgressStep,
-  status: ForgeGenerationProgressStatus
-): void {
+  status: ForgeGenerationProgressStatus,
+  accountId: string,
+  workspaceId: string,
+  sessionId: string
+): Promise<void> {
   if (operation !== "generate") return;
   stream.publish({
     type: "progress",
@@ -350,6 +457,24 @@ function publishGenerationProgress(
     step,
     status
   });
+  try {
+    await recordForgeSessionProgress(
+      accountId,
+      workspaceId,
+      sessionId,
+      stream.operationId,
+      step,
+      status
+    );
+  } catch (error) {
+    logForgeStateWriteError(
+      error,
+      stream.operationId,
+      operation,
+      workspaceId,
+      sessionId
+    );
+  }
 }
 
 function streamForgeOperation(res: Response, stream: ForgeOperationStream): void {
@@ -376,6 +501,58 @@ function readOptionalAnswers(value: unknown): HarnessInterviewAnswer[] | undefin
     return value.answers.map(readAnswer);
   }
   return value.answer === undefined ? undefined : [readAnswer(value.answer)];
+}
+
+function readForgeSessionViewState(value: unknown): ForgeSessionViewState {
+  if (!isRecord(value)) throw new Error("Expected a JSON object request body");
+  if (!Array.isArray(value.followUpDrafts)) {
+    throw new Error("followUpDrafts must be an array");
+  }
+  if (value.followUpDrafts.length > MAX_VIEW_DRAFTS) {
+    throw new Error("Too many Forge follow-up drafts");
+  }
+  const markdownView = value.markdownView;
+  if (markdownView !== "preview" && markdownView !== "code") {
+    throw new Error("markdownView must be preview or code");
+  }
+  return {
+    followUpDrafts: value.followUpDrafts.map(readForgeSessionDraft),
+    markdownView,
+    ...(value.selectedPath === undefined
+      ? {}
+      : { selectedPath: readRequiredString(value.selectedPath, "selectedPath", MAX_VIEW_PATH_CHARS) }),
+    ...(value.collapsedTreePaths === undefined
+      ? {}
+      : { collapsedTreePaths: readViewPaths(value.collapsedTreePaths) })
+  };
+}
+
+function readForgeSessionDraft(value: unknown): ForgeSessionFollowUpDraft {
+  if (!isRecord(value)) throw new Error("Invalid Forge follow-up draft");
+  if (!Array.isArray(value.selectedOptions)) {
+    throw new Error("selectedOptions must be an array");
+  }
+  if (value.selectedOptions.length > MAX_DRAFT_OPTIONS) {
+    throw new Error("Too many selected Forge options");
+  }
+  if (typeof value.customAnswer !== "string" || value.customAnswer.length > MAX_ANSWER_CHARS) {
+    throw new Error("customAnswer is too long");
+  }
+  return {
+    question: readRequiredString(value.question, "question", MAX_ANSWER_CHARS),
+    selectedOptions: value.selectedOptions.map((option) => (
+      readRequiredString(option, "selected option", MAX_ANSWER_CHARS)
+    )),
+    customAnswer: value.customAnswer
+  };
+}
+
+function readViewPaths(value: unknown): string[] {
+  if (!Array.isArray(value)) throw new Error("collapsedTreePaths must be an array");
+  if (value.length > MAX_VIEW_PATHS) throw new Error("Too many collapsed Forge paths");
+  return Array.from(new Set(value.map((item) => (
+    readRequiredString(item, "collapsed path", MAX_VIEW_PATH_CHARS)
+  ))));
 }
 
 function forgeOperationFailure(
