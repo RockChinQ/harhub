@@ -55,6 +55,10 @@ import {
   rotateProjectSyncToken
 } from "../lib/api";
 import { cn } from "../lib/utils";
+import {
+  buildProjectSkillLineDiff,
+  type ProjectSkillLineDiffRow
+} from "./project-skill-diff";
 
 export function ProjectsView({
   token,
@@ -616,19 +620,27 @@ function BindingRow({
   const reviewable = binding.kind === "skill" && Boolean(binding.fork) &&
     (binding.status === "added" || binding.status === "modified");
   return (
-    <div className="grid gap-2 px-5 py-4 sm:grid-cols-[110px_minmax(0,1fr)_110px_auto] sm:items-center">
+    <div className="grid gap-2 px-5 py-4 sm:grid-cols-[110px_minmax(0,1fr)_120px_110px] sm:items-center">
       <Badge variant="outline" className="w-fit uppercase">{binding.kind}</Badge>
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{binding.name}</p>
         <p className="mt-1 truncate font-mono text-xs text-muted-foreground">{binding.path}</p>
       </div>
-      <BindingStatusBadge status={binding.status} />
       {reviewable ? (
-        <Button type="button" variant="outline" size="sm" onClick={onReview}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={onReview}
+        >
           <FileDiff className="h-4 w-4" aria-hidden="true" />
           Review
         </Button>
       ) : <span />}
+      <div className="sm:justify-self-end">
+        <BindingStatusBadge status={binding.status} />
+      </div>
     </div>
   );
 }
@@ -719,10 +731,10 @@ function SkillDiffView({
                   Binary content cannot be previewed. The complete file will still be published.
                 </p>
               ) : (
-                <div className="grid min-h-[320px] md:grid-cols-2">
-                  <DiffContent label="Library" content={diff.selectedFile.baseContent} />
-                  <DiffContent label="Project fork" content={diff.selectedFile.forkContent} right />
-                </div>
+                <SideBySideLineDiff
+                  beforeContent={diff.selectedFile.baseContent}
+                  afterContent={diff.selectedFile.forkContent}
+                />
               )}
               {diff.selectedFile.truncated ? (
                 <p className="border-t bg-amber-50 px-4 py-2 text-xs text-amber-900">
@@ -739,24 +751,145 @@ function SkillDiffView({
   );
 }
 
-function DiffContent({
+function SideBySideLineDiff({
+  beforeContent,
+  afterContent
+}: {
+  beforeContent?: string;
+  afterContent?: string;
+}) {
+  const rows = useMemo(
+    () => buildProjectSkillLineDiff(beforeContent, afterContent),
+    [afterContent, beforeContent]
+  );
+  const counts = rows.reduce(
+    (result, row) => ({ ...result, [row.kind]: result[row.kind] + 1 }),
+    { unchanged: 0, modified: 0, added: 0, removed: 0 }
+  );
+
+  return (
+    <div className="min-h-[320px] min-w-0">
+      <div className="flex flex-wrap items-center gap-2 border-b bg-muted/10 px-4 py-2 text-[11px]">
+        {counts.modified ? <DiffCount label="modified" count={counts.modified} tone="amber" /> : null}
+        {counts.added ? <DiffCount label="added" count={counts.added} tone="green" /> : null}
+        {counts.removed ? <DiffCount label="removed" count={counts.removed} tone="red" /> : null}
+      </div>
+      <div className="max-h-[52vh] min-h-[280px] overflow-auto bg-background font-mono text-xs leading-5">
+        <div className="min-w-[800px]">
+          <div className="sticky top-0 z-10 grid grid-cols-2 border-b bg-background font-sans text-xs font-medium text-muted-foreground shadow-sm">
+            <div className="border-r px-4 py-2">Library</div>
+            <div className="px-4 py-2">Project fork</div>
+          </div>
+          {rows.map((row, index) => (
+            <div
+              key={`${row.before?.line ?? "x"}:${row.after?.line ?? "x"}:${index}`}
+              className="grid min-h-6 grid-cols-2 border-b border-border/50 last:border-b-0"
+            >
+              <DiffLineCell row={row} side="before" />
+              <DiffLineCell row={row} side="after" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DiffCount({
   label,
-  content,
-  right = false
+  count,
+  tone
 }: {
   label: string;
-  content?: string;
-  right?: boolean;
+  count: number;
+  tone: "amber" | "green" | "red";
 }) {
   return (
-    <div className={cn("min-w-0", right && "border-t md:border-l md:border-t-0")}>
-      <p className="border-b bg-muted/20 px-4 py-2 text-xs font-medium text-muted-foreground">
-        {label}
-      </p>
-      <pre className="max-h-[48vh] min-h-[280px] overflow-auto whitespace-pre-wrap break-words p-4 text-xs leading-5 text-foreground">
-        {content ?? "(file not present)"}
-      </pre>
+    <span className={cn(
+      "rounded border px-1.5 py-0.5",
+      tone === "amber" && "border-amber-200 bg-amber-50 text-amber-800",
+      tone === "green" && "border-emerald-200 bg-emerald-50 text-emerald-800",
+      tone === "red" && "border-red-200 bg-red-50 text-red-800"
+    )}>
+      {count} {label}
+    </span>
+  );
+}
+
+function DiffLineCell({
+  row,
+  side
+}: {
+  row: ProjectSkillLineDiffRow;
+  side: "before" | "after";
+}) {
+  const line = side === "before" ? row.before : row.after;
+  const other = side === "before" ? row.after : row.before;
+  const removed = side === "before" && (row.kind === "removed" || row.kind === "modified");
+  const added = side === "after" && (row.kind === "added" || row.kind === "modified");
+  const marker = removed ? "−" : added ? "+" : "";
+  return (
+    <div className={cn(
+      "flex min-w-0 border-r last:border-r-0",
+      removed && "bg-red-50/80",
+      added && "bg-emerald-50/80",
+      !line && row.kind !== "unchanged" && "bg-muted/20"
+    )}>
+      <span className="w-10 shrink-0 select-none border-r bg-muted/10 px-2 text-right text-muted-foreground/70">
+        {line?.line ?? ""}
+      </span>
+      <span className={cn(
+        "w-5 shrink-0 select-none text-center font-semibold",
+        removed && "text-red-700",
+        added && "text-emerald-700"
+      )}>
+        {marker}
+      </span>
+      <code className="min-w-0 whitespace-pre px-1.5 text-foreground">
+        {line ? (
+          row.kind === "modified" && other
+            ? <ChangedLineText text={line.text} other={other.text} added={side === "after"} />
+            : line.text || " "
+        ) : " "}
+      </code>
     </div>
+  );
+}
+
+function ChangedLineText({
+  text,
+  other,
+  added
+}: {
+  text: string;
+  other: string;
+  added: boolean;
+}) {
+  let prefixLength = 0;
+  while (
+    prefixLength < text.length &&
+    prefixLength < other.length &&
+    text[prefixLength] === other[prefixLength]
+  ) {
+    prefixLength += 1;
+  }
+  let suffixLength = 0;
+  while (
+    suffixLength < text.length - prefixLength &&
+    suffixLength < other.length - prefixLength &&
+    text[text.length - suffixLength - 1] === other[other.length - suffixLength - 1]
+  ) {
+    suffixLength += 1;
+  }
+  const changedEnd = text.length - suffixLength;
+  return (
+    <>
+      {text.slice(0, prefixLength)}
+      <span className={added ? "bg-emerald-200 text-emerald-950" : "bg-red-200 text-red-950"}>
+        {text.slice(prefixLength, changedEnd) || " "}
+      </span>
+      {text.slice(changedEnd)}
+    </>
   );
 }
 
