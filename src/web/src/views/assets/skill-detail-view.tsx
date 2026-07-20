@@ -48,7 +48,7 @@ export function SkillDetailView({
           Back
         </Button>
       </div>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-auto pb-2">
+      <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(420px,1fr)] gap-4 overflow-auto pb-2">
         <SkillOverviewPanel
           workspace={workspace}
           token={token}
