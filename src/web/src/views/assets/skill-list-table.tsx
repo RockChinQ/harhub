@@ -105,9 +105,12 @@ export function SkillListTable({
                   </div>
                 </div>
                 <div className="flex min-w-0 flex-col items-end gap-2 md:items-start">
-                  <Badge variant="secondary" className={healthBadgeClass(asset.health)}>
-                    {asset.health}
-                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant="outline">v{asset.version ?? 1}</Badge>
+                    <Badge variant="secondary" className={healthBadgeClass(asset.health)}>
+                      {asset.health}
+                    </Badge>
+                  </div>
                   <Button
                     type="button"
                     variant="outline"

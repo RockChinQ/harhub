@@ -11,6 +11,7 @@ export function assetListPayload(
   skills: SkillRecord[] = []
 ) {
   const issues = assets.flatMap((asset) => asset.validationIssues ?? []);
+  const summaries = assets.map(({ versionHistory: _versionHistory, ...asset }) => asset);
 
   return {
     workspace,
@@ -18,7 +19,7 @@ export function assetListPayload(
     generatedAt,
     storage: getStorageStatus(),
     issues,
-    assets,
+    assets: summaries,
     skills
   };
 }

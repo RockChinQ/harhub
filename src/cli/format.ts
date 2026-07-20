@@ -43,9 +43,10 @@ export function printAssetTable(assets: AssetRecord[]): void {
   const rows = assets.map((asset) => ({
     asset: asset.displayName,
     kind: asset.kind,
+    version: `v${asset.version ?? 1}`,
     health: asset.health
   }));
-  const headers = ["asset", "kind", "health"];
+  const headers = ["asset", "kind", "version", "health"];
   const widths = tableWidths(headers, rows);
 
   console.log(headers.map((header, index) => pad(header, widths[index])).join("  "));
@@ -54,7 +55,8 @@ export function printAssetTable(assets: AssetRecord[]): void {
     console.log([
       pad(row.asset, widths[0]),
       pad(row.kind, widths[1]),
-      pad(row.health, widths[2])
+      pad(row.version, widths[2]),
+      pad(row.health, widths[3])
     ].join("  "));
   }
 }

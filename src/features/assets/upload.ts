@@ -4,12 +4,17 @@ import type {
   ValidationIssue
 } from "../../shared/types.js";
 import type { DiscoveredSkill } from "../skills/archive.js";
+import { recordAssetVersion } from "./versioning.js";
 
 export function createImportedSkillAsset(input: {
   workspaceId: string;
   skill: DiscoveredSkill;
   storage: StoredObject;
   rejectInvalid?: boolean;
+  previous?: AssetRecord;
+  versionSource?: "upload" | "project-sync";
+  createdByAccountId?: string;
+  versionSummary?: string;
 }): AssetRecord {
   if (input.skill.validation.errors > 0 && input.rejectInvalid !== false) {
     throw new Error(importValidationError(input.skill.validationIssues));
@@ -21,7 +26,7 @@ export function createImportedSkillAsset(input: {
     assetId
   }));
 
-  return {
+  const asset: AssetRecord = {
     id: assetId,
     kind: "skill",
     name: input.skill.name,
@@ -33,6 +38,16 @@ export function createImportedSkillAsset(input: {
     validation: input.skill.validation,
     validationIssues
   };
+
+  return recordAssetVersion({
+    asset,
+    previous: input.previous,
+    source: input.versionSource ?? "upload",
+    ...(input.createdByAccountId
+      ? { createdByAccountId: input.createdByAccountId }
+      : {}),
+    ...(input.versionSummary ? { summary: input.versionSummary } : {})
+  });
 }
 
 function importValidationError(issues: ValidationIssue[]): string {

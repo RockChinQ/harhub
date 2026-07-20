@@ -8,6 +8,8 @@ export type AssetKind = "skill";
 
 export type AssetHealth = "valid" | "warning" | "error" | "unknown";
 
+export type AssetVersionSource = "upload" | "project-sync" | "migration" | "scan";
+
 export type StorageProvider = "s3";
 export const SKILL_FILES_CHECKSUM_ALGORITHM = "skill-files-v2" as const;
 
@@ -176,6 +178,28 @@ export interface AssetRecord {
     warnings: number;
   };
   validationIssues?: ValidationIssue[];
+  /** Monotonically increasing Harhub revision for this workspace asset. */
+  version?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  /** Full audit history is returned by detail APIs and omitted from list payloads. */
+  versionHistory?: AssetVersionRecord[];
+}
+
+export interface AssetVersionRecord {
+  version: number;
+  createdAt: string;
+  source: AssetVersionSource;
+  createdByAccountId?: string;
+  summary: string;
+  changes: string[];
+  checksum?: string;
+  fileCount?: number;
+  size?: number;
+  displayName: string;
+  description: string;
+  health: AssetHealth;
+  validation: AssetRecord["validation"];
 }
 
 export interface AssetShareRecord {
@@ -195,6 +219,8 @@ export interface PublicSharedAsset {
   description: string;
   health: AssetHealth;
   validation: AssetRecord["validation"];
+  version?: number;
+  updatedAt?: string;
   fileCount: number;
   size: number;
 }
@@ -222,7 +248,7 @@ export interface AgentSkillsDiscoveryIndex {
 }
 
 export interface AssetCatalog {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   generatedAt: string;
   workspaceId?: string;
   assets: AssetRecord[];

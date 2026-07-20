@@ -140,6 +140,9 @@ export function PublicShareView({ shareToken }: { shareToken: string }) {
               <Badge variant="secondary" className={healthBadgeClass(share.asset.health)}>
                 {share.asset.health}
               </Badge>
+              {share.asset.version ? (
+                <Badge variant="outline">v{share.asset.version}</Badge>
+              ) : null}
             </div>
             <CardTitle className="break-words pt-2 text-2xl leading-tight">
               {share.asset.displayName}

@@ -252,6 +252,9 @@ test("stores repository Skills as Project forks until explicitly published", {
       undefined
     );
     assert.equal(published.asset.storage?.checksum, digest);
+    assert.equal(published.asset.version, 2);
+    assert.equal(published.asset.versionHistory?.length, 2);
+    assert.equal(published.asset.versionHistory?.[1]?.source, "project-sync");
     if (published.asset.storage) cleanupStorage.push(published.asset.storage);
     const stored = await loadStoredSkill(published.asset.storage!);
     assert.equal(stored.skill.checksum, digest);
@@ -273,6 +276,8 @@ test("stores repository Skills as Project forks until explicitly published", {
       "synced"
     );
     assert.equal(addedPublished.asset.storage?.checksum, newSkillDigest);
+    assert.equal(addedPublished.asset.version, 1);
+    assert.equal(addedPublished.asset.versionHistory?.[0]?.source, "project-sync");
     if (addedPublished.asset.storage) cleanupStorage.push(addedPublished.asset.storage);
 
     const state = await loadState();

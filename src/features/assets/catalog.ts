@@ -8,6 +8,7 @@ import type {
   SkillRecord,
   ValidationIssue
 } from "../../shared/types.js";
+import { normalizeAssetVersioning, recordAssetVersion } from "./versioning.js";
 
 export const DEFAULT_ASSET_CATALOG_PATH = ".harhub/assets.json";
 
@@ -20,7 +21,7 @@ export function createAssetCatalog(
     .sort((a, b) => a.id.localeCompare(b.id));
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
     assets,
     skills: skills.sort((a, b) => a.id.localeCompare(b.id))
@@ -52,23 +53,27 @@ export function skillToAsset(
   const errors = skillIssues.filter((issue) => issue.severity === "error").length;
   const warnings = skillIssues.filter((issue) => issue.severity === "warning").length;
 
-  return {
-    id: skill.id.replace(/^skill:/, "asset:skill:"),
-    kind: "skill",
-    name: skill.name,
-    displayName: skill.displayName,
-    slug: skill.slug,
-    description: skill.description,
-    health: healthFromIssueCounts(errors, warnings),
-    validation: {
-      errors,
-      warnings
+  return recordAssetVersion({
+    asset: {
+      id: skill.id.replace(/^skill:/, "asset:skill:"),
+      kind: "skill",
+      name: skill.name,
+      displayName: skill.displayName,
+      slug: skill.slug,
+      description: skill.description,
+      health: healthFromIssueCounts(errors, warnings),
+      validation: {
+        errors,
+        warnings
+      },
+      validationIssues: skillIssues.map((issue) => ({
+        ...issue,
+        assetId: skill.id.replace(/^skill:/, "asset:skill:")
+      }))
     },
-    validationIssues: skillIssues.map((issue) => ({
-      ...issue,
-      assetId: skill.id.replace(/^skill:/, "asset:skill:")
-    })),
-  };
+    source: "scan",
+    summary: "Indexed the Skill as an asset"
+  });
 }
 
 export function filterAssets(
@@ -128,10 +133,11 @@ export function assetCatalogToSkillCatalog(catalog: AssetCatalog): SkillCatalog 
   };
 }
 
-function normalizeAssetCatalog(catalog: AssetCatalog | SkillCatalog): AssetCatalog {
+export function normalizeAssetCatalog(catalog: AssetCatalog | SkillCatalog): AssetCatalog {
   if ("assets" in catalog && Array.isArray(catalog.assets)) {
     return {
       ...catalog,
+      schemaVersion: 2,
       assets: catalog.assets.map(normalizeAssetRecord),
       skills: (catalog.skills ?? []).map(normalizeSkillRecord)
     };
@@ -151,7 +157,7 @@ function healthFromIssueCounts(errors: number, warnings: number): AssetHealth {
 }
 
 function normalizeAssetRecord(asset: AssetRecord): AssetRecord {
-  return {
+  return normalizeAssetVersioning({
     id: asset.id,
     kind: "skill",
     name: asset.name,
@@ -161,8 +167,12 @@ function normalizeAssetRecord(asset: AssetRecord): AssetRecord {
     health: asset.health,
     ...(asset.storage ? { storage: asset.storage } : {}),
     validation: asset.validation,
-    ...(asset.validationIssues ? { validationIssues: asset.validationIssues } : {})
-  };
+    ...(asset.validationIssues ? { validationIssues: asset.validationIssues } : {}),
+    ...(asset.version ? { version: asset.version } : {}),
+    ...(asset.createdAt ? { createdAt: asset.createdAt } : {}),
+    ...(asset.updatedAt ? { updatedAt: asset.updatedAt } : {}),
+    ...(asset.versionHistory ? { versionHistory: asset.versionHistory } : {})
+  });
 }
 
 function normalizeSkillRecord(skill: SkillRecord): SkillRecord {

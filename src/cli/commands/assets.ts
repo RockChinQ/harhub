@@ -190,7 +190,7 @@ export async function runAssetsUpload(parsed: ParsedArgs): Promise<number> {
   }
 
   for (const [index, asset] of (data.uploaded as Array<Record<string, any>>).entries()) {
-    console.log(`Uploaded ${asset.displayName ?? asset.name}`);
+    console.log(`Uploaded ${asset.displayName ?? asset.name} (v${asset.version ?? 1})`);
     console.log(`Object: ${asset.storage?.key ?? "-"}`);
     const share = data.shares?.[index];
     if (share?.shareUrl) console.log(`Share: ${share.shareUrl}`);

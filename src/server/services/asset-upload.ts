@@ -71,20 +71,27 @@ export async function handleAssetUpload(
     const replacedStorage: StoredObject[] = [];
 
     for (const skill of selected) {
-      const storage = await uploadSkillFiles({
-        workspaceId: context.workspace.id,
-        skillName: skill.name,
-        files: skill.files,
-        checksum: skill.checksum
-      });
-      newStorage.push(storage);
+      const assetId = `asset:skill:${context.workspace.id}:${skill.name}`;
+      const previous = originalCatalog.assets.find((item) => item.id === assetId);
+      const hasSamePackage =
+        previous?.storage?.checksum === skill.checksum;
+      const storage = hasSamePackage && previous.storage
+        ? previous.storage
+        : await uploadSkillFiles({
+            workspaceId: context.workspace.id,
+            skillName: skill.name,
+            files: skill.files,
+            checksum: skill.checksum
+          });
+      if (!hasSamePackage) newStorage.push(storage);
       const asset = createImportedSkillAsset({
         workspaceId: context.workspace.id,
         skill,
-        storage
+        storage,
+        previous,
+        createdByAccountId: context.account.id
       });
-      const previous = originalCatalog.assets.find((item) => item.id === asset.id);
-      if (previous?.storage) replacedStorage.push(previous.storage);
+      if (!hasSamePackage && previous?.storage) replacedStorage.push(previous.storage);
       storedAssets.push(asset);
       catalog = upsertAsset(catalog, asset);
     }

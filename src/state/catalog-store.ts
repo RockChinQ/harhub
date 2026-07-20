@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import {
+  normalizeAssetCatalog,
   readAssetCatalog,
   writeAssetCatalog
 } from "../features/assets/index.js";
@@ -16,7 +17,8 @@ export async function readWorkspaceAssetCatalog(
   workspaceId: string
 ): Promise<AssetCatalog | undefined> {
   if (isDatabaseStateEnabled()) {
-    return readDatabaseAssetCatalog(workspaceId);
+    const catalog = await readDatabaseAssetCatalog(workspaceId);
+    return catalog ? normalizeAssetCatalog(catalog) : undefined;
   }
 
   const catalogPath = getWorkspaceAssetCatalogPath(workspaceId);

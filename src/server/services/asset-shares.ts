@@ -137,6 +137,8 @@ function buildAssetShareResponse(
       description: asset.description,
       health: asset.health,
       validation: asset.validation,
+      ...(asset.version ? { version: asset.version } : {}),
+      ...(asset.updatedAt ? { updatedAt: asset.updatedAt } : {}),
       fileCount: asset.storage?.fileCount ?? 0,
       size: asset.storage?.size ?? 0
     }

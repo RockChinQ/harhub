@@ -1,4 +1,5 @@
 import { ArrowLeft } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import type {
   AssetRecord,
@@ -6,6 +7,7 @@ import type {
   WorkspaceRecord
 } from "../../../../shared/types";
 import { Button } from "../../components/ui/button";
+import { getWorkspaceAsset } from "../../lib/api";
 import { SkillFileExplorer } from "./skill-file-explorer";
 import { SkillOverviewPanel } from "./skill-metadata-panel";
 
@@ -26,6 +28,25 @@ export function SkillDetailView({
   onChanged: () => Promise<void>;
   onDeleted: () => void;
 }) {
+  const [detailAsset, setDetailAsset] = useState(asset);
+
+  useEffect(() => {
+    setDetailAsset(asset);
+    if (!asset) return;
+
+    let active = true;
+    getWorkspaceAsset(token, workspace.id, asset.id)
+      .then((nextAsset) => {
+        if (active) setDetailAsset(nextAsset);
+      })
+      .catch(() => {
+        // Keep the list summary usable if the detail refresh fails transiently.
+      });
+    return () => {
+      active = false;
+    };
+  }, [asset, token, workspace.id]);
+
   if (!asset) {
     return (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
@@ -52,7 +73,7 @@ export function SkillDetailView({
         <SkillOverviewPanel
           workspace={workspace}
           token={token}
-          asset={asset}
+          asset={detailAsset ?? asset}
           issues={issues}
           onChanged={onChanged}
           onDeleted={onDeleted}

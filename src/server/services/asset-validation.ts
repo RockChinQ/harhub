@@ -114,6 +114,7 @@ async function validateStoredAsset(
     workspaceId: workspace.id,
     skill,
     storage: asset.storage,
+    previous: asset,
     rejectInvalid: false
   });
 

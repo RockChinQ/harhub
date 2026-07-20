@@ -2,6 +2,7 @@ import {
   Check,
   Copy,
   ExternalLink,
+  History,
   Link2Off,
   Loader2,
   Share2,
@@ -13,6 +14,7 @@ import { useEffect, useState } from "react";
 import type {
   AssetRecord,
   AssetShareResponse,
+  AssetVersionRecord,
   ValidationIssue,
   WorkspaceRecord
 } from "../../../../shared/types";
@@ -78,6 +80,7 @@ export function SkillOverviewPanel({
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareMessage, setShareMessage] = useState<string | undefined>();
   const [validationDialogOpen, setValidationDialogOpen] = useState(false);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -88,6 +91,7 @@ export function SkillOverviewPanel({
     setShareDialogOpen(false);
     setShareMessage(undefined);
     setValidationDialogOpen(false);
+    setHistoryDialogOpen(false);
     if (!asset) return;
 
     let active = true;
@@ -135,6 +139,10 @@ export function SkillOverviewPanel({
   const validationErrors = Math.max(selectedAsset.validation.errors, issueErrorCount);
   const validationWarnings = Math.max(selectedAsset.validation.warnings, issueWarningCount);
   const validationSummary = `${validationErrors} errors · ${validationWarnings} warnings`;
+  const versionHistory = [...(selectedAsset.versionHistory ?? [])].sort(
+    (left, right) => right.version - left.version
+  );
+  const currentVersion = selectedAsset.version ?? versionHistory[0]?.version ?? 1;
 
   async function removeAsset() {
     setIsDeleting(true);
@@ -219,6 +227,7 @@ export function SkillOverviewPanel({
           <Badge variant="secondary" className={healthBadgeClass(selectedAsset.health)}>
             {selectedAsset.health}
           </Badge>
+          <Badge variant="outline">v{currentVersion}</Badge>
         </div>
         <p className="mt-3 line-clamp-4 text-sm leading-6 text-muted-foreground">
           {selectedAsset.description || selectedAsset.name}
@@ -226,15 +235,60 @@ export function SkillOverviewPanel({
         <p className="mt-4 truncate font-mono text-xs text-muted-foreground">
           {selectedAsset.name}
         </p>
+        {selectedAsset.updatedAt ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Updated {formatVersionDate(selectedAsset.updatedAt)}
+          </p>
+        ) : null}
       </div>
 
-      <div className="flex min-w-0 flex-col justify-center gap-2 border-l bg-muted/10 p-4">
+      <div className="flex min-w-0 flex-col justify-center gap-1.5 border-l bg-muted/10 p-3">
+            <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 w-full justify-start px-3 text-left"
+                >
+                  <History className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">Version history</span>
+                    <span className="block truncate text-[11px] font-normal text-muted-foreground">
+                      v{currentVersion} · {versionHistory.length || 1} update record(s)
+                    </span>
+                  </span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-h-[85vh] overflow-hidden sm:max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Version history</DialogTitle>
+                  <DialogDescription>
+                    Content changes create a new Skill version. Re-uploading identical content does not.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+                  {versionHistory.length > 0 ? versionHistory.map((entry) => (
+                    <SkillVersionEntry key={entry.version} entry={entry} />
+                  )) : (
+                    <div className="rounded-md border p-4 text-sm text-muted-foreground">
+                      This Skill is currently at v{currentVersion}. Its detailed history will be
+                      recorded the next time the package changes.
+                    </div>
+                  )}
+                </div>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button type="button" variant="outline">Close</Button>
+                  </DialogClose>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             <Dialog open={validationDialogOpen} onOpenChange={setValidationDialogOpen}>
               <DialogTrigger asChild>
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-12 w-full justify-start px-3 text-left"
+                  className="h-10 w-full justify-start px-3 text-left"
                 >
                   {isValidating ? (
                     <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
@@ -291,7 +345,7 @@ export function SkillOverviewPanel({
                   type="button"
                   variant={share ? "secondary" : "outline"}
                   disabled={isSharing && !share}
-                  className="h-12 w-full justify-start px-3 text-left"
+                  className="h-10 w-full justify-start px-3 text-left"
                 >
                   {isSharing && !share ? (
                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -399,7 +453,7 @@ export function SkillOverviewPanel({
                   type="button"
                   variant="outline"
                   disabled={isDeleting}
-                  className="h-12 w-full justify-start px-3"
+                  className="h-10 w-full justify-start px-3"
                 >
                   {isDeleting ? (
                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -442,6 +496,60 @@ export function SkillOverviewPanel({
       </div>
     </div>
   );
+}
+
+function SkillVersionEntry({ entry }: { entry: AssetVersionRecord }) {
+  return (
+    <div className="rounded-md border p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">v{entry.version}</Badge>
+            <span className="text-sm font-medium">{entry.summary}</span>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {versionSourceLabel(entry.source)} · {formatVersionDate(entry.createdAt)}
+          </p>
+        </div>
+        <div className="text-right text-xs text-muted-foreground">
+          {entry.fileCount !== undefined ? <div>{entry.fileCount} files</div> : null}
+          {entry.size !== undefined ? <div>{formatVersionBytes(entry.size)}</div> : null}
+        </div>
+      </div>
+      {entry.changes.length > 0 ? (
+        <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
+          {entry.changes.map((change) => (
+            <li key={change}>• {change}</li>
+          ))}
+        </ul>
+      ) : null}
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t pt-3 text-xs text-muted-foreground">
+        <span>{entry.validation.errors} errors</span>
+        <span>{entry.validation.warnings} warnings</span>
+        {entry.checksum ? (
+          <span className="font-mono">sha256 {entry.checksum.slice(0, 10)}…</span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function versionSourceLabel(source: AssetVersionRecord["source"]): string {
+  if (source === "project-sync") return "Project sync";
+  if (source === "migration") return "Existing Skill";
+  if (source === "scan") return "Local scan";
+  return "Package upload";
+}
+
+function formatVersionDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Unknown time" : date.toLocaleString();
+}
+
+function formatVersionBytes(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function ShareValue({

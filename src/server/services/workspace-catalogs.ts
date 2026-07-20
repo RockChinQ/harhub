@@ -29,11 +29,13 @@ export async function loadOrCreateWorkspaceAssetCatalog(workspace: WorkspaceReco
 
   const assets = catalog.assets.filter((asset) => Boolean(asset.storage));
   const needsMigration =
+    catalog.schemaVersion !== 2 ||
     catalog.workspaceId !== workspace.id ||
     assets.length !== catalog.assets.length ||
     catalog.skills.length > 0;
   const cloudCatalog: AssetCatalog = {
     ...catalog,
+    schemaVersion: 2,
     workspaceId: workspace.id,
     assets,
     skills: []

@@ -243,13 +243,26 @@ export async function publishProjectSkillFork(input: {
   const replacedAssets = originalCatalog.assets.filter((asset) =>
     asset.id === targetId || asset.id === binding.assetId
   );
-  const storage = await uploadSkillFiles({
+  const previous =
+    replacedAssets.find((candidate) => candidate.id === targetId) ??
+    replacedAssets.find((candidate) => candidate.id === binding.assetId);
+  const hasSamePackage = previous?.storage?.checksum === skill.checksum;
+  const storage = hasSamePackage && previous.storage
+    ? previous.storage
+    : await uploadSkillFiles({
+        workspaceId: input.workspace.id,
+        skillName: skill.name,
+        files,
+        checksum: skill.checksum
+      });
+  const asset = createImportedSkillAsset({
     workspaceId: input.workspace.id,
-    skillName: skill.name,
-    files,
-    checksum: skill.checksum
+    skill,
+    storage,
+    previous,
+    versionSource: "project-sync",
+    createdByAccountId: input.accountId
   });
-  const asset = createImportedSkillAsset({ workspaceId: input.workspace.id, skill, storage });
   let catalog = originalCatalog;
   for (const replaced of replacedAssets) catalog = removeCatalogAsset(catalog, replaced.id);
   catalog = upsertAsset(catalog, asset);
@@ -267,7 +280,11 @@ export async function publishProjectSkillFork(input: {
     });
     await deleteStoredObjectsBestEffort([
       fork.storage,
-      ...replacedAssets.flatMap((replaced) => replaced.storage ? [replaced.storage] : [])
+      ...replacedAssets.flatMap((replaced) =>
+        replaced.storage && storageKey(replaced.storage) !== storageKey(storage)
+          ? [replaced.storage]
+          : []
+      )
     ]);
     return { project, asset };
   } catch (error) {
@@ -278,7 +295,7 @@ export async function publishProjectSkillFork(input: {
     } catch {
       // Keep the newly stored object when the catalog rollback fails so its current reference works.
     }
-    if (restored) await deleteStoredObjectsBestEffort([storage]);
+    if (restored && !hasSamePackage) await deleteStoredObjectsBestEffort([storage]);
     throw error;
   }
 }

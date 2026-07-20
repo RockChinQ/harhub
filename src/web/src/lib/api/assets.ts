@@ -1,4 +1,5 @@
 import type {
+  AssetRecord,
   AssetPreview,
   SkillImportPreview
 } from "../../../../shared/types";
@@ -9,6 +10,17 @@ import type {
   AssetScanResponse,
   AssetUploadResponse
 } from "./types";
+
+export async function getWorkspaceAsset(
+  token: string,
+  workspaceId: string,
+  assetId: string
+): Promise<AssetRecord> {
+  return request<AssetRecord>(
+    `/api/workspaces/${workspaceId}/assets/${encodeURIComponent(assetId)}`,
+    { token, cache: "no-store" }
+  );
+}
 
 export async function getWorkspaceAssets(
   token: string,
