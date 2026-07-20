@@ -4,6 +4,7 @@ import {
   Bot,
   Check,
   CheckCircle2,
+  ChevronDown,
   Download,
   FileArchive,
   FolderGit2,
@@ -36,6 +37,7 @@ import type {
   HarnessFollowUpQuestion,
   HarnessFollowUpResponse,
   HarnessInterviewAnswer,
+  HarnessTemplateAssetSelection,
   HarnessTemplateResponse,
   WorkspaceAiSettings,
   WorkspaceRecord
@@ -61,6 +63,11 @@ import {
   CardTitle
 } from "../components/ui/card";
 import { Checkbox } from "../components/ui/checkbox";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger
+} from "../components/ui/collapsible";
 import { Input } from "../components/ui/input";
 import {
   Sheet,
@@ -1318,25 +1325,10 @@ export function ForgeView({
                   <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
                     {template.profile.summary}
                   </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {template.selectedAssets.map((asset) => (
-                      <div
-                        key={asset.id}
-                        className="max-w-full rounded-md border bg-muted/30 px-3 py-2"
-                      >
-                        <div className="flex items-center gap-1.5 text-xs font-semibold">
-                          <PackageCheck className="h-3.5 w-3.5 text-blue-700" aria-hidden="true" />
-                          {asset.displayName}
-                        </div>
-                        <p className="mt-1 max-w-sm text-[11px] leading-4 text-muted-foreground">
-                          {asset.reason}
-                        </p>
-                      </div>
-                    ))}
-                    {template.selectedAssets.length === 0 ? (
-                      <span className="text-xs text-amber-700">No workspace Skill was selected.</span>
-                    ) : null}
-                  </div>
+                  <SelectedSkillsSummary
+                    key={activeSessionId}
+                    assets={template.selectedAssets}
+                  />
                 </div>
                 <div className="grid min-h-[480px] flex-1 lg:min-h-0 lg:grid-cols-[250px_minmax(0,1fr)]">
                   <div className="min-h-0 overflow-auto border-b p-3 lg:border-b-0 lg:border-r">
@@ -1438,6 +1430,72 @@ export function ForgeView({
         onConfirmDelete={() => void removeSession()}
       />
     </section>
+  );
+}
+
+function SelectedSkillsSummary({ assets }: { assets: HarnessTemplateAssetSelection[] }) {
+  const [open, setOpen] = useState(false);
+  const visibleAssets = assets.slice(0, 3);
+  const remaining = Math.max(0, assets.length - visibleAssets.length);
+
+  if (assets.length === 0) {
+    return (
+      <div className="mt-3 rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-800">
+        No workspace Skill was selected.
+      </div>
+    );
+  }
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className="mt-3 rounded-md border bg-muted/15">
+      <div className="flex min-w-0 items-center gap-3 px-3 py-2">
+        <div className="flex shrink-0 items-center gap-1.5 text-xs font-medium">
+          <PackageCheck className="h-3.5 w-3.5 text-blue-700" aria-hidden="true" />
+          Selected Skills
+          <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+            {assets.length}
+          </Badge>
+        </div>
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+          {visibleAssets.map((asset) => (
+            <Badge
+              key={asset.id}
+              variant="outline"
+              title={asset.displayName}
+              className="max-w-40 shrink truncate bg-background font-normal"
+            >
+              {asset.displayName}
+            </Badge>
+          ))}
+          {remaining > 0 ? (
+            <span className="shrink-0 text-[11px] text-muted-foreground">+{remaining} more</span>
+          ) : null}
+        </div>
+        <CollapsibleTrigger asChild>
+          <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs">
+            {open ? "Hide" : "Details"}
+            <ChevronDown
+              className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")}
+              aria-hidden="true"
+            />
+          </Button>
+        </CollapsibleTrigger>
+      </div>
+      <CollapsibleContent>
+        <div className="grid max-h-44 gap-1.5 overflow-y-auto border-t p-2 sm:grid-cols-2">
+          {assets.map((asset) => (
+            <div key={asset.id} className="min-w-0 rounded border bg-background px-2.5 py-2">
+              <p className="truncate text-xs font-medium" title={asset.displayName}>
+                {asset.displayName}
+              </p>
+              <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
+                {asset.reason}
+              </p>
+            </div>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
