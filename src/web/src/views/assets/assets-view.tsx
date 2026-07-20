@@ -39,6 +39,7 @@ type BulkAction = "validate" | "delete";
 type BulkMessage = {
   tone: "error" | "success" | "warning";
   text: string;
+  details?: string[];
 };
 
 export function AssetsView({
@@ -179,6 +180,9 @@ export function AssetsView({
       });
       const failedCount = result.bulk.failed.length;
       const succeededCount = result.bulk.succeeded.length;
+      const selectedAssetNames = new Map(
+        selectedBulkAssets.map((asset) => [asset.id, asset.displayName])
+      );
 
       if (action === "delete") {
         const failedIds = new Set(result.bulk.failed.map((item) => item.id));
@@ -190,7 +194,10 @@ export function AssetsView({
         tone: failedCount > 0 ? "warning" : "success",
         text: failedCount > 0
           ? `${bulkActionLabel(action)} finished: ${succeededCount} succeeded, ${failedCount} failed.`
-          : `${bulkActionLabel(action)} finished for ${succeededCount} skill${succeededCount === 1 ? "" : "s"}.`
+          : `${bulkActionLabel(action)} finished for ${succeededCount} skill${succeededCount === 1 ? "" : "s"}.`,
+        details: result.bulk.failed.map((item) =>
+          `${selectedAssetNames.get(item.id) ?? item.id}: ${item.error}`
+        )
       });
       await onRefresh();
     } catch (error) {
@@ -307,7 +314,8 @@ export function AssetsView({
               </div>
             ) : null}
             {bulkMessage ? (
-              <p
+              <div
+                role={bulkMessage.tone === "success" ? "status" : "alert"}
                 className={
                   bulkMessage.tone === "error"
                     ? "mt-1 text-sm text-destructive"
@@ -316,8 +324,15 @@ export function AssetsView({
                       : "mt-1 text-sm text-blue-700"
                 }
               >
-                {bulkMessage.text}
-              </p>
+                <p>{bulkMessage.text}</p>
+                {bulkMessage.details?.length ? (
+                  <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs">
+                    {bulkMessage.details.map((detail, index) => (
+                      <li key={`${detail}-${index}`}>{detail}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
             ) : null}
           </div>
           {selectedBulkCount > 0 ? (
