@@ -187,7 +187,7 @@ export function SkillOverviewPanel({
   return (
     <div
       className={cn(
-        "flex min-w-0 shrink-0 flex-col rounded-lg border bg-card",
+        "flex h-full min-w-0 flex-col overflow-hidden rounded-lg border bg-card",
         className
       )}
     >
@@ -203,7 +203,7 @@ export function SkillOverviewPanel({
         </p>
       </div>
 
-      <div className="p-4">
+      <div className="min-h-0 flex-1 overflow-auto p-4">
         <div className="grid gap-5">
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="outline" onClick={validateAsset} disabled={isValidating}>
