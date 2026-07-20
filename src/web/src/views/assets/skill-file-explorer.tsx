@@ -54,7 +54,7 @@ export function SkillFileExplorer({
   const currentPath = selectedPath ?? preview?.selectedFile?.path;
 
   return (
-    <section className="flex min-h-[620px] min-w-0 shrink-0 flex-col overflow-hidden rounded-lg border bg-card">
+    <section className="flex h-[70vh] min-h-[520px] max-h-[760px] min-w-0 shrink-0 flex-col overflow-hidden rounded-lg border bg-card">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
         <div>
           <h2 className="font-semibold">Files</h2>
@@ -66,7 +66,7 @@ export function SkillFileExplorer({
           {message}
         </div>
       ) : null}
-      <div className="grid min-h-0 min-w-0 flex-1 lg:grid-cols-[300px_minmax(0,1fr)]">
+      <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(180px,2fr)_minmax(280px,3fr)] lg:grid-cols-[300px_minmax(0,1fr)] lg:grid-rows-1">
         <div className="flex min-h-0 min-w-0 flex-col border-b lg:border-b-0 lg:border-r">
           <div className="min-h-0 flex-1 overflow-auto p-2">
             {preview?.tree.length ? (
