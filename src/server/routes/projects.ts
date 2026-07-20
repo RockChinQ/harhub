@@ -9,6 +9,7 @@ import type {
 } from "../../shared/types.js";
 import {
   archiveProject,
+  connectProjectRepository,
   createProject,
   freezeForgeSessionAsProject,
   getForgeSession,
@@ -73,7 +74,9 @@ export function registerProjectRoutes(app: Express): void {
           "description",
           MAX_PROJECT_DESCRIPTION_CHARS
         ) ?? "Tracked repository harness bindings.",
-        repository: readProjectRepository(req.body.repository, req.body.defaultBranch)
+        ...(req.body.repository === undefined
+          ? {}
+          : { repository: readProjectRepository(req.body.repository, req.body.defaultBranch) })
       }));
     } catch (error) {
       sendError(res, error, 400);
@@ -113,6 +116,26 @@ export function registerProjectRoutes(app: Express): void {
     }
   );
 
+  app.put(
+    "/api/workspaces/:workspaceId/projects/:projectId/repository",
+    async (req, res) => {
+      const context = await requireWorkspaceAccess(req, res);
+      if (!context) return;
+      setPrivateNoStore(res);
+      try {
+        if (!isRecord(req.body)) throw new Error("Expected a JSON object request body");
+        res.json(await connectProjectRepository(
+          context.account.id,
+          context.workspace.id,
+          readRequiredString(req.params.projectId, "projectId", 128),
+          readProjectRepository(req.body.repository, req.body.defaultBranch)
+        ));
+      } catch (error) {
+        sendError(res, error, 400);
+      }
+    }
+  );
+
   app.delete("/api/workspaces/:workspaceId/projects/:projectId", async (req, res) => {
     const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
@@ -142,6 +165,7 @@ export function registerProjectRoutes(app: Express): void {
           context.workspace.id,
           sessionId
         );
+        const alreadyFrozen = Boolean(session.frozenProject);
         const catalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
         const selectedAssetIds = new Set(
           session.template?.selectedAssets.map((asset) => asset.id) ?? []
@@ -163,11 +187,10 @@ export function registerProjectRoutes(app: Express): void {
             "description",
             MAX_PROJECT_DESCRIPTION_CHARS
           ),
-          repository: readProjectRepository(req.body.repository, req.body.defaultBranch),
           apiBaseUrl: projectApiBaseUrl(req),
           assetDigests
         });
-        res.status(result.syncToken ? 201 : 200).json({
+        res.status(alreadyFrozen ? 200 : 201).json({
           ...result,
           session: await getForgeSession(context.account.id, context.workspace.id, sessionId)
         });

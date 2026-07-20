@@ -512,12 +512,12 @@ export interface HarhubProject {
   slug: string;
   description: string;
   status: ProjectStatus;
-  repository: ProjectRepository;
+  repository?: ProjectRepository;
   bindings: ProjectBinding[];
   sync: ProjectSyncState;
   sourceForgeSessionId?: string;
   syncTokenConfigured: boolean;
-  syncTokenLastFour: string;
+  syncTokenLastFour?: string;
   createdAt: string;
   updatedAt: string;
   archivedAt?: string;
@@ -581,8 +581,6 @@ export interface ForgeSessionViewState {
   collapsedTreePaths?: string[];
   projectDraft?: {
     name: string;
-    repository: string;
-    defaultBranch: string;
   };
 }
 

@@ -743,11 +743,5 @@ function validateForgeSessionViewState(
     if (viewState.projectDraft.name.length > 120) {
       throw new Error("Forge Project draft name is too long.");
     }
-    if (viewState.projectDraft.repository.length > 500) {
-      throw new Error("Forge Project draft repository is too long.");
-    }
-    if (viewState.projectDraft.defaultBranch.length > 255) {
-      throw new Error("Forge Project draft branch is too long.");
-    }
   }
 }

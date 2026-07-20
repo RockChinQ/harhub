@@ -18,7 +18,7 @@ import type {
   ProjectSyncRequest
 } from "../src/shared/types.js";
 
-test("freezes Forge sessions into repository-synchronized Projects", async () => {
+test("freezes Forge sessions before connecting repository-synchronized Projects", async () => {
   const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "harhub-projects-"));
   const previousStatePath = process.env.HARHUB_STATE;
   process.env.HARHUB_STATE = path.join(temporaryDirectory, "state.json");
@@ -101,17 +101,12 @@ test("freezes Forge sessions into repository-synchronized Projects", async () =>
       workspaceId: "ws_demo",
       sessionId: session.id,
       name: "Release Control",
-      repository: {
-        provider: "github",
-        owner: "RockChinQ",
-        name: "release-control",
-        url: "https://github.com/RockChinQ/release-control",
-        defaultBranch: "main"
-      },
       apiBaseUrl: "https://harhub.example",
       assetDigests: { [skill.id]: skillDigest }
     });
-    assert.ok(frozen.syncToken?.startsWith("hhp_"));
+    assert.equal(frozen.syncToken, undefined);
+    assert.equal(frozen.project.repository, undefined);
+    assert.equal(frozen.project.syncTokenConfigured, false);
     assert.equal(frozen.project.bindings.length, 2);
     assert.equal(frozen.project.bindings[0]?.kind, "rule");
     assert.equal("syncTokenHash" in frozen.project, false);
@@ -119,25 +114,23 @@ test("freezes Forge sessions into repository-synchronized Projects", async () =>
     const storedState = await loadState();
     const storedProject = storedState.projects.find((item) => item.id === frozen.project.id);
     assert.ok(storedProject);
-    assert.notEqual(storedProject.syncTokenHash, frozen.syncToken);
-    assert.equal(storedProject.syncTokenHash.length, 64);
+    assert.equal(storedProject.syncTokenHash, undefined);
 
     const restoredSession = await getForgeSession("acct_demo", "ws_demo", session.id);
     assert.equal(restoredSession.frozenProject?.id, frozen.project.id);
     const projectConfig = JSON.parse(fileContent(
       restoredSession.template,
       ".harhub/project.json"
-    )) as { projectId: string; syncUrl: string; repository: string };
+    )) as { projectId: string; syncUrl: string; repository: string | null };
     assert.equal(projectConfig.projectId, frozen.project.id);
     assert.equal(projectConfig.syncUrl, `https://harhub.example/api/projects/${frozen.project.id}/sync`);
-    assert.equal(projectConfig.repository, "RockChinQ/release-control");
+    assert.equal(projectConfig.repository, null);
 
     const repeatedFreeze = await freezeForgeSessionAsProject({
       accountId: "acct_demo",
       workspaceId: "ws_demo",
       sessionId: session.id,
       name: "Ignored duplicate",
-      repository: frozen.project.repository,
       apiBaseUrl: "https://harhub.example",
       assetDigests: {}
     });
@@ -203,6 +196,41 @@ test("freezes Forge sessions into repository-synchronized Projects", async () =>
     const baseUrl = `http://127.0.0.1:${address.port}`;
     const accountToken = await createSession("acct_demo");
 
+    const connectResponse = await fetch(
+      `${baseUrl}/api/workspaces/ws_demo/projects/${frozen.project.id}/repository`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${accountToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          repository: "RockChinQ/release-control",
+          defaultBranch: "main"
+        })
+      }
+    );
+    assert.equal(connectResponse.status, 200);
+    assertPrivateNoStore(connectResponse);
+    const connected = await connectResponse.json() as {
+      project: { repository?: { owner: string; name: string }; syncTokenConfigured: boolean };
+      syncToken?: string;
+    };
+    assert.equal(connected.project.repository?.owner, "RockChinQ");
+    assert.equal(connected.project.repository?.name, "release-control");
+    assert.equal(connected.project.syncTokenConfigured, true);
+    assert.ok(connected.syncToken?.startsWith("hhp_"));
+    const syncToken = connected.syncToken;
+    assert.ok(syncToken);
+    const connectedState = await loadState();
+    const connectedRecord = connectedState.projects.find(
+      (item) => item.id === frozen.project.id
+    );
+    assert.ok(connectedRecord?.syncTokenHash);
+    assert.notEqual(connectedRecord.syncTokenHash, syncToken);
+    assert.equal(connectedRecord.syncTokenHash.length, 64);
+    assert.equal("syncTokenHash" in connected.project, false);
+
     const listResponse = await fetch(`${baseUrl}/api/workspaces/ws_demo/projects`, {
       headers: { Authorization: `Bearer ${accountToken}` }
     });
@@ -227,7 +255,7 @@ test("freezes Forge sessions into repository-synchronized Projects", async () =>
     const syncResponse = await fetch(`${baseUrl}/api/projects/${frozen.project.id}/sync`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${frozen.syncToken}`,
+        Authorization: `Bearer ${syncToken}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload)
@@ -264,7 +292,7 @@ test("freezes Forge sessions into repository-synchronized Projects", async () =>
     };
     const secondSync = await syncProjectFromRepository(
       frozen.project.id,
-      frozen.syncToken ?? "",
+      syncToken,
       secondPayload
     );
     assert.equal(secondSync.revision, 2);
@@ -278,7 +306,7 @@ test("freezes Forge sessions into repository-synchronized Projects", async () =>
 
     await archiveProject("acct_demo", "ws_demo", frozen.project.id);
     await assert.rejects(
-      syncProjectFromRepository(frozen.project.id, frozen.syncToken ?? "", payload),
+      syncProjectFromRepository(frozen.project.id, syncToken, payload),
       /archived/
     );
   } finally {

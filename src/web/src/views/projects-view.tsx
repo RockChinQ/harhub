@@ -34,8 +34,10 @@ import {
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Input } from "../components/ui/input";
 import {
   archiveProject,
+  connectProjectRepository,
   getProject,
   listProjects,
   rotateProjectSyncToken
@@ -64,6 +66,9 @@ export function ProjectsView({
   const [isRotating, setIsRotating] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
+  const [repository, setRepository] = useState("");
+  const [defaultBranch, setDefaultBranch] = useState("main");
+  const [isConnecting, setIsConnecting] = useState(false);
 
   useEffect(() => {
     setSyncToken(undefined);
@@ -81,7 +86,12 @@ export function ProjectsView({
     setError(undefined);
     try {
       if (routedProjectId) {
-        setProject(await getProject(token, workspace.id, routedProjectId));
+        const result = await getProject(token, workspace.id, routedProjectId);
+        setProject(result);
+        setRepository(result.repository
+          ? `${result.repository.owner}/${result.repository.name}`
+          : "");
+        setDefaultBranch(result.repository?.defaultBranch ?? "main");
       } else {
         setProject(undefined);
         setProjects(await listProjects(token, workspace.id));
@@ -106,6 +116,25 @@ export function ProjectsView({
       setError(errorMessage(caught));
     } finally {
       setIsRotating(false);
+    }
+  }
+
+  async function connectRepository() {
+    if (!project || !repository.trim()) return;
+    setIsConnecting(true);
+    setError(undefined);
+    try {
+      const result = await connectProjectRepository(token, workspace.id, project.id, {
+        repository: repository.trim(),
+        defaultBranch: defaultBranch.trim() || "main"
+      });
+      setProject(result.project);
+      setSyncToken(result.syncToken);
+      setCopied(false);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setIsConnecting(false);
     }
   }
 
@@ -160,16 +189,20 @@ export function ProjectsView({
                       {project.description}
                     </p>
                   </div>
-                  <a
-                    href={project.repository.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-accent"
-                  >
-                    <FolderGit2 className="h-4 w-4" aria-hidden="true" />
-                    {project.repository.owner}/{project.repository.name}
-                    <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                  </a>
+                  {project.repository ? (
+                    <a
+                      href={project.repository.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-accent"
+                    >
+                      <FolderGit2 className="h-4 w-4" aria-hidden="true" />
+                      {project.repository.owner}/{project.repository.name}
+                      <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                    </a>
+                  ) : (
+                    <Badge variant="outline" className="shrink-0">Repository not connected</Badge>
+                  )}
                 </div>
               </CardHeader>
               <CardContent className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4">
@@ -180,7 +213,9 @@ export function ProjectsView({
                   label="Last sync"
                   value={project.sync.lastSyncedAt
                     ? formatTime(project.sync.lastSyncedAt)
-                    : "Waiting for GitHub"}
+                    : project.repository
+                      ? "Waiting for GitHub"
+                      : "Not connected"}
                 />
               </CardContent>
             </Card>
@@ -189,7 +224,7 @@ export function ProjectsView({
               <CardHeader className="border-b">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <GitBranch className="h-4 w-4 text-blue-700" aria-hidden="true" />
-                  Repository bindings
+                  Harness bindings
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
@@ -211,14 +246,64 @@ export function ProjectsView({
               <CardHeader className="border-b">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <ShieldCheck className="h-4 w-4 text-blue-700" aria-hidden="true" />
-                  GitHub Actions connection
+                  GitHub repository connection
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4 p-5">
-                <p className="text-sm leading-6 text-muted-foreground">
-                  The generated framework watches harness Skills, MCP definitions, and Rules. Add
-                  the token below as the repository secret <code>HARHUB_PROJECT_TOKEN</code>.
-                </p>
+                {!project.repository ? (
+                  <div className="space-y-4">
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      Connect the repository that contains this framework when you are ready to
+                      enable GitHub Actions synchronization.
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
+                      <div className="space-y-1.5">
+                        <label htmlFor="project-repository" className="text-xs font-medium">
+                          GitHub repository
+                        </label>
+                        <Input
+                          id="project-repository"
+                          value={repository}
+                          placeholder="owner/repository"
+                          disabled={isConnecting || project.status === "archived"}
+                          onChange={(event) => setRepository(event.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label htmlFor="project-default-branch" className="text-xs font-medium">
+                          Default branch
+                        </label>
+                        <Input
+                          id="project-default-branch"
+                          value={defaultBranch}
+                          placeholder="main"
+                          disabled={isConnecting || project.status === "archived"}
+                          onChange={(event) => setDefaultBranch(event.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      disabled={
+                        isConnecting ||
+                        project.status === "archived" ||
+                        !repository.trim()
+                      }
+                      onClick={() => void connectRepository()}
+                    >
+                      {isConnecting
+                        ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        : <FolderGit2 className="h-4 w-4" aria-hidden="true" />}
+                      Connect repository
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    The generated framework watches harness Skills, MCP definitions, and Rules.
+                    Add the sync token as the repository secret
+                    {" "}<code>HARHUB_PROJECT_TOKEN</code>.
+                  </p>
+                )}
                 {syncToken ? (
                   <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
                     <p className="text-sm font-medium text-amber-950">Copy this token now</p>
@@ -237,17 +322,19 @@ export function ProjectsView({
                   </div>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={isRotating || project.status === "archived"}
-                    onClick={() => void rotateToken()}
-                  >
-                    {isRotating
-                      ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                      : <RotateCcw className="h-4 w-4" aria-hidden="true" />}
-                    Rotate sync token
-                  </Button>
+                  {project.repository ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={isRotating || project.status === "archived"}
+                      onClick={() => void rotateToken()}
+                    >
+                      {isRotating
+                        ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        : <RotateCcw className="h-4 w-4" aria-hidden="true" />}
+                      Rotate sync token
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     variant="outline"
@@ -268,8 +355,8 @@ export function ProjectsView({
             <AlertDialogHeader>
               <AlertDialogTitle>Archive this Project?</AlertDialogTitle>
               <AlertDialogDescription>
-                GitHub Actions sync requests will stop working. The tracked binding history remains
-                available in Harhub.
+                The Project will become read-only and any repository sync requests will stop.
+                Its tracked binding history remains available in Harhub.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -341,7 +428,9 @@ export function ProjectsView({
                 <div className="min-w-0">
                   <h2 className="truncate font-semibold">{item.name}</h2>
                   <p className="mt-1 truncate text-xs text-muted-foreground">
-                    {item.repository.owner}/{item.repository.name}
+                    {item.repository
+                      ? `${item.repository.owner}/${item.repository.name}`
+                      : "Repository not connected"}
                   </p>
                 </div>
                 <ProjectStatusBadge project={item} />
@@ -377,6 +466,7 @@ function BindingRow({ binding }: { binding: ProjectBinding }) {
 
 function ProjectStatusBadge({ project }: { project: HarhubProject }) {
   if (project.status === "archived") return <Badge variant="secondary">Archived</Badge>;
+  if (!project.repository) return <Badge variant="outline">Unlinked</Badge>;
   return project.sync.status === "synced"
     ? <Badge className="bg-emerald-600">Synced</Badge>
     : <Badge variant="outline">Awaiting sync</Badge>;

@@ -60,7 +60,7 @@ export function createProject(input: {
   workspaceId: string;
   name: string;
   description: string;
-  repository: ProjectRepository;
+  repository?: ProjectRepository;
 }): Promise<ProjectTokenResponse> {
   return serializeStateAccess(async () => {
     const state = await loadState();
@@ -82,7 +82,6 @@ export function freezeForgeSessionAsProject(input: {
   sessionId: string;
   name: string;
   description?: string;
-  repository: ProjectRepository;
   apiBaseUrl: string;
   assetDigests: Readonly<Record<string, string>>;
 }): Promise<ProjectTokenResponse> {
@@ -104,7 +103,6 @@ export function freezeForgeSessionAsProject(input: {
       workspaceId: input.workspaceId,
       name: input.name,
       description: input.description ?? session.template.profile.summary,
-      repository: input.repository,
       bindings,
       sourceForgeSessionId: session.id
     });
@@ -115,7 +113,6 @@ export function freezeForgeSessionAsProject(input: {
       {
         projectId: created.project.id,
         syncUrl,
-        repository: created.project.repository,
         bindings: created.project.bindings
       }
     );
@@ -136,6 +133,42 @@ export function freezeForgeSessionAsProject(input: {
   });
 }
 
+export function connectProjectRepository(
+  accountId: string,
+  workspaceId: string,
+  projectId: string,
+  repository: ProjectRepository
+): Promise<ProjectTokenResponse> {
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    requireWorkspaceMembership(state, accountId, workspaceId);
+    const project = findProject(state, workspaceId, projectId);
+    if (project.status !== "active") {
+      throw new Error("Archived Projects cannot connect repositories.");
+    }
+    const credential = createSyncCredential();
+    project.repository = structuredClone(repository);
+    project.bindings = project.bindings.map((binding) => {
+      const {
+        repositoryDigest: _repositoryDigest,
+        lastSeenAt: _lastSeenAt,
+        ...retained
+      } = binding;
+      return { ...retained, status: "pending" };
+    });
+    project.sync = { status: "awaiting-first-sync", revision: 0 };
+    project.syncTokenConfigured = true;
+    project.syncTokenLastFour = credential.token.slice(-4);
+    project.syncTokenHash = credential.hash;
+    project.updatedAt = new Date().toISOString();
+    await saveState(state);
+    return {
+      project: toPublicProject(project),
+      syncToken: credential.token
+    };
+  });
+}
+
 export function rotateProjectSyncToken(
   accountId: string,
   workspaceId: string,
@@ -146,6 +179,7 @@ export function rotateProjectSyncToken(
     requireWorkspaceMembership(state, accountId, workspaceId);
     const project = findProject(state, workspaceId, projectId);
     if (project.status !== "active") throw new Error("Archived Projects cannot rotate tokens.");
+    if (!project.repository) throw new Error("Connect a GitHub repository before rotating tokens.");
     const credential = createSyncCredential();
     project.syncTokenHash = credential.hash;
     project.syncTokenLastFour = credential.token.slice(-4);
@@ -187,6 +221,7 @@ export function syncProjectFromRepository(
       throw new Error("Project sync credentials are invalid.");
     }
     if (project.status !== "active") throw new Error("Project is archived.");
+    if (!project.repository) throw new Error("Project does not have a connected repository.");
     const expectedRepository = `${project.repository.owner}/${project.repository.name}`;
     if (input.repository.toLowerCase() !== expectedRepository.toLowerCase()) {
       throw new Error("Project sync repository does not match the tracked repository.");
@@ -246,13 +281,13 @@ function createProjectRecord(
     workspaceId: string;
     name: string;
     description: string;
-    repository: ProjectRepository;
+    repository?: ProjectRepository;
     bindings?: ProjectBinding[];
     sourceForgeSessionId?: string;
   }
-): { project: ProjectStateRecord; syncToken: string } {
+): { project: ProjectStateRecord; syncToken?: string } {
   const now = new Date().toISOString();
-  const credential = createSyncCredential();
+  const credential = input.repository ? createSyncCredential() : undefined;
   return {
     project: {
       id: randomUUID(),
@@ -261,19 +296,23 @@ function createProjectRecord(
       slug: uniqueProjectSlug(state, input.workspaceId, input.name),
       description: input.description.trim(),
       status: "active",
-      repository: structuredClone(input.repository),
+      ...(input.repository ? { repository: structuredClone(input.repository) } : {}),
       bindings: structuredClone(input.bindings ?? []).sort(bindingsByPath),
       sync: { status: "awaiting-first-sync", revision: 0 },
       ...(input.sourceForgeSessionId
         ? { sourceForgeSessionId: input.sourceForgeSessionId }
         : {}),
-      syncTokenConfigured: true,
-      syncTokenLastFour: credential.token.slice(-4),
-      syncTokenHash: credential.hash,
+      syncTokenConfigured: Boolean(credential),
+      ...(credential
+        ? {
+            syncTokenLastFour: credential.token.slice(-4),
+            syncTokenHash: credential.hash
+          }
+        : {}),
       createdAt: now,
       updatedAt: now
     },
-    syncToken: credential.token
+    ...(credential ? { syncToken: credential.token } : {})
   };
 }
 
@@ -340,7 +379,8 @@ function createSyncCredential(): { token: string; hash: string } {
   return { token, hash: syncTokenHash(token) };
 }
 
-function verifySyncToken(token: string, storedHash: string): boolean {
+function verifySyncToken(token: string, storedHash?: string): boolean {
+  if (!storedHash) return false;
   const actual = Buffer.from(syncTokenHash(token), "hex");
   const expected = Buffer.from(storedHash, "hex");
   return actual.length === expected.length && timingSafeEqual(actual, expected);

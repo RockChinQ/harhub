@@ -4,7 +4,6 @@ import {
   Bot,
   Check,
   CheckCircle2,
-  Copy,
   Download,
   FileArchive,
   FolderGit2,
@@ -186,12 +185,8 @@ export function ForgeView({
   const [sessionTitle, setSessionTitle] = useState<string>();
   const [frozenProject, setFrozenProject] = useState<ForgeFrozenProjectReference>();
   const [freezeName, setFreezeName] = useState("");
-  const [freezeRepository, setFreezeRepository] = useState("");
-  const [freezeDefaultBranch, setFreezeDefaultBranch] = useState("main");
-  const [freezeSyncToken, setFreezeSyncToken] = useState<string>();
   const [freezeError, setFreezeError] = useState<string>();
   const [isFreezing, setIsFreezing] = useState(false);
-  const [freezeTokenCopied, setFreezeTokenCopied] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<ForgeSessionListResponse>();
   const [historyError, setHistoryError] = useState<string>();
@@ -256,9 +251,7 @@ export function ForgeView({
       collapsedTreePaths,
       template
         ? {
-            name: freezeName,
-            repository: freezeRepository,
-            defaultBranch: freezeDefaultBranch
+            name: freezeName
           }
         : undefined
     ),
@@ -266,9 +259,7 @@ export function ForgeView({
       answerDrafts,
       collapsedTreePaths,
       currentQuestions,
-      freezeDefaultBranch,
       freezeName,
-      freezeRepository,
       markdownView,
       selectedPath,
       template
@@ -501,12 +492,8 @@ export function ForgeView({
     setSessionTitle(undefined);
     setFrozenProject(undefined);
     setFreezeName("");
-    setFreezeRepository("");
-    setFreezeDefaultBranch("main");
-    setFreezeSyncToken(undefined);
     setFreezeError(undefined);
     setIsFreezing(false);
-    setFreezeTokenCopied(false);
     activeSessionIdRef.current = undefined;
     setHistory(undefined);
     setHistoryError(undefined);
@@ -768,8 +755,6 @@ export function ForgeView({
     const storedTemplate = session.template?.mode === "llm" ? session.template : undefined;
     setTemplate(storedTemplate);
     setFreezeName(session.viewState.projectDraft?.name ?? storedTemplate?.profile.name ?? "");
-    setFreezeRepository(session.viewState.projectDraft?.repository ?? "");
-    setFreezeDefaultBranch(session.viewState.projectDraft?.defaultBranch ?? "main");
     const restoredQuestions = followUpQuestions(session.followUp);
     const restoredDrafts = restoreForgeSessionDrafts(restoredQuestions, session.viewState);
     const restoredSelectedPath = storedTemplate
@@ -843,9 +828,7 @@ export function ForgeView({
     setTemplate(undefined);
     setSelectedPath(undefined);
     setFrozenProject(undefined);
-    setFreezeSyncToken(undefined);
     setFreezeError(undefined);
-    setFreezeTokenCopied(false);
     setMarkdownView("preview");
     setCollapsedTreePaths(undefined);
     setSessionPersistenceError(undefined);
@@ -935,21 +918,16 @@ export function ForgeView({
   }
 
   async function freezeCurrentProject() {
-    if (!activeSessionId || !template || !freezeName.trim() || !freezeRepository.trim()) return;
+    if (!activeSessionId || !template || !freezeName.trim()) return;
     setIsFreezing(true);
     setFreezeError(undefined);
-    setFreezeSyncToken(undefined);
-    setFreezeTokenCopied(false);
     try {
       const result = await freezeForgeSession(token, workspace.id, activeSessionId, {
         name: freezeName.trim(),
-        description: template.profile.summary,
-        repository: freezeRepository.trim(),
-        defaultBranch: freezeDefaultBranch.trim() || "main"
+        description: template.profile.summary
       });
       applyServerSession(result.session);
       setFrozenProject(result.session.frozenProject);
-      setFreezeSyncToken(result.syncToken);
       if (history) void refreshHistory();
     } catch (caught) {
       setFreezeError(errorMessage(caught));
@@ -958,23 +936,13 @@ export function ForgeView({
     }
   }
 
-  async function copyFreezeToken() {
-    if (!freezeSyncToken) return;
-    await navigator.clipboard.writeText(freezeSyncToken);
-    setFreezeTokenCopied(true);
-  }
-
   function clearBuilderState() {
     setActiveSessionId(undefined);
     setSessionTitle(undefined);
     setFrozenProject(undefined);
     setFreezeName("");
-    setFreezeRepository("");
-    setFreezeDefaultBranch("main");
-    setFreezeSyncToken(undefined);
     setFreezeError(undefined);
     setIsFreezing(false);
-    setFreezeTokenCopied(false);
     activeSessionIdRef.current = undefined;
     setPhase("idle");
     setRequirement("");
@@ -1288,17 +1256,10 @@ export function ForgeView({
                     <ProjectFreezePanel
                       frozenProject={frozenProject}
                       name={freezeName}
-                      repository={freezeRepository}
-                      defaultBranch={freezeDefaultBranch}
-                      syncToken={freezeSyncToken}
-                      tokenCopied={freezeTokenCopied}
                       error={freezeError}
                       freezing={isFreezing}
                       onNameChange={setFreezeName}
-                      onRepositoryChange={setFreezeRepository}
-                      onDefaultBranchChange={setFreezeDefaultBranch}
                       onFreeze={() => void freezeCurrentProject()}
-                      onCopyToken={() => void copyFreezeToken()}
                       onOpenProject={onOpenProject}
                     />
                   </>
@@ -1483,32 +1444,18 @@ export function ForgeView({
 function ProjectFreezePanel({
   frozenProject,
   name,
-  repository,
-  defaultBranch,
-  syncToken,
-  tokenCopied,
   error,
   freezing,
   onNameChange,
-  onRepositoryChange,
-  onDefaultBranchChange,
   onFreeze,
-  onCopyToken,
   onOpenProject
 }: {
   frozenProject?: ForgeFrozenProjectReference;
   name: string;
-  repository: string;
-  defaultBranch: string;
-  syncToken?: string;
-  tokenCopied: boolean;
   error?: string;
   freezing: boolean;
   onNameChange: (value: string) => void;
-  onRepositoryChange: (value: string) => void;
-  onDefaultBranchChange: (value: string) => void;
   onFreeze: () => void;
-  onCopyToken: () => void;
   onOpenProject: (projectId: string) => void;
 }) {
   if (frozenProject) {
@@ -1521,32 +1468,14 @@ function ProjectFreezePanel({
               <p className="text-sm font-semibold">Frozen as {frozenProject.name}</p>
             </div>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              The downloadable framework now contains its Harhub Project identity and GitHub Actions sync workflow.
+              The Project is saved. Connect a GitHub repository from its detail page when you
+              want to enable Actions-based change tracking.
             </p>
           </div>
           <Button type="button" variant="outline" size="sm" onClick={() => onOpenProject(frozenProject.id)}>
             Open project
           </Button>
         </div>
-        {syncToken ? (
-          <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3">
-            <p className="text-xs font-semibold text-amber-950">
-              Save this as the GitHub repository secret HARHUB_PROJECT_TOKEN
-            </p>
-            <p className="mt-1 text-[11px] leading-4 text-amber-800">
-              This is the only time Harhub can show the token. Download the ZIP again before committing the framework.
-            </p>
-            <div className="mt-3 flex min-w-0 items-center gap-2">
-              <code className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded border bg-background px-2 py-2 text-[11px]">
-                {syncToken}
-              </code>
-              <Button type="button" variant="outline" size="sm" onClick={onCopyToken}>
-                {tokenCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                {tokenCopied ? "Copied" : "Copy"}
-              </Button>
-            </div>
-          </div>
-        ) : null}
       </div>
     );
   }
@@ -1558,7 +1487,8 @@ function ProjectFreezePanel({
         <p className="text-sm font-semibold">Track this framework as a Project</p>
       </div>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">
-        Freeze the session to bind its framework assets to a GitHub repository and enable change tracking.
+        Freeze the generated framework and its asset relationships into a durable Project.
+        You can connect a GitHub repository later from the Project page.
       </p>
       {error ? (
         <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
@@ -1575,29 +1505,9 @@ function ProjectFreezePanel({
             onChange={(event) => onNameChange(event.target.value)}
           />
         </div>
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_140px]">
-          <div className="space-y-1.5">
-            <label htmlFor="forge-project-repository" className="text-xs font-medium">GitHub repository</label>
-            <Input
-              id="forge-project-repository"
-              value={repository}
-              placeholder="owner/repository"
-              onChange={(event) => onRepositoryChange(event.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label htmlFor="forge-project-branch" className="text-xs font-medium">Default branch</label>
-            <Input
-              id="forge-project-branch"
-              value={defaultBranch}
-              placeholder="main"
-              onChange={(event) => onDefaultBranchChange(event.target.value)}
-            />
-          </div>
-        </div>
         <Button
           type="button"
-          disabled={freezing || !name.trim() || !repository.trim()}
+          disabled={freezing || !name.trim()}
           onClick={onFreeze}
         >
           {freezing

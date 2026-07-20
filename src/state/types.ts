@@ -100,5 +100,5 @@ export interface ForgeSessionCacheRecord extends ForgeSessionDetail {
 }
 
 export interface ProjectStateRecord extends HarhubProject {
-  syncTokenHash: string;
+  syncTokenHash?: string;
 }

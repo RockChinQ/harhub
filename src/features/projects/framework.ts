@@ -14,7 +14,7 @@ export const HARHUB_PROJECT_WORKFLOW_PATH = ".github/workflows/harhub-sync.yml";
 interface ProjectFrameworkConnection {
   projectId: string;
   syncUrl: string;
-  repository: ProjectRepository;
+  repository?: ProjectRepository;
   bindings: ProjectBinding[];
 }
 
@@ -45,7 +45,7 @@ export function addProjectIntegrationFiles(
       schemaVersion: 1,
       projectId: connection?.projectId ?? null,
       syncUrl: connection?.syncUrl ?? null,
-      repository: connection
+      repository: connection?.repository
         ? `${connection.repository.owner}/${connection.repository.name}`
         : null,
       bindings

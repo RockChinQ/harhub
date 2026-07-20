@@ -27,7 +27,7 @@ export function getProject(
 export function createProject(
   token: string,
   workspaceId: string,
-  input: { name: string; description?: string; repository: string; defaultBranch?: string }
+  input: { name: string; description?: string; repository?: string; defaultBranch?: string }
 ): Promise<ProjectTokenResponse> {
   return request(`/api/workspaces/${encodeURIComponent(workspaceId)}/projects`, {
     method: "POST",
@@ -42,12 +42,30 @@ export function freezeForgeSession(
   token: string,
   workspaceId: string,
   sessionId: string,
-  input: { name: string; description?: string; repository: string; defaultBranch?: string }
+  input: { name: string; description?: string }
 ): Promise<ProjectTokenResponse & { session: ForgeSessionDetail }> {
   return request(
     `/api/workspaces/${encodeURIComponent(workspaceId)}/forge/sessions/${encodeURIComponent(sessionId)}/freeze`,
     {
       method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(input),
+      cache: "no-store",
+      token
+    }
+  );
+}
+
+export function connectProjectRepository(
+  token: string,
+  workspaceId: string,
+  projectId: string,
+  input: { repository: string; defaultBranch?: string }
+): Promise<ProjectTokenResponse> {
+  return request(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/projects/${encodeURIComponent(projectId)}/repository`,
+    {
+      method: "PUT",
       headers: JSON_HEADERS,
       body: JSON.stringify(input),
       cache: "no-store",
