@@ -54,7 +54,7 @@ export function SkillFileExplorer({
   const currentPath = selectedPath ?? preview?.selectedFile?.path;
 
   return (
-    <section className="flex min-h-[620px] min-w-0 flex-col overflow-hidden rounded-lg border bg-card 2xl:h-full 2xl:min-h-0">
+    <section className="flex min-h-[620px] min-w-0 shrink-0 flex-col overflow-hidden rounded-lg border bg-card">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
         <div>
           <h2 className="font-semibold">Files</h2>
