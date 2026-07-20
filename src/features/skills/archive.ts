@@ -117,7 +117,7 @@ export async function validateSkillArchive(buffer: Buffer): Promise<ValidatedSki
 export function skillFilesChecksum(files: SkillPackageFile[]): string {
   const manifest = files
     .slice()
-    .sort((left, right) => left.path.localeCompare(right.path))
+    .sort((left, right) => left.path.localeCompare(right.path, "en"))
     .map((file) => `${Buffer.byteLength(file.path)}:${file.path}:${file.content.byteLength}:${contentHash(file.content)}`)
     .join("\n");
   return contentHash(manifest);

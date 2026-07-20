@@ -54,7 +54,11 @@ test("freezes Forge sessions before connecting repository-synchronized Projects"
     );
 
     const skillContent = Buffer.from("---\nname: release-notes\ndescription: Prepare release notes.\n---\n");
-    const skillDigest = skillFilesChecksum([{ path: "SKILL.md", content: skillContent }]);
+    const repositorySkillFiles = [
+      { path: "SKILL.md", content: skillContent },
+      { path: "scripts/helper.js", content: Buffer.from("export const ready = true;\n") }
+    ];
+    const skillDigest = skillFilesChecksum(repositorySkillFiles);
     const skill = {
       id: "asset:skill:release-notes",
       kind: "skill" as const,
@@ -63,8 +67,8 @@ test("freezes Forge sessions before connecting repository-synchronized Projects"
       slug: "release-notes",
       description: "Prepare release notes.",
       health: "valid" as const,
-      fileCount: 1,
-      size: skillContent.byteLength
+      fileCount: repositorySkillFiles.length,
+      size: repositorySkillFiles.reduce((total, file) => total + file.content.byteLength, 0)
     };
     const template = buildHarnessTemplate({
       name: "Release Control",
@@ -166,9 +170,13 @@ test("freezes Forge sessions before connecting repository-synchronized Projects"
       syncUrlRead.stdout,
       `https://harhub.example/api/projects/${frozen.project.id}/sync`
     );
-    const skillRoot = path.join(checkout, ".harness/skills/release-notes");
-    mkdirSync(skillRoot, { recursive: true });
-    writeFileSync(path.join(skillRoot, "SKILL.md"), skillContent);
+    const skillRoot = path.join(checkout, ".harness", "skills", "release-notes");
+    for (const file of repositorySkillFiles) {
+      const targetPath = path.join(skillRoot, file.path);
+      mkdirSync(path.dirname(targetPath), { recursive: true });
+      writeFileSync(targetPath, file.content);
+    }
+
     const collector = spawnSync(
       process.execPath,
       [path.join(checkout, ".harhub/scripts/collect-bindings.mjs")],
@@ -186,7 +194,10 @@ test("freezes Forge sessions before connecting repository-synchronized Projects"
     );
     assert.equal(collector.status, 0, collector.stderr);
     const payload = JSON.parse(collector.stdout) as ProjectSyncRequest;
-    assert.equal(payload.bindings.find((item) => item.kind === "skill")?.digest, skillDigest);
+    assert.equal(
+      payload.bindings.find((item) => item.kind === "skill")?.digest,
+      skillDigest
+    );
     assert.ok(payload.bindings.some((item) => item.kind === "rule"));
 
     const { createServerApp } = await import("../src/server/app.js");

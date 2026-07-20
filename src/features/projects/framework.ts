@@ -222,7 +222,12 @@ async function fileBinding(kind, file) {
 
 async function directoryDigest(skillRoot, skillFiles) {
   const manifest = [];
-  for (const file of skillFiles.sort()) {
+  for (const file of skillFiles.sort((left, right) =>
+    path.posix.relative(skillRoot, left).localeCompare(
+      path.posix.relative(skillRoot, right),
+      "en"
+    )
+  )) {
     const relative = path.posix.relative(skillRoot, file);
     const content = await fs.readFile(path.join(root, file));
     manifest.push(Buffer.byteLength(relative) + ':' + relative + ':' + content.byteLength + ':' + sha256(content));
