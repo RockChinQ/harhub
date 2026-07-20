@@ -15,7 +15,10 @@ import {
   testForgeAiConnection,
   workspaceAssetSummaries
 } from "../src/server/services/forge.js";
-import { getOrCreateForgeOperationStream } from "../src/server/services/forge-operation-streams.js";
+import {
+  cancelForgeOperationStreams,
+  getOrCreateForgeOperationStream
+} from "../src/server/services/forge-operation-streams.js";
 import type {
   AssetCatalog,
   AssetRecord,
@@ -234,6 +237,50 @@ test("keeps an active Forge AI attempt alive past the inactivity window", async 
   assert.equal(result, "complete");
 });
 
+test("cancels Forge AI attempts without retrying", async () => {
+  const controller = new AbortController();
+  let attempts = 0;
+  let markStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+  const operation = runForgeAiOperation(
+    async ({ signal }) => {
+      attempts += 1;
+      markStarted();
+      return new Promise<never>((_resolve, reject) => {
+        if (signal.aborted) {
+          reject(signal.reason);
+          return;
+        }
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    },
+    {
+      operationId: "cancelled-operation",
+      operation: "generate",
+      signal: controller.signal
+    },
+    {
+      maxAttempts: 3,
+      attemptTimeoutMs: 5_000,
+      totalTimeoutMs: 15_000,
+      retryDelaysMs: [100, 100]
+    }
+  );
+
+  await started;
+  controller.abort(new DOMException("Session deleted", "AbortError"));
+  await assert.rejects(
+    operation,
+    (error: unknown) => {
+      const failure = (error as { failure?: { code?: string; retryable?: boolean } }).failure;
+      return failure?.code === "cancelled" && failure.retryable === false;
+    }
+  );
+  assert.equal(attempts, 1);
+});
+
 test("does not schedule a retry without a meaningful timeout window", async () => {
   let attempts = 0;
   await assert.rejects(
@@ -322,6 +369,43 @@ test("replays one server-side Forge operation to reentrant subscribers", async (
   const terminalReplay: string[] = [];
   first.subscribe((event) => terminalReplay.push(event.type));
   assert.equal(terminalReplay.at(-1), "error");
+});
+
+test("cancels the active task stream for a deleted Forge session", async () => {
+  const identity = {
+    accountId: `account-cancel-${Date.now()}`,
+    workspaceId: "workspace-cancel",
+    sessionId: "session-cancel"
+  };
+  let markStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+  let markStopped!: () => void;
+  const stopped = new Promise<void>((resolve) => {
+    markStopped = resolve;
+  });
+  const stream = getOrCreateForgeOperationStream(identity, "generate", async (activeStream) => {
+    markStarted();
+    await new Promise<void>((resolve) => {
+      activeStream.signal.addEventListener("abort", () => {
+        markStopped();
+        resolve();
+      }, { once: true });
+    });
+  });
+  const events: string[] = [];
+  stream.subscribe((event) => events.push(
+    event.type === "error" ? `${event.type}:${event.failure.code}` : event.type
+  ));
+
+  await started;
+  assert.equal(cancelForgeOperationStreams(identity), 1);
+  await stopped;
+  assert.equal(stream.cancelled, true);
+  assert.equal(stream.done, true);
+  assert.equal(events.at(-1), "error:cancelled");
+  assert.equal(cancelForgeOperationStreams(identity), 0);
 });
 
 test("lets Forge AI decide when discovery has enough context", async (context) => {

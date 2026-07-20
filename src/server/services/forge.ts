@@ -118,6 +118,7 @@ export interface ForgeAiOperationContext {
   workspaceId?: string;
   sessionId?: string;
   model?: string;
+  signal?: AbortSignal;
   logger?: (level: ForgeAiLogLevel, entry: ForgeAiLogEntry) => void;
   onAttempt?: (attempt: number, maxAttempts: number) => void | Promise<void>;
   onDelta?: (attempt: number, delta: string) => void;
@@ -170,6 +171,7 @@ export function createObservedForgeAiOperation(
     workspaceId?: string;
     sessionId?: string;
     model?: string;
+    signal?: AbortSignal;
   } = {}
 ): ForgeAiOperationContext {
   return {
@@ -681,6 +683,10 @@ export async function runForgeAiOperation<T>(
   let lastError: ForgeAiRequestError | undefined;
 
   for (let attempt = 1; attempt <= policy.maxAttempts; attempt += 1) {
+    if (operation.signal?.aborted) {
+      lastError = forgeAiCancellationError();
+      break;
+    }
     const elapsedMs = Math.max(0, Date.now() - startedAt);
     const remainingMs = policy.totalTimeoutMs - elapsedMs;
     if (remainingMs <= 0) break;
@@ -701,7 +707,8 @@ export async function runForgeAiOperation<T>(
     try {
       const watchdog = createForgeAiActivityWatchdog(
         policy.attemptTimeoutMs,
-        deadlineAt
+        deadlineAt,
+        operation.signal
       );
       let result: T;
       try {
@@ -721,7 +728,9 @@ export async function runForgeAiOperation<T>(
       });
       return result;
     } catch (caught) {
-      lastError = normalizeForgeAiRequestError(caught);
+      lastError = operation.signal?.aborted
+        ? forgeAiCancellationError()
+        : normalizeForgeAiRequestError(caught);
       logForgeAiEvent(operation, "warn", "forge.ai.attempt.failed", {
         attempt,
         maxAttempts: policy.maxAttempts,
@@ -743,7 +752,14 @@ export async function runForgeAiOperation<T>(
         code: lastError.code,
         retryable: true
       });
-      if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+      if (delayMs > 0) {
+        try {
+          await waitForForgeAiRetry(delayMs, operation.signal);
+        } catch {
+          lastError = forgeAiCancellationError();
+          break;
+        }
+      }
     }
   }
 
@@ -770,7 +786,8 @@ export async function runForgeAiOperation<T>(
 
 function createForgeAiActivityWatchdog(
   inactivityTimeoutMs: number,
-  deadlineAt: number
+  deadlineAt: number,
+  parentSignal?: AbortSignal
 ): {
   signal: AbortSignal;
   reportActivity: () => void;
@@ -778,14 +795,23 @@ function createForgeAiActivityWatchdog(
 } {
   const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | undefined;
+  const abortFromParent = () => {
+    controller.abort(
+      parentSignal?.reason ?? new DOMException("Forge AI operation was cancelled.", "AbortError")
+    );
+  };
 
-  const dispose = () => {
+  const clearWatchdogTimeout = () => {
     if (timeout) clearTimeout(timeout);
     timeout = undefined;
   };
+  const dispose = () => {
+    clearWatchdogTimeout();
+    parentSignal?.removeEventListener("abort", abortFromParent);
+  };
   const reportActivity = () => {
     if (controller.signal.aborted) return;
-    dispose();
+    clearWatchdogTimeout();
     const remainingMs = deadlineAt - Date.now();
     if (remainingMs <= 0) {
       controller.abort(new DOMException("Forge AI exceeded its total deadline.", "TimeoutError"));
@@ -796,6 +822,8 @@ function createForgeAiActivityWatchdog(
     }, Math.max(1, Math.min(inactivityTimeoutMs, remainingMs)));
   };
 
+  if (parentSignal?.aborted) abortFromParent();
+  else parentSignal?.addEventListener("abort", abortFromParent, { once: true });
   reportActivity();
   return {
     signal: controller.signal,
@@ -815,10 +843,33 @@ function resolveForgeAiOperationContext(
     workspaceId: context?.workspaceId,
     sessionId: context?.sessionId,
     model: context?.model ?? model,
+    signal: context?.signal,
     logger: context?.logger,
     onAttempt: context?.onAttempt,
     onDelta: context?.onDelta
   };
+}
+
+function forgeAiCancellationError(): ForgeAiRequestError {
+  return new ForgeAiRequestError("Forge AI operation was cancelled.", {
+    code: "cancelled",
+    retryable: false
+  });
+}
+
+function waitForForgeAiRetry(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }, delayMs);
+    const abort = () => {
+      clearTimeout(timeout);
+      reject(signal?.reason);
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+  });
 }
 
 function normalizeForgeAiRequestError(error: unknown): ForgeAiRequestError {
@@ -862,6 +913,7 @@ function operationFailureFromRequestError(
 function forgeAiFailureMessage(error: ForgeAiRequestError, attempts: number): string {
   const attemptText = attempts === 1 ? "1 attempt" : `${attempts} attempts`;
   if (error.code === "configuration") return error.message;
+  if (error.code === "cancelled") return "Forge AI operation was cancelled.";
   if (error.code === "timeout") {
     return `The AI provider timed out after ${attemptText}. Retry the operation or review the provider settings.`;
   }

@@ -10,6 +10,7 @@ import type {
   ForgeOperationStreamEvent,
   HarnessTemplateResponse
 } from "../src/shared/types.js";
+import { getOrCreateForgeOperationStream } from "../src/server/services/forge-operation-streams.js";
 
 test("keeps Forge history private, bounded, expiring, and non-cacheable", async () => {
   const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "harhub-forge-history-"));
@@ -600,12 +601,43 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
     assert.equal(apiDetail.title, apiSession.title);
     assert.equal(apiDetail.viewState.markdownView, "code");
 
+    let markStarted!: () => void;
+    const activeStarted = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    let markStopped!: () => void;
+    const stopped = new Promise<void>((resolve) => {
+      markStopped = resolve;
+    });
+    const activeStream = getOrCreateForgeOperationStream(
+      {
+        accountId: "acct_demo",
+        workspaceId: "ws_demo",
+        sessionId: apiSession.id
+      },
+      "generate",
+      async (stream) => new Promise<void>((resolve) => {
+        markStarted();
+        stream.signal.addEventListener("abort", () => {
+          markStopped();
+          resolve();
+        }, { once: true });
+      })
+    );
+    await activeStarted;
+
     const deleteResponse = await fetch(
       `${baseUrl}/api/workspaces/ws_demo/forge/sessions/${apiSession.id}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
     );
     assert.equal(deleteResponse.status, 204);
     assertPrivateNoStore(deleteResponse);
+    await stopped;
+    assert.equal(activeStream.cancelled, true);
+    await assert.rejects(
+      getForgeSession("acct_demo", "ws_demo", apiSession.id),
+      /Forge session not found/
+    );
   } finally {
     if (server) {
       await new Promise<void>((resolve, reject) =>

@@ -29,6 +29,7 @@ test("freezes Forge sessions into repository-synchronized Projects", async () =>
       archiveProject,
       createForgeSession,
       createSession,
+      deleteForgeSession,
       freezeForgeSessionAsProject,
       getForgeSession,
       getProject,
@@ -143,6 +144,16 @@ test("freezes Forge sessions into repository-synchronized Projects", async () =>
     assert.equal(repeatedFreeze.project.id, frozen.project.id);
     assert.equal(repeatedFreeze.syncToken, undefined);
     assert.equal((await listProjects("acct_demo", "ws_demo")).projects.length, 1);
+
+    await deleteForgeSession("acct_demo", "ws_demo", session.id);
+    await assert.rejects(
+      getForgeSession("acct_demo", "ws_demo", session.id),
+      /Forge session not found/
+    );
+    assert.equal(
+      (await getProject("acct_demo", "ws_demo", frozen.project.id)).id,
+      frozen.project.id
+    );
 
     const checkout = path.join(temporaryDirectory, "checkout");
     writeFramework(checkout, restoredSession.template);

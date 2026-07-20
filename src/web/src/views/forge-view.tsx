@@ -1739,7 +1739,7 @@ function ForgeHistoryPanel({
                         variant="ghost"
                         size="icon"
                         className="mt-1 shrink-0 text-muted-foreground hover:text-destructive"
-                        disabled={Boolean(loadingSessionId)}
+                        disabled={deleting}
                         onClick={() => onRequestDelete(session)}
                       >
                         <Trash2 className="h-4 w-4" aria-hidden="true" />
@@ -1774,7 +1774,8 @@ function ForgeHistoryPanel({
             <AlertDialogTitle>Delete this Forge session?</AlertDialogTitle>
             <AlertDialogDescription>
               “{sessionToDelete?.title}” and its generated preview will be removed from your
-              workspace history. Downloaded ZIP files are not affected.
+              workspace history, and any running work for this session will stop. A Project
+              already frozen from this session and downloaded ZIP files are not affected.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

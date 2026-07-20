@@ -20,7 +20,10 @@ export interface ForgeOperationStreamIdentity {
 export class ForgeOperationStream {
   readonly operationId = randomUUID();
   readonly operation: ForgeSessionOperation["operation"];
+  readonly signal: AbortSignal;
 
+  private readonly abortController = new AbortController();
+  private readonly startedAt = Date.now();
   private readonly subscribers = new Set<ForgeStreamSubscriber>();
   private readonly replayEvents: Array<{
     event: ForgeOperationStreamEvent;
@@ -31,6 +34,7 @@ export class ForgeOperationStream {
 
   constructor(operation: ForgeSessionOperation["operation"]) {
     this.operation = operation;
+    this.signal = this.abortController.signal;
     this.publish({
       type: "operation",
       operationId: this.operationId,
@@ -40,6 +44,35 @@ export class ForgeOperationStream {
 
   get done(): boolean {
     return this.terminal;
+  }
+
+  get cancelled(): boolean {
+    return this.signal.aborted;
+  }
+
+  cancel(message = "Forge session was deleted."): boolean {
+    if (this.terminal) return false;
+    this.abortController.abort(new DOMException(message, "AbortError"));
+    this.publish({
+      type: "error",
+      operationId: this.operationId,
+      operation: this.operation,
+      failure: {
+        operationId: this.operationId,
+        operation: this.operation,
+        code: "cancelled",
+        message,
+        retryable: false,
+        attempts: 0,
+        durationMs: Math.max(0, Date.now() - this.startedAt),
+        occurredAt: new Date().toISOString()
+      }
+    });
+    return true;
+  }
+
+  throwIfCancelled(): void {
+    if (this.signal.aborted) throw this.signal.reason;
   }
 
   publish(event: ForgeOperationStreamEvent): void {
@@ -82,6 +115,25 @@ export class ForgeOperationStream {
 }
 
 const activeStreams = new Map<string, ForgeOperationStream>();
+
+export function cancelForgeOperationStreams(
+  identity: ForgeOperationStreamIdentity
+): number {
+  const key = streamKey(identity);
+  const stream = activeStreams.get(key);
+  if (!stream) return 0;
+  activeStreams.delete(key);
+  if (!stream.cancel()) return 0;
+  console.info(JSON.stringify({
+    timestamp: new Date().toISOString(),
+    event: "forge.ai.operation.cancelled",
+    operationId: stream.operationId,
+    operation: stream.operation,
+    workspaceId: identity.workspaceId,
+    sessionId: identity.sessionId
+  }));
+  return 1;
+}
 
 export function getOrCreateForgeOperationStream(
   identity: ForgeOperationStreamIdentity,

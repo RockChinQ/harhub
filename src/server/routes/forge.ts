@@ -34,6 +34,7 @@ import {
 } from "../services/forge.js";
 import {
   type ForgeOperationStream,
+  cancelForgeOperationStreams,
   getOrCreateForgeOperationStream
 } from "../services/forge-operation-streams.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "../services/workspace-catalogs.js";
@@ -103,11 +104,20 @@ export function registerForgeRoutes(app: Express): void {
     setPrivateNoStore(res);
 
     try {
+      const sessionId = readRequiredString(req.params.sessionId, "sessionId", 128);
+      const identity = {
+        accountId: context.account.id,
+        workspaceId: context.workspace.id,
+        sessionId
+      };
+      cancelForgeOperationStreams(identity);
       await deleteForgeSession(
         context.account.id,
         context.workspace.id,
-        readRequiredString(req.params.sessionId, "sessionId", 128)
+        sessionId
       );
+      // Catch an operation that passed its session lookup just before deletion.
+      cancelForgeOperationStreams(identity);
       res.status(204).end();
     } catch (error) {
       sendForgeError(res, error);
@@ -227,6 +237,7 @@ async function executeForgeOperation({
 }): Promise<void> {
   let input: HarnessFollowUpRequest | undefined;
   try {
+    stream.throwIfCancelled();
     const started = await beginForgeSessionOperation(
       accountId,
       workspaceId,
@@ -235,6 +246,7 @@ async function executeForgeOperation({
       operation,
       answers
     );
+    stream.throwIfCancelled();
     input = started.input;
     stream.publish({
       type: "session",
@@ -281,13 +293,16 @@ async function executeForgeOperation({
       sessionId
     );
     const configuration = await getWorkspaceAiRuntimeConfiguration(accountId, workspaceId);
+    stream.throwIfCancelled();
     const observed = createObservedForgeAiOperation(operation, {
       operationId: stream.operationId,
       workspaceId,
       sessionId,
-      model: configuration?.model
+      model: configuration?.model,
+      signal: stream.signal
     });
     observed.onAttempt = async (attempt, maxAttempts) => {
+      stream.throwIfCancelled();
       stream.publish({
         type: "attempt",
         operationId: stream.operationId,
@@ -323,6 +338,7 @@ async function executeForgeOperation({
     });
 
     const catalog = await loadOrCreateWorkspaceAssetCatalog(workspace);
+    stream.throwIfCancelled();
     const assets = workspaceAssetSummaries(catalog.assets);
     await publishGenerationProgress(
       stream,
@@ -335,6 +351,7 @@ async function executeForgeOperation({
     );
     if (operation === "follow-up") {
       const followUp = await createHarnessFollowUp(input, assets, configuration, observed);
+      stream.throwIfCancelled();
       await recordForgeSessionFollowUp(
         accountId,
         workspaceId,
@@ -362,6 +379,7 @@ async function executeForgeOperation({
       sessionId
     );
     const template = await createHarnessTemplate(input, assets, configuration, observed);
+    stream.throwIfCancelled();
     await publishGenerationProgress(
       stream,
       operation,
@@ -404,6 +422,7 @@ async function executeForgeOperation({
       session: await getForgeSession(accountId, workspaceId, sessionId)
     });
   } catch (error) {
+    if (stream.cancelled) return;
     const failure = forgeOperationFailure(error, stream.operationId, operation);
     let session;
     if (input) {
@@ -449,7 +468,7 @@ async function publishGenerationProgress(
   workspaceId: string,
   sessionId: string
 ): Promise<void> {
-  if (operation !== "generate") return;
+  if (operation !== "generate" || stream.cancelled) return;
   stream.publish({
     type: "progress",
     operationId: stream.operationId,
@@ -457,6 +476,7 @@ async function publishGenerationProgress(
     step,
     status
   });
+  stream.throwIfCancelled();
   try {
     await recordForgeSessionProgress(
       accountId,

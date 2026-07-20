@@ -377,6 +377,7 @@ export type ForgeAiOperation = "connection-test" | "follow-up" | "generate";
 
 export type ForgeAiFailureCode =
   | "configuration"
+  | "cancelled"
   | "timeout"
   | "network"
   | "rate_limited"
