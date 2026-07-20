@@ -137,11 +137,16 @@ jobs:
             echo "::error::Freeze this Forge session as a Harhub Project before syncing."
             exit 1
           fi
+          SKILL_ARCHIVE_ARGS=()
+          if [ -d ".harness/skills" ] && find .harness/skills -type f -name SKILL.md -print -quit | grep -q .; then
+            zip -q -r "\$RUNNER_TEMP/harhub-skills.zip" .harness/skills
+            SKILL_ARCHIVE_ARGS=(-F "skills=@\$RUNNER_TEMP/harhub-skills.zip;type=application/zip")
+          fi
           curl --fail-with-body --silent --show-error \\
-            --retry 3 --retry-delay 2 --retry-all-errors --max-time 45 \\
+            --retry 3 --retry-delay 2 --retry-all-errors --connect-timeout 10 --max-time 120 \\
             -H "Authorization: Bearer \$HARHUB_PROJECT_TOKEN" \\
-            -H "Content-Type: application/json" \\
-            --data-binary "@\$RUNNER_TEMP/harhub-sync.json" \\
+            -F "manifest=<\$RUNNER_TEMP/harhub-sync.json;type=application/json" \\
+            "\${SKILL_ARCHIVE_ARGS[@]}" \\
             "\$HARHUB_SYNC_URL"
 `;
 }
@@ -163,14 +168,25 @@ const configured = new Map(
 );
 const files = await walk(root);
 const bindings = [];
+const skillFilesFound = files.filter(
+  (file) => file.endsWith('/SKILL.md') && file.startsWith('.harness/skills/')
+);
+const skillRoots = skillFilesFound.map((file) => path.posix.dirname(file));
 
-for (const skillFile of files.filter((file) => file.endsWith('/SKILL.md') && file.startsWith('.harness/skills/'))) {
+for (const skillFile of skillFilesFound) {
   const skillRoot = path.posix.dirname(skillFile);
-  const skillFiles = files.filter((file) => file === skillFile || file.startsWith(skillRoot + '/'));
+  const skillFiles = files.filter((file) =>
+    (file === skillFile || file.startsWith(skillRoot + '/')) &&
+    !skillRoots.some((otherRoot) =>
+      otherRoot !== skillRoot &&
+      otherRoot.startsWith(skillRoot + '/') &&
+      (file === otherRoot + '/SKILL.md' || file.startsWith(otherRoot + '/'))
+    )
+  );
   const known = configured.get('skill\\0' + skillRoot);
   bindings.push({
     kind: 'skill',
-    name: known?.name ?? await skillName(skillFile, path.posix.basename(skillRoot)),
+    name: await skillName(skillFile, known?.name ?? path.posix.basename(skillRoot)),
     path: skillRoot,
     digest: await directoryDigest(skillRoot, skillFiles)
   });

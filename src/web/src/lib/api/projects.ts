@@ -2,6 +2,8 @@ import type {
   ForgeSessionDetail,
   HarhubProject,
   ProjectListResponse,
+  ProjectSkillDiffResponse,
+  ProjectSkillPublishResponse,
   ProjectTokenResponse
 } from "../../../../shared/types";
 import { JSON_HEADERS, request } from "./request";
@@ -93,5 +95,31 @@ export function archiveProject(
   return request(
     `/api/workspaces/${encodeURIComponent(workspaceId)}/projects/${encodeURIComponent(projectId)}`,
     { method: "DELETE", cache: "no-store", token }
+  );
+}
+
+export function getProjectSkillDiff(
+  token: string,
+  workspaceId: string,
+  projectId: string,
+  bindingId: string,
+  selectedPath?: string
+): Promise<ProjectSkillDiffResponse> {
+  const query = selectedPath ? `?path=${encodeURIComponent(selectedPath)}` : "";
+  return request(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/projects/${encodeURIComponent(projectId)}/bindings/${encodeURIComponent(bindingId)}/diff${query}`,
+    { cache: "no-store", token }
+  );
+}
+
+export function publishProjectSkillFork(
+  token: string,
+  workspaceId: string,
+  projectId: string,
+  bindingId: string
+): Promise<ProjectSkillPublishResponse> {
+  return request(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/projects/${encodeURIComponent(projectId)}/bindings/${encodeURIComponent(bindingId)}/publish`,
+    { method: "POST", cache: "no-store", token }
   );
 }

@@ -326,8 +326,20 @@ function assertFrameworkIntegration(template: HarnessTemplateResponse): void {
   assert.match(workflow, /actions\/checkout@v6/);
   assert.match(workflow, /HARHUB_PROJECT_TOKEN/);
   assert.match(workflow, /\.harness\/skills\/\*\*/);
+  assert.match(workflow, /harhub-skills\.zip/);
+  assert.match(workflow, /manifest=</);
+  assert.match(workflow, /skills=@/);
   assert.match(workflow, /permissions:\n  contents: read/);
-  assert.ok(parseYaml(workflow));
+  const parsed = parseYaml(workflow) as {
+    jobs?: { sync?: { steps?: Array<{ name?: string; run?: string }> } };
+  };
+  assert.ok(parsed);
+  const syncScript = parsed.jobs?.sync?.steps?.find(
+    (step) => step.name === "Sync Project with Harhub"
+  )?.run;
+  assert.ok(syncScript);
+  const shellCheck = spawnSync("bash", ["-n"], { input: syncScript, encoding: "utf8" });
+  assert.equal(shellCheck.status, 0, shellCheck.stderr);
   assert.ok(template.files.some((file) => file.path === ".harhub/project.json"));
   assert.ok(template.files.some((file) => file.path === ".harhub/scripts/collect-bindings.mjs"));
 }

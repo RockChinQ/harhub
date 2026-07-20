@@ -115,13 +115,20 @@ All Forge session, interview, generation, and download responses use private
 
 ## Project Repository Sync
 
-A completed Forge session can be frozen as a Project linked to a GitHub
-repository. The resulting framework contains `.harhub/project.json`, a local
-binding collector, and `.github/workflows/harhub-sync.yml`. The workflow runs
-when files under `.harness/skills`, `.harness/mcp`, or `.harness/rules` change
-and reports their content digests to the tracked Project.
+A completed Forge session can be frozen as a Project and connected to a GitHub
+repository later. The resulting framework contains `.harhub/project.json`, a
+local binding collector, and `.github/workflows/harhub-sync.yml`. The workflow
+runs when files under `.harness/skills`, `.harness/mcp`, or `.harness/rules`
+change. It reports binding digests and uploads a complete zip of the repository
+Skills.
 
-Copy the one-time token shown after freezing into the repository secret
+Repository Skills are stored as Project-private forks of workspace Library
+Skills. Added and modified forks appear on the Project detail page with a
+file-level comparison. Repository sync never overwrites the global Library:
+an operator must review the diff and explicitly choose **Sync to Library**.
+Deleted repository Skills are marked missing and do not delete Library assets.
+
+Copy the one-time token shown after connecting the repository into its secret
 `HARHUB_PROJECT_TOKEN`. Harhub stores only the token hash. Set
 `HARHUB_PUBLIC_URL` to the public HTTPS application origin before freezing so
 the generated sync endpoint is reachable from GitHub-hosted runners.

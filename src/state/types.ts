@@ -7,7 +7,10 @@ import type {
   WorkspaceMembership,
   WorkspaceRecord,
   ForgeSessionDetail,
-  HarhubProject
+  HarhubProject,
+  ProjectSkillForkSummary,
+  StoredObject,
+  ValidationIssue
 } from "../shared/types.js";
 
 export interface AccountRecord extends AccountProfile {
@@ -101,4 +104,12 @@ export interface ForgeSessionCacheRecord extends ForgeSessionDetail {
 
 export interface ProjectStateRecord extends HarhubProject {
   syncTokenHash?: string;
+  skillForkGeneration?: number;
+  skillForks?: ProjectSkillForkRecord[];
+}
+
+export interface ProjectSkillForkRecord extends ProjectSkillForkSummary {
+  path: string;
+  storage: StoredObject;
+  validationIssues: ValidationIssue[];
 }

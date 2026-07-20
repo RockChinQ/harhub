@@ -1,4 +1,4 @@
-import type { Express, Request } from "express";
+import type { Express, Request, RequestHandler } from "express";
 
 import { PUBLIC_APP_URL } from "../config.js";
 import type {
@@ -15,11 +15,15 @@ import {
   getForgeSession,
   getProject,
   listProjects,
-  rotateProjectSyncToken,
-  syncProjectFromRepository
+  rotateProjectSyncToken
 } from "../../state/index.js";
 import { requireWorkspaceAccess } from "../auth.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "../services/workspace-catalogs.js";
+import {
+  getProjectSkillDiff,
+  publishProjectSkillFork,
+  syncProjectRepositoryBundle
+} from "../services/project-skill-forks.js";
 import { getBearerToken, sendError, setPrivateNoStore } from "../utils/http.js";
 
 const MAX_PROJECT_NAME_CHARS = 120;
@@ -28,8 +32,11 @@ const MAX_BINDINGS_PER_SYNC = 1_000;
 const MAX_BINDING_NAME_CHARS = 200;
 const MAX_BINDING_PATH_CHARS = 1_024;
 
-export function registerProjectRoutes(app: Express): void {
-  app.post("/api/projects/:projectId/sync", async (req, res) => {
+export function registerProjectRoutes(
+  app: Express,
+  upload: { single(fieldName: string): RequestHandler }
+): void {
+  app.post("/api/projects/:projectId/sync", upload.single("skills"), async (req, res) => {
     setPrivateNoStore(res);
     try {
       const token = getBearerToken(req);
@@ -37,16 +44,58 @@ export function registerProjectRoutes(app: Express): void {
         res.status(401).json({ error: "Project sync credentials are required." });
         return;
       }
-      res.json(await syncProjectFromRepository(
-        readRequiredString(req.params.projectId, "projectId", 128),
+      res.json(await syncProjectRepositoryBundle({
+        projectId: readRequiredString(req.params.projectId, "projectId", 128),
         token,
-        readProjectSyncRequest(req.body)
-      ));
+        request: readProjectSyncRequestBody(req),
+        ...(req.file ? { skillArchive: req.file.buffer } : {})
+      }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       sendError(res, error, message.includes("credentials") ? 401 : 400);
     }
   });
+
+  app.get(
+    "/api/workspaces/:workspaceId/projects/:projectId/bindings/:bindingId/diff",
+    async (req, res) => {
+      const context = await requireWorkspaceAccess(req, res);
+      if (!context) return;
+      setPrivateNoStore(res);
+      try {
+        res.json(await getProjectSkillDiff({
+          accountId: context.account.id,
+          workspace: context.workspace,
+          projectId: readRequiredString(req.params.projectId, "projectId", 128),
+          bindingId: readRequiredString(req.params.bindingId, "bindingId", 128),
+          ...(typeof req.query.path === "string" && req.query.path
+            ? { selectedPath: readRequiredString(req.query.path, "path", MAX_BINDING_PATH_CHARS) }
+            : {})
+        }));
+      } catch (error) {
+        sendError(res, error, 400);
+      }
+    }
+  );
+
+  app.post(
+    "/api/workspaces/:workspaceId/projects/:projectId/bindings/:bindingId/publish",
+    async (req, res) => {
+      const context = await requireWorkspaceAccess(req, res);
+      if (!context) return;
+      setPrivateNoStore(res);
+      try {
+        res.json(await publishProjectSkillFork({
+          accountId: context.account.id,
+          workspace: context.workspace,
+          projectId: readRequiredString(req.params.projectId, "projectId", 128),
+          bindingId: readRequiredString(req.params.bindingId, "bindingId", 128)
+        }));
+      } catch (error) {
+        sendError(res, error, 400);
+      }
+    }
+  );
 
   app.get("/api/workspaces/:workspaceId/projects", async (req, res) => {
     const context = await requireWorkspaceAccess(req, res);
@@ -199,6 +248,17 @@ export function registerProjectRoutes(app: Express): void {
       }
     }
   );
+}
+
+function readProjectSyncRequestBody(req: Request): ProjectSyncRequest {
+  const manifest = req.body?.manifest;
+  if (typeof manifest !== "string") return readProjectSyncRequest(req.body);
+  try {
+    return readProjectSyncRequest(JSON.parse(manifest));
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new Error("Project sync manifest must be valid JSON.");
+    throw error;
+  }
 }
 
 export function readProjectRepository(

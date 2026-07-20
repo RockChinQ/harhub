@@ -473,7 +473,18 @@ export type ForgeSessionStatus = "interviewing" | "working" | "failed" | "comple
 export type ProjectStatus = "active" | "archived";
 export type ProjectBindingKind = "skill" | "mcp" | "rule";
 export type ProjectBindingSource = "harhub" | "framework" | "repository";
-export type ProjectBindingStatus = "pending" | "synced" | "modified" | "missing";
+export type ProjectBindingStatus = "pending" | "synced" | "added" | "modified" | "missing";
+
+export interface ProjectSkillForkSummary {
+  digest: string;
+  fileCount: number;
+  size: number;
+  validation: {
+    errors: number;
+    warnings: number;
+  };
+  updatedAt: string;
+}
 
 export interface ProjectRepository {
   provider: "github";
@@ -494,6 +505,7 @@ export interface ProjectBinding {
   sourceDigest?: string;
   repositoryDigest?: string;
   lastSeenAt?: string;
+  fork?: ProjectSkillForkSummary;
 }
 
 export interface ProjectSyncState {
@@ -537,6 +549,36 @@ export interface ProjectRepositoryBindingInput {
   name: string;
   path: string;
   digest: string;
+}
+
+export type ProjectSkillDiffStatus = "added" | "modified" | "removed";
+
+export interface ProjectSkillDiffFile {
+  path: string;
+  status: ProjectSkillDiffStatus;
+}
+
+export interface ProjectSkillDiffResponse {
+  bindingId: string;
+  name: string;
+  path: string;
+  status: Extract<ProjectBindingStatus, "added" | "modified">;
+  baseAssetId?: string;
+  fork: ProjectSkillForkSummary;
+  files: ProjectSkillDiffFile[];
+  selectedFile?: {
+    path: string;
+    status: ProjectSkillDiffStatus;
+    baseContent?: string;
+    forkContent?: string;
+    binary: boolean;
+    truncated: boolean;
+  };
+}
+
+export interface ProjectSkillPublishResponse {
+  project: HarhubProject;
+  asset: AssetRecord;
 }
 
 export interface ProjectSyncRequest {

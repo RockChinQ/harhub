@@ -15,14 +15,22 @@ import type {
   ProjectBinding,
   ProjectListResponse,
   ProjectRepository,
+  ProjectSkillForkSummary,
   ProjectSyncRequest,
   ProjectSyncResponse,
-  ProjectTokenResponse
+  ProjectTokenResponse,
+  StoredObject,
+  ValidationIssue
 } from "../shared/types.js";
 import { serializeStateAccess } from "./access.js";
 import { requireWorkspaceMembership } from "./records.js";
 import { loadState, saveState } from "./store.js";
-import type { AppState, ForgeSessionCacheRecord, ProjectStateRecord } from "./types.js";
+import type {
+  AppState,
+  ForgeSessionCacheRecord,
+  ProjectSkillForkRecord,
+  ProjectStateRecord
+} from "./types.js";
 
 const MAX_PROJECTS_PER_WORKSPACE = 500;
 const FORGE_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
@@ -160,6 +168,7 @@ export function connectProjectRepository(
     project.syncTokenConfigured = true;
     project.syncTokenLastFour = credential.token.slice(-4);
     project.syncTokenHash = credential.hash;
+    project.skillForkGeneration = (project.skillForkGeneration ?? 0) + 1;
     project.updatedAt = new Date().toISOString();
     await saveState(state);
     return {
@@ -209,53 +218,136 @@ export function archiveProject(
   });
 }
 
+export interface ProjectSyncAuthorization {
+  workspaceId: string;
+  generation: number;
+  bindings: ProjectBinding[];
+  skillForks: ProjectSkillForkRecord[];
+}
+
+export interface ProjectSkillForkUpdate extends ProjectSkillForkSummary {
+  path: string;
+  storage: StoredObject;
+  validationIssues: ValidationIssue[];
+}
+
+export interface ProjectBindingBaselineUpdate {
+  path: string;
+  assetId?: string;
+  digest?: string;
+}
+
+export function authorizeProjectSync(
+  projectId: string,
+  token: string,
+  repository: string
+): Promise<ProjectSyncAuthorization> {
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    const project = requireProjectSyncAccess(state, projectId, token, repository);
+    return {
+      workspaceId: project.workspaceId,
+      generation: project.skillForkGeneration ?? 0,
+      bindings: structuredClone(project.bindings),
+      skillForks: structuredClone(project.skillForks ?? [])
+    };
+  });
+}
+
 export function syncProjectFromRepository(
   projectId: string,
   token: string,
-  input: ProjectSyncRequest
+  input: ProjectSyncRequest,
+  forkUpdates: ProjectSkillForkUpdate[] = [],
+  expectedGeneration?: number,
+  baselineUpdates: ProjectBindingBaselineUpdate[] = []
 ): Promise<ProjectSyncResponse> {
   return serializeStateAccess(async () => {
     const state = await loadState();
-    const project = state.projects.find((item) => item.id === projectId);
-    if (!project || !verifySyncToken(token, project.syncTokenHash)) {
-      throw new Error("Project sync credentials are invalid.");
-    }
-    if (project.status !== "active") throw new Error("Project is archived.");
-    if (!project.repository) throw new Error("Project does not have a connected repository.");
-    const expectedRepository = `${project.repository.owner}/${project.repository.name}`;
-    if (input.repository.toLowerCase() !== expectedRepository.toLowerCase()) {
-      throw new Error("Project sync repository does not match the tracked repository.");
+    const project = requireProjectSyncAccess(state, projectId, token, input.repository);
+    if (
+      expectedGeneration !== undefined &&
+      (project.skillForkGeneration ?? 0) !== expectedGeneration
+    ) {
+      throw new Error("Project changed while this repository sync was being prepared. Retry the sync.");
     }
 
     const now = new Date().toISOString();
     const incoming = new Map(input.bindings.map((binding) => [bindingKey(binding), binding]));
+    const existingForks = new Map(
+      (project.skillForks ?? []).map((fork) => [fork.path, fork])
+    );
+    const updatedForks = new Map(forkUpdates.map((fork) => [fork.path, fork]));
+    const baselines = new Map(baselineUpdates.map((baseline) => [baseline.path, baseline]));
+    const nextForks: ProjectSkillForkRecord[] = [];
     const nextBindings: ProjectBinding[] = project.bindings.map((binding) => {
       const observed = incoming.get(bindingKey(binding));
-      if (!observed) return { ...binding, status: "missing" };
+      if (!observed) {
+        const { fork: _fork, ...retained } = binding;
+        return { ...retained, status: "missing" };
+      }
       incoming.delete(bindingKey(binding));
+      const forkUpdate = updatedForks.get(binding.path);
+      const baseline = baselines.get(binding.path);
+      const baselineResolved = baselines.has(binding.path);
+      const status = projectBindingStatus(
+        binding,
+        observed.digest,
+        baseline?.digest,
+        baselineResolved
+      );
+      const fork = status === "added" || status === "modified"
+        ? forkUpdate ?? existingForks.get(binding.path)
+        : undefined;
+      if (fork) nextForks.push(structuredClone(fork));
+      const retained = { ...binding };
+      delete retained.fork;
+      if (baselineResolved) {
+        delete retained.assetId;
+        delete retained.sourceDigest;
+        retained.source = baseline?.assetId ? "harhub" : "repository";
+      }
       return {
-        ...binding,
+        ...retained,
         name: observed.name,
-        status: binding.sourceDigest && binding.sourceDigest !== observed.digest
-          ? "modified"
-          : "synced",
+        status,
+        ...(baseline?.assetId ? { assetId: baseline.assetId, source: "harhub" as const } : {}),
+        ...(baseline?.digest ? { sourceDigest: baseline.digest } : {}),
         repositoryDigest: observed.digest,
-        lastSeenAt: now
+        lastSeenAt: now,
+        ...(fork ? { fork: publicForkSummary(fork) } : {})
       };
     });
     for (const observed of incoming.values()) {
+      const id = randomUUID();
+      const forkUpdate = observed.kind === "skill" ? updatedForks.get(observed.path) : undefined;
+      const baseline = observed.kind === "skill" ? baselines.get(observed.path) : undefined;
+      const status = observed.kind === "skill"
+        ? baseline?.digest === observed.digest
+          ? "synced" as const
+          : baseline?.digest
+            ? "modified" as const
+            : "added" as const
+        : "synced" as const;
+      const fork = status === "added" || status === "modified" ? forkUpdate : undefined;
+      if (fork) nextForks.push(structuredClone(fork));
       nextBindings.push({
-        id: randomUUID(),
+        id,
         kind: observed.kind,
         name: observed.name,
         path: observed.path,
-        source: "repository",
-        status: "synced",
+        source: baseline ? "harhub" : "repository",
+        status,
+        ...(baseline ? { assetId: baseline.assetId } : {}),
+        ...(baseline ? { sourceDigest: baseline.digest } : {}),
         repositoryDigest: observed.digest,
-        lastSeenAt: now
+        lastSeenAt: now,
+        ...(fork ? { fork: publicForkSummary(fork) } : {})
       });
     }
     project.bindings = nextBindings.sort(bindingsByPath);
+    project.skillForks = nextForks.sort((left, right) => left.path.localeCompare(right.path));
+    project.skillForkGeneration = (project.skillForkGeneration ?? 0) + 1;
     project.sync = {
       status: "synced",
       revision: project.sync.revision + 1,
@@ -272,6 +364,67 @@ export function syncProjectFromRepository(
       syncedAt: now,
       counts: countBindingStatuses(project.bindings)
     };
+  });
+}
+
+export function getProjectSkillFork(
+  accountId: string,
+  workspaceId: string,
+  projectId: string,
+  bindingId: string
+): Promise<{
+  project: HarhubProject;
+  binding: ProjectBinding;
+  fork: ProjectSkillForkRecord;
+}> {
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    requireWorkspaceMembership(state, accountId, workspaceId);
+    const project = findProject(state, workspaceId, projectId);
+    const binding = project.bindings.find((item) => item.id === bindingId);
+    if (!binding || binding.kind !== "skill") throw new Error("Project Skill binding not found.");
+    const fork = project.skillForks?.find((item) => item.path === binding.path);
+    if (!fork) throw new Error("Project Skill fork not found.");
+    return {
+      project: toPublicProject(project),
+      binding: structuredClone(binding),
+      fork: structuredClone(fork)
+    };
+  });
+}
+
+export function recordProjectSkillPublished(input: {
+  accountId: string;
+  workspaceId: string;
+  projectId: string;
+  bindingId: string;
+  assetId: string;
+  digest: string;
+  name?: string;
+}): Promise<HarhubProject> {
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    requireWorkspaceMembership(state, input.accountId, input.workspaceId);
+    const project = findProject(state, input.workspaceId, input.projectId);
+    if (project.status !== "active") throw new Error("Archived Projects cannot publish Skills.");
+    const binding = project.bindings.find((item) => item.id === input.bindingId);
+    if (!binding || binding.kind !== "skill") throw new Error("Project Skill binding not found.");
+    const fork = project.skillForks?.find((item) => item.path === binding.path);
+    if (!fork || fork.digest !== input.digest) {
+      throw new Error("Project Skill fork changed before it could be published.");
+    }
+    binding.assetId = input.assetId;
+    if (input.name) binding.name = input.name;
+    binding.source = "harhub";
+    binding.sourceDigest = input.digest;
+    binding.repositoryDigest = input.digest;
+    binding.status = "synced";
+    delete binding.fork;
+    project.skillForks = (project.skillForks ?? []).filter((item) => item.path !== binding.path);
+    project.skillForkGeneration = (project.skillForkGeneration ?? 0) + 1;
+    project.updatedAt = new Date().toISOString();
+    await saveState(state);
+    return toPublicProject(project);
   });
 }
 
@@ -303,6 +456,7 @@ function createProjectRecord(
         ? { sourceForgeSessionId: input.sourceForgeSessionId }
         : {}),
       syncTokenConfigured: Boolean(credential),
+      skillForkGeneration: 0,
       ...(credential
         ? {
             syncTokenLastFour: credential.token.slice(-4),
@@ -356,6 +510,25 @@ function findProject(state: AppState, workspaceId: string, projectId: string): P
   return project;
 }
 
+function requireProjectSyncAccess(
+  state: AppState,
+  projectId: string,
+  token: string,
+  repository: string
+): ProjectStateRecord {
+  const project = state.projects.find((item) => item.id === projectId);
+  if (!project || !verifySyncToken(token, project.syncTokenHash)) {
+    throw new Error("Project sync credentials are invalid.");
+  }
+  if (project.status !== "active") throw new Error("Project is archived.");
+  if (!project.repository) throw new Error("Project does not have a connected repository.");
+  const expectedRepository = `${project.repository.owner}/${project.repository.name}`;
+  if (repository.toLowerCase() !== expectedRepository.toLowerCase()) {
+    throw new Error("Project sync repository does not match the tracked repository.");
+  }
+  return project;
+}
+
 function findForgeSession(
   state: AppState,
   accountId: string,
@@ -370,8 +543,39 @@ function findForgeSession(
 }
 
 function toPublicProject(project: ProjectStateRecord): HarhubProject {
-  const { syncTokenHash: _syncTokenHash, ...publicProject } = structuredClone(project);
+  const {
+    syncTokenHash: _syncTokenHash,
+    skillForkGeneration: _skillForkGeneration,
+    skillForks: _skillForks,
+    ...publicProject
+  } = structuredClone(project);
   return publicProject;
+}
+
+function projectBindingStatus(
+  binding: ProjectBinding,
+  repositoryDigest: string,
+  discoveredBaseDigest?: string,
+  baselineResolved = false
+): ProjectBinding["status"] {
+  if (binding.kind !== "skill") {
+    return binding.sourceDigest && binding.sourceDigest !== repositoryDigest
+      ? "modified"
+      : "synced";
+  }
+  const baseDigest = baselineResolved ? discoveredBaseDigest : binding.sourceDigest;
+  if (!baseDigest) return "added";
+  return baseDigest === repositoryDigest ? "synced" : "modified";
+}
+
+function publicForkSummary(fork: ProjectSkillForkRecord): ProjectSkillForkSummary {
+  return {
+    digest: fork.digest,
+    fileCount: fork.fileCount,
+    size: fork.size,
+    validation: structuredClone(fork.validation),
+    updatedAt: fork.updatedAt
+  };
 }
 
 function createSyncCredential(): { token: string; hash: string } {
@@ -424,7 +628,7 @@ function projectsNewestFirst(left: ProjectStateRecord, right: ProjectStateRecord
 }
 
 function countBindingStatuses(bindings: ProjectBinding[]): Record<ProjectBinding["status"], number> {
-  const counts = { pending: 0, synced: 0, modified: 0, missing: 0 };
+  const counts = { pending: 0, synced: 0, added: 0, modified: 0, missing: 0 };
   for (const binding of bindings) counts[binding.status] += 1;
   return counts;
 }

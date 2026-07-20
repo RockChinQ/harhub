@@ -5,13 +5,15 @@ import {
   Check,
   Copy,
   ExternalLink,
+  FileDiff,
   FolderGit2,
   GitBranch,
   Loader2,
   RefreshCw,
   RotateCcw,
   ShieldCheck,
-  Sparkles
+  Sparkles,
+  Upload
 } from "lucide-react";
 
 import type {
@@ -19,6 +21,7 @@ import type {
   ProjectBinding,
   ProjectBindingStatus,
   ProjectListResponse,
+  ProjectSkillDiffResponse,
   WorkspaceRecord
 } from "../../../shared/types";
 import {
@@ -34,12 +37,21 @@ import {
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
+} from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import {
   archiveProject,
   connectProjectRepository,
   getProject,
+  getProjectSkillDiff,
   listProjects,
+  publishProjectSkillFork,
   rotateProjectSyncToken
 } from "../lib/api";
 import { cn } from "../lib/utils";
@@ -69,6 +81,13 @@ export function ProjectsView({
   const [repository, setRepository] = useState("");
   const [defaultBranch, setDefaultBranch] = useState("main");
   const [isConnecting, setIsConnecting] = useState(false);
+  const [diffOpen, setDiffOpen] = useState(false);
+  const [diffBinding, setDiffBinding] = useState<ProjectBinding>();
+  const [skillDiff, setSkillDiff] = useState<ProjectSkillDiffResponse>();
+  const [diffError, setDiffError] = useState<string>();
+  const [isLoadingDiff, setIsLoadingDiff] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
 
   useEffect(() => {
     setSyncToken(undefined);
@@ -159,6 +178,67 @@ export function ProjectsView({
     setCopied(true);
   }
 
+  async function openSkillDiff(binding: ProjectBinding) {
+    if (!project) return;
+    setDiffBinding(binding);
+    setSkillDiff(undefined);
+    setDiffError(undefined);
+    setDiffOpen(true);
+    await loadSkillDiff(binding);
+  }
+
+  async function loadSkillDiff(binding: ProjectBinding, selectedPath?: string) {
+    if (!project) return;
+    setIsLoadingDiff(true);
+    setDiffError(undefined);
+    try {
+      const result = await getProjectSkillDiff(
+        token,
+        workspace.id,
+        project.id,
+        binding.id,
+        selectedPath
+      );
+      setSkillDiff(result);
+      if (!selectedPath && result.files[0]) {
+        setSkillDiff(await getProjectSkillDiff(
+          token,
+          workspace.id,
+          project.id,
+          binding.id,
+          result.files[0].path
+        ));
+      }
+    } catch (caught) {
+      setDiffError(errorMessage(caught));
+    } finally {
+      setIsLoadingDiff(false);
+    }
+  }
+
+  async function publishSkillFork() {
+    if (!project || !diffBinding) return;
+    setIsPublishing(true);
+    setDiffError(undefined);
+    try {
+      const result = await publishProjectSkillFork(
+        token,
+        workspace.id,
+        project.id,
+        diffBinding.id
+      );
+      setProject(result.project);
+      setPublishOpen(false);
+      setDiffOpen(false);
+      setSkillDiff(undefined);
+      setDiffBinding(undefined);
+    } catch (caught) {
+      setDiffError(errorMessage(caught));
+    } finally {
+      setIsPublishing(false);
+    }
+  }
+
   if (routedProjectId) {
     return (
       <section className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto pb-2">
@@ -208,7 +288,7 @@ export function ProjectsView({
               <CardContent className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4">
                 <Metric label="Bindings" value={String(project.bindings.length)} />
                 <Metric label="Synced" value={String(bindingCounts.synced)} />
-                <Metric label="Changed" value={String(bindingCounts.modified)} />
+                <Metric label="Changed" value={String(bindingCounts.added + bindingCounts.modified)} />
                 <Metric
                   label="Last sync"
                   value={project.sync.lastSyncedAt
@@ -231,7 +311,11 @@ export function ProjectsView({
                 {project.bindings.length ? (
                   <div className="divide-y">
                     {project.bindings.map((binding) => (
-                      <BindingRow key={binding.id} binding={binding} />
+                      <BindingRow
+                        key={binding.id}
+                        binding={binding}
+                        onReview={() => void openSkillDiff(binding)}
+                      />
                     ))}
                   </div>
                 ) : (
@@ -372,6 +456,77 @@ export function ProjectsView({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <Dialog
+          open={diffOpen}
+          onOpenChange={(open) => {
+            setDiffOpen(open);
+            if (!open) {
+              setDiffBinding(undefined);
+              setSkillDiff(undefined);
+              setDiffError(undefined);
+            }
+          }}
+        >
+          <DialogContent className="flex max-h-[88vh] max-w-5xl flex-col overflow-hidden p-0">
+            <DialogHeader className="border-b px-6 py-5 pr-12">
+              <DialogTitle>{diffBinding?.name ?? "Project Skill changes"}</DialogTitle>
+              <DialogDescription>
+                Review the repository fork against the current workspace Library version.
+                Nothing is published until you confirm it.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-auto px-6 py-5">
+              {isLoadingDiff && !skillDiff ? (
+                <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  Loading file differences…
+                </div>
+              ) : null}
+              {diffError ? <ErrorNotice message={diffError} /> : null}
+              {skillDiff ? <SkillDiffView
+                diff={skillDiff}
+                loading={isLoadingDiff}
+                onSelect={(path) => diffBinding && void loadSkillDiff(diffBinding, path)}
+              /> : null}
+            </div>
+            {skillDiff ? (
+              <div className="flex flex-col gap-3 border-t bg-muted/20 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted-foreground">
+                  {skillDiff.fork.validation.errors} errors · {skillDiff.fork.validation.warnings} warnings
+                </p>
+                <Button
+                  type="button"
+                  disabled={skillDiff.fork.validation.errors > 0 || isPublishing}
+                  onClick={() => setPublishOpen(true)}
+                >
+                  <Upload className="h-4 w-4" aria-hidden="true" />
+                  Sync to Library
+                </Button>
+              </div>
+            ) : null}
+          </DialogContent>
+        </Dialog>
+
+        <AlertDialog open={publishOpen} onOpenChange={setPublishOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Sync this Project Skill to the Library?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This replaces the current global Skill with the reviewed repository fork, or adds
+                it as a new global Skill. The Project binding will then be marked as synced.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {diffError ? <ErrorNotice message={diffError} /> : null}
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isPublishing}>Cancel</AlertDialogCancel>
+              <AlertDialogAction disabled={isPublishing} onClick={() => void publishSkillFork()}>
+                {isPublishing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Confirm sync
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </section>
     );
   }
@@ -451,15 +606,29 @@ export function ProjectsView({
   );
 }
 
-function BindingRow({ binding }: { binding: ProjectBinding }) {
+function BindingRow({
+  binding,
+  onReview
+}: {
+  binding: ProjectBinding;
+  onReview: () => void;
+}) {
+  const reviewable = binding.kind === "skill" && Boolean(binding.fork) &&
+    (binding.status === "added" || binding.status === "modified");
   return (
-    <div className="grid gap-2 px-5 py-4 sm:grid-cols-[110px_minmax(0,1fr)_110px] sm:items-center">
+    <div className="grid gap-2 px-5 py-4 sm:grid-cols-[110px_minmax(0,1fr)_110px_auto] sm:items-center">
       <Badge variant="outline" className="w-fit uppercase">{binding.kind}</Badge>
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{binding.name}</p>
         <p className="mt-1 truncate font-mono text-xs text-muted-foreground">{binding.path}</p>
       </div>
       <BindingStatusBadge status={binding.status} />
+      {reviewable ? (
+        <Button type="button" variant="outline" size="sm" onClick={onReview}>
+          <FileDiff className="h-4 w-4" aria-hidden="true" />
+          Review
+        </Button>
+      ) : <span />}
     </div>
   );
 }
@@ -477,6 +646,8 @@ function BindingStatusBadge({ status }: { status: ProjectBindingStatus }) {
     ? "Pending"
     : status === "synced"
       ? "Synced"
+      : status === "added"
+        ? "Added"
       : status === "modified"
         ? "Modified"
         : "Missing";
@@ -486,12 +657,106 @@ function BindingStatusBadge({ status }: { status: ProjectBindingStatus }) {
       className={cn(
         "w-fit",
         status === "synced" && "bg-emerald-600",
+        status === "added" && "border-blue-300 text-blue-800",
         status === "modified" && "border-amber-300 text-amber-800",
         status === "missing" && "border-red-300 text-red-700"
       )}
     >
       {label}
     </Badge>
+  );
+}
+
+function SkillDiffView({
+  diff,
+  loading,
+  onSelect
+}: {
+  diff: ProjectSkillDiffResponse;
+  loading: boolean;
+  onSelect: (path: string) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <Badge variant="outline">{diff.files.length} changed files</Badge>
+        <span className="font-mono text-xs text-muted-foreground">{diff.path}</span>
+        {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" /> : null}
+      </div>
+      <div className="grid min-h-[360px] overflow-hidden rounded-lg border md:grid-cols-[240px_minmax(0,1fr)]">
+        <div className="max-h-[58vh] overflow-auto border-b bg-muted/20 p-2 md:border-b-0 md:border-r">
+          {diff.files.map((file) => (
+            <Button
+              key={file.path}
+              type="button"
+              variant="ghost"
+              className={cn(
+                "mb-1 h-auto w-full justify-start gap-2 whitespace-normal px-2 py-2 text-left font-mono text-xs",
+                diff.selectedFile?.path === file.path && "bg-accent"
+              )}
+              onClick={() => onSelect(file.path)}
+            >
+              <span className={cn(
+                "w-4 shrink-0 text-center font-sans font-semibold uppercase",
+                file.status === "added" && "text-emerald-700",
+                file.status === "modified" && "text-amber-700",
+                file.status === "removed" && "text-red-700"
+              )}>
+                {file.status[0]}
+              </span>
+              <span className="break-all">{file.path}</span>
+            </Button>
+          ))}
+        </div>
+        <div className="min-w-0 bg-background">
+          {diff.selectedFile ? (
+            <>
+              <div className="border-b px-4 py-3 font-mono text-xs font-medium">
+                {diff.selectedFile.path}
+              </div>
+              {diff.selectedFile.binary ? (
+                <p className="p-5 text-sm text-muted-foreground">
+                  Binary content cannot be previewed. The complete file will still be published.
+                </p>
+              ) : (
+                <div className="grid min-h-[320px] md:grid-cols-2">
+                  <DiffContent label="Library" content={diff.selectedFile.baseContent} />
+                  <DiffContent label="Project fork" content={diff.selectedFile.forkContent} right />
+                </div>
+              )}
+              {diff.selectedFile.truncated ? (
+                <p className="border-t bg-amber-50 px-4 py-2 text-xs text-amber-900">
+                  Preview truncated at 256 KB; publishing still uses the complete file.
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="p-5 text-sm text-muted-foreground">Select a changed file to compare.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DiffContent({
+  label,
+  content,
+  right = false
+}: {
+  label: string;
+  content?: string;
+  right?: boolean;
+}) {
+  return (
+    <div className={cn("min-w-0", right && "border-t md:border-l md:border-t-0")}>
+      <p className="border-b bg-muted/20 px-4 py-2 text-xs font-medium text-muted-foreground">
+        {label}
+      </p>
+      <pre className="max-h-[48vh] min-h-[280px] overflow-auto whitespace-pre-wrap break-words p-4 text-xs leading-5 text-foreground">
+        {content ?? "(file not present)"}
+      </pre>
+    </div>
   );
 }
 
@@ -520,7 +785,7 @@ function ErrorNotice({ message }: { message: string }) {
 }
 
 function countBindings(bindings: ProjectBinding[]) {
-  const result = { pending: 0, synced: 0, modified: 0, missing: 0 };
+  const result = { pending: 0, synced: 0, added: 0, modified: 0, missing: 0 };
   for (const binding of bindings) result[binding.status] += 1;
   return result;
 }

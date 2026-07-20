@@ -34,7 +34,7 @@ export function createServerApp() {
   registerOAuthDeviceRoutes(app);
   registerShareRoutes(app);
   registerWorkspaceRoutes(app);
-  registerProjectRoutes(app);
+  registerProjectRoutes(app, upload);
   registerForgeRoutes(app);
   registerAssetRoutes(app, upload);
   registerSkillRoutes(app);
