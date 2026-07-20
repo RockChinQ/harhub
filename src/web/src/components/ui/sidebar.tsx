@@ -28,7 +28,7 @@ import {
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH_KEY = "harhub.sidebar_width"
-const SIDEBAR_WIDTH_DEFAULT = 256
+const SIDEBAR_WIDTH_DEFAULT = 288
 const SIDEBAR_WIDTH_MIN = 180
 const SIDEBAR_WIDTH_MAX = 440
 const SIDEBAR_WIDTH_MOBILE = "18rem"
@@ -65,7 +65,10 @@ function clampSidebarWidth(width: number) {
 function readStoredSidebarWidth() {
   if (typeof window === "undefined") return SIDEBAR_WIDTH_DEFAULT
 
-  const stored = Number(window.localStorage.getItem(SIDEBAR_WIDTH_KEY))
+  const storedValue = window.localStorage.getItem(SIDEBAR_WIDTH_KEY)
+  if (storedValue === null) return SIDEBAR_WIDTH_DEFAULT
+
+  const stored = Number(storedValue)
   return Number.isFinite(stored)
     ? clampSidebarWidth(stored)
     : SIDEBAR_WIDTH_DEFAULT
