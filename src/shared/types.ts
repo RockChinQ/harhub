@@ -469,6 +469,97 @@ export type ForgeOperationStreamEvent =
 
 export type ForgeSessionStatus = "interviewing" | "working" | "failed" | "complete";
 
+export type ProjectStatus = "active" | "archived";
+export type ProjectBindingKind = "skill" | "mcp" | "rule";
+export type ProjectBindingSource = "harhub" | "framework" | "repository";
+export type ProjectBindingStatus = "pending" | "synced" | "modified" | "missing";
+
+export interface ProjectRepository {
+  provider: "github";
+  owner: string;
+  name: string;
+  url: string;
+  defaultBranch: string;
+}
+
+export interface ProjectBinding {
+  id: string;
+  kind: ProjectBindingKind;
+  name: string;
+  path: string;
+  source: ProjectBindingSource;
+  status: ProjectBindingStatus;
+  assetId?: string;
+  sourceDigest?: string;
+  repositoryDigest?: string;
+  lastSeenAt?: string;
+}
+
+export interface ProjectSyncState {
+  status: "awaiting-first-sync" | "synced";
+  revision: number;
+  lastSyncedAt?: string;
+  lastCommitSha?: string;
+  lastRef?: string;
+  lastRunId?: string;
+}
+
+export interface HarhubProject {
+  id: string;
+  workspaceId: string;
+  name: string;
+  slug: string;
+  description: string;
+  status: ProjectStatus;
+  repository: ProjectRepository;
+  bindings: ProjectBinding[];
+  sync: ProjectSyncState;
+  sourceForgeSessionId?: string;
+  syncTokenConfigured: boolean;
+  syncTokenLastFour: string;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt?: string;
+}
+
+export interface ProjectListResponse {
+  projects: HarhubProject[];
+}
+
+export interface ProjectTokenResponse {
+  project: HarhubProject;
+  syncToken?: string;
+}
+
+export interface ProjectRepositoryBindingInput {
+  kind: ProjectBindingKind;
+  name: string;
+  path: string;
+  digest: string;
+}
+
+export interface ProjectSyncRequest {
+  schemaVersion: 1;
+  repository: string;
+  commitSha: string;
+  ref: string;
+  runId?: string;
+  bindings: ProjectRepositoryBindingInput[];
+}
+
+export interface ProjectSyncResponse {
+  projectId: string;
+  revision: number;
+  syncedAt: string;
+  counts: Record<ProjectBindingStatus, number>;
+}
+
+export interface ForgeFrozenProjectReference {
+  id: string;
+  name: string;
+  frozenAt: string;
+}
+
 export type ForgeMarkdownViewMode = "preview" | "code";
 
 export interface ForgeSessionFollowUpDraft {
@@ -487,6 +578,11 @@ export interface ForgeSessionViewState {
   selectedPath?: string;
   /** Undefined uses the product defaults; an empty array means every directory is expanded. */
   collapsedTreePaths?: string[];
+  projectDraft?: {
+    name: string;
+    repository: string;
+    defaultBranch: string;
+  };
 }
 
 export interface ForgeSessionSummary {
@@ -508,6 +604,7 @@ export interface ForgeSessionDetail extends ForgeSessionSummary {
   activeOperation?: ForgeSessionOperation;
   /** Last terminal or interrupted operation checkpoint retained for diagnostics. */
   lastOperation?: ForgeSessionOperation;
+  frozenProject?: ForgeFrozenProjectReference;
   viewState: ForgeSessionViewState;
 }
 

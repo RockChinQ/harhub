@@ -113,6 +113,19 @@ History list responses contain summaries only; details are fetched on demand.
 All Forge session, interview, generation, and download responses use private
 `no-store` cache headers so browsers and intermediaries do not retain them.
 
+## Project Repository Sync
+
+A completed Forge session can be frozen as a Project linked to a GitHub
+repository. The resulting framework contains `.harhub/project.json`, a local
+binding collector, and `.github/workflows/harhub-sync.yml`. The workflow runs
+when files under `.harness/skills`, `.harness/mcp`, or `.harness/rules` change
+and reports their content digests to the tracked Project.
+
+Copy the one-time token shown after freezing into the repository secret
+`HARHUB_PROJECT_TOKEN`. Harhub stores only the token hash. Set
+`HARHUB_PUBLIC_URL` to the public HTTPS application origin before freezing so
+the generated sync endpoint is reachable from GitHub-hosted runners.
+
 ## Auth And Invitations
 
 Optional hosted auth settings:

@@ -4,8 +4,10 @@ import {
   Bot,
   Check,
   CheckCircle2,
+  Copy,
   Download,
   FileArchive,
+  FolderGit2,
   History,
   ListChecks,
   Loader2,
@@ -24,6 +26,7 @@ import type {
   ForgeAiOperationFailure,
   ForgeGenerationProgressStatus,
   ForgeGenerationProgressStep,
+  ForgeFrozenProjectReference,
   ForgeMarkdownViewMode,
   ForgeOperationStreamEvent,
   ForgeSessionDetail,
@@ -59,6 +62,7 @@ import {
   CardTitle
 } from "../components/ui/card";
 import { Checkbox } from "../components/ui/checkbox";
+import { Input } from "../components/ui/input";
 import {
   Sheet,
   SheetContent,
@@ -77,7 +81,8 @@ import {
   getWorkspaceAiSettings,
   listForgeSessions,
   streamForgeOperation,
-  updateForgeSessionViewState
+  updateForgeSessionViewState,
+  freezeForgeSession
 } from "../lib/api";
 import { cn } from "../lib/utils";
 import { FilePreviewPane } from "./assets/file-preview-pane";
@@ -140,7 +145,8 @@ export function ForgeView({
   assets,
   routedSessionId,
   onNavigateSession,
-  onOpenWorkspaceSettings
+  onOpenWorkspaceSettings,
+  onOpenProject
 }: {
   token: string;
   workspace: WorkspaceRecord;
@@ -148,6 +154,7 @@ export function ForgeView({
   routedSessionId?: string;
   onNavigateSession: (sessionId?: string) => void;
   onOpenWorkspaceSettings: () => void;
+  onOpenProject: (projectId: string) => void;
 }) {
   const usableSkills = assets.filter(
     (asset) => asset.kind === "skill" && asset.storage && asset.health !== "error"
@@ -177,6 +184,14 @@ export function ForgeView({
   const [aiSettings, setAiSettings] = useState<WorkspaceAiSettings>();
   const [activeSessionId, setActiveSessionId] = useState<string>();
   const [sessionTitle, setSessionTitle] = useState<string>();
+  const [frozenProject, setFrozenProject] = useState<ForgeFrozenProjectReference>();
+  const [freezeName, setFreezeName] = useState("");
+  const [freezeRepository, setFreezeRepository] = useState("");
+  const [freezeDefaultBranch, setFreezeDefaultBranch] = useState("main");
+  const [freezeSyncToken, setFreezeSyncToken] = useState<string>();
+  const [freezeError, setFreezeError] = useState<string>();
+  const [isFreezing, setIsFreezing] = useState(false);
+  const [freezeTokenCopied, setFreezeTokenCopied] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<ForgeSessionListResponse>();
   const [historyError, setHistoryError] = useState<string>();
@@ -238,9 +253,26 @@ export function ForgeView({
       answerDrafts,
       selectedPath,
       markdownView,
-      collapsedTreePaths
+      collapsedTreePaths,
+      template
+        ? {
+            name: freezeName,
+            repository: freezeRepository,
+            defaultBranch: freezeDefaultBranch
+          }
+        : undefined
     ),
-    [answerDrafts, collapsedTreePaths, currentQuestions, markdownView, selectedPath]
+    [
+      answerDrafts,
+      collapsedTreePaths,
+      currentQuestions,
+      freezeDefaultBranch,
+      freezeName,
+      freezeRepository,
+      markdownView,
+      selectedPath,
+      template
+    ]
   );
 
   useEffect(() => {
@@ -467,6 +499,14 @@ export function ForgeView({
     setGenerationProgress(initialGenerationProgress());
     setActiveSessionId(undefined);
     setSessionTitle(undefined);
+    setFrozenProject(undefined);
+    setFreezeName("");
+    setFreezeRepository("");
+    setFreezeDefaultBranch("main");
+    setFreezeSyncToken(undefined);
+    setFreezeError(undefined);
+    setIsFreezing(false);
+    setFreezeTokenCopied(false);
     activeSessionIdRef.current = undefined;
     setHistory(undefined);
     setHistoryError(undefined);
@@ -618,6 +658,7 @@ export function ForgeView({
     }
     if (terminalEvent.operation === "generate") {
       setTemplate(terminalEvent.template);
+      setFreezeName(terminalEvent.template.profile.name);
       setSelectedPath(terminalEvent.template.files[0]?.path);
       setGenerationProgress(completedGenerationProgress());
       setPhase("complete");
@@ -719,12 +760,16 @@ export function ForgeView({
   function applyServerSession(session: ForgeSessionDetail) {
     setActiveSessionId(session.id);
     setSessionTitle(session.title);
+    setFrozenProject(session.frozenProject);
     activeSessionIdRef.current = session.id;
     setRequirement(session.requirement);
     setAnswers(session.answers);
     setFollowUp(session.followUp?.mode === "llm" ? session.followUp : undefined);
     const storedTemplate = session.template?.mode === "llm" ? session.template : undefined;
     setTemplate(storedTemplate);
+    setFreezeName(session.viewState.projectDraft?.name ?? storedTemplate?.profile.name ?? "");
+    setFreezeRepository(session.viewState.projectDraft?.repository ?? "");
+    setFreezeDefaultBranch(session.viewState.projectDraft?.defaultBranch ?? "main");
     const restoredQuestions = followUpQuestions(session.followUp);
     const restoredDrafts = restoreForgeSessionDrafts(restoredQuestions, session.viewState);
     const restoredSelectedPath = storedTemplate
@@ -748,7 +793,8 @@ export function ForgeView({
       restoredDrafts,
       restoredSelectedPath,
       session.viewState.markdownView,
-      session.viewState.collapsedTreePaths
+      session.viewState.collapsedTreePaths,
+      session.viewState.projectDraft
     ));
     addSessionToLoadedHistory(session);
   }
@@ -796,6 +842,10 @@ export function ForgeView({
     setAnswerDrafts([]);
     setTemplate(undefined);
     setSelectedPath(undefined);
+    setFrozenProject(undefined);
+    setFreezeSyncToken(undefined);
+    setFreezeError(undefined);
+    setFreezeTokenCopied(false);
     setMarkdownView("preview");
     setCollapsedTreePaths(undefined);
     setSessionPersistenceError(undefined);
@@ -884,9 +934,47 @@ export function ForgeView({
     }
   }
 
+  async function freezeCurrentProject() {
+    if (!activeSessionId || !template || !freezeName.trim() || !freezeRepository.trim()) return;
+    setIsFreezing(true);
+    setFreezeError(undefined);
+    setFreezeSyncToken(undefined);
+    setFreezeTokenCopied(false);
+    try {
+      const result = await freezeForgeSession(token, workspace.id, activeSessionId, {
+        name: freezeName.trim(),
+        description: template.profile.summary,
+        repository: freezeRepository.trim(),
+        defaultBranch: freezeDefaultBranch.trim() || "main"
+      });
+      applyServerSession(result.session);
+      setFrozenProject(result.session.frozenProject);
+      setFreezeSyncToken(result.syncToken);
+      if (history) void refreshHistory();
+    } catch (caught) {
+      setFreezeError(errorMessage(caught));
+    } finally {
+      setIsFreezing(false);
+    }
+  }
+
+  async function copyFreezeToken() {
+    if (!freezeSyncToken) return;
+    await navigator.clipboard.writeText(freezeSyncToken);
+    setFreezeTokenCopied(true);
+  }
+
   function clearBuilderState() {
     setActiveSessionId(undefined);
     setSessionTitle(undefined);
+    setFrozenProject(undefined);
+    setFreezeName("");
+    setFreezeRepository("");
+    setFreezeDefaultBranch("main");
+    setFreezeSyncToken(undefined);
+    setFreezeError(undefined);
+    setIsFreezing(false);
+    setFreezeTokenCopied(false);
     activeSessionIdRef.current = undefined;
     setPhase("idle");
     setRequirement("");
@@ -1192,10 +1280,28 @@ export function ForgeView({
                   />
                 ) : null}
                 {phase === "complete" ? (
-                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
-                    The starter framework is ready. Review the selected Skills and generated files
-                    before downloading it.
-                  </div>
+                  <>
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+                      The starter framework is ready. Review the selected Skills and generated files
+                      before downloading it.
+                    </div>
+                    <ProjectFreezePanel
+                      frozenProject={frozenProject}
+                      name={freezeName}
+                      repository={freezeRepository}
+                      defaultBranch={freezeDefaultBranch}
+                      syncToken={freezeSyncToken}
+                      tokenCopied={freezeTokenCopied}
+                      error={freezeError}
+                      freezing={isFreezing}
+                      onNameChange={setFreezeName}
+                      onRepositoryChange={setFreezeRepository}
+                      onDefaultBranchChange={setFreezeDefaultBranch}
+                      onFreeze={() => void freezeCurrentProject()}
+                      onCopyToken={() => void copyFreezeToken()}
+                      onOpenProject={onOpenProject}
+                    />
+                  </>
                 ) : null}
               </div>
             )}
@@ -1371,6 +1477,136 @@ export function ForgeView({
         onConfirmDelete={() => void removeSession()}
       />
     </section>
+  );
+}
+
+function ProjectFreezePanel({
+  frozenProject,
+  name,
+  repository,
+  defaultBranch,
+  syncToken,
+  tokenCopied,
+  error,
+  freezing,
+  onNameChange,
+  onRepositoryChange,
+  onDefaultBranchChange,
+  onFreeze,
+  onCopyToken,
+  onOpenProject
+}: {
+  frozenProject?: ForgeFrozenProjectReference;
+  name: string;
+  repository: string;
+  defaultBranch: string;
+  syncToken?: string;
+  tokenCopied: boolean;
+  error?: string;
+  freezing: boolean;
+  onNameChange: (value: string) => void;
+  onRepositoryChange: (value: string) => void;
+  onDefaultBranchChange: (value: string) => void;
+  onFreeze: () => void;
+  onCopyToken: () => void;
+  onOpenProject: (projectId: string) => void;
+}) {
+  if (frozenProject) {
+    return (
+      <div className="rounded-xl border bg-background p-4 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <FolderGit2 className="h-4 w-4 text-blue-700" aria-hidden="true" />
+              <p className="text-sm font-semibold">Frozen as {frozenProject.name}</p>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              The downloadable framework now contains its Harhub Project identity and GitHub Actions sync workflow.
+            </p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => onOpenProject(frozenProject.id)}>
+            Open project
+          </Button>
+        </div>
+        {syncToken ? (
+          <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3">
+            <p className="text-xs font-semibold text-amber-950">
+              Save this as the GitHub repository secret HARHUB_PROJECT_TOKEN
+            </p>
+            <p className="mt-1 text-[11px] leading-4 text-amber-800">
+              This is the only time Harhub can show the token. Download the ZIP again before committing the framework.
+            </p>
+            <div className="mt-3 flex min-w-0 items-center gap-2">
+              <code className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded border bg-background px-2 py-2 text-[11px]">
+                {syncToken}
+              </code>
+              <Button type="button" variant="outline" size="sm" onClick={onCopyToken}>
+                {tokenCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {tokenCopied ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border bg-background p-4 shadow-sm">
+      <div className="flex items-center gap-2">
+        <FolderGit2 className="h-4 w-4 text-blue-700" aria-hidden="true" />
+        <p className="text-sm font-semibold">Track this framework as a Project</p>
+      </div>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+        Freeze the session to bind its framework assets to a GitHub repository and enable change tracking.
+      </p>
+      {error ? (
+        <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+          {error}
+        </div>
+      ) : null}
+      <div className="mt-4 grid gap-3">
+        <div className="space-y-1.5">
+          <label htmlFor="forge-project-name" className="text-xs font-medium">Project name</label>
+          <Input
+            id="forge-project-name"
+            value={name}
+            maxLength={120}
+            onChange={(event) => onNameChange(event.target.value)}
+          />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_140px]">
+          <div className="space-y-1.5">
+            <label htmlFor="forge-project-repository" className="text-xs font-medium">GitHub repository</label>
+            <Input
+              id="forge-project-repository"
+              value={repository}
+              placeholder="owner/repository"
+              onChange={(event) => onRepositoryChange(event.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="forge-project-branch" className="text-xs font-medium">Default branch</label>
+            <Input
+              id="forge-project-branch"
+              value={defaultBranch}
+              placeholder="main"
+              onChange={(event) => onDefaultBranchChange(event.target.value)}
+            />
+          </div>
+        </div>
+        <Button
+          type="button"
+          disabled={freezing || !name.trim() || !repository.trim()}
+          onClick={onFreeze}
+        >
+          {freezing
+            ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            : <FolderGit2 className="h-4 w-4" aria-hidden="true" />}
+          Freeze as project
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -2132,7 +2368,8 @@ function createForgeSessionViewState(
   drafts: FollowUpAnswerDraft[],
   selectedPath: string | undefined,
   markdownView: ForgeMarkdownViewMode,
-  collapsedTreePaths: string[] | undefined
+  collapsedTreePaths: string[] | undefined,
+  projectDraft: ForgeSessionViewState["projectDraft"]
 ): ForgeSessionViewState {
   return {
     followUpDrafts: questions.flatMap((question, index) => {
@@ -2149,7 +2386,8 @@ function createForgeSessionViewState(
     ...(selectedPath ? { selectedPath } : {}),
     ...(collapsedTreePaths === undefined
       ? {}
-      : { collapsedTreePaths: [...collapsedTreePaths] })
+      : { collapsedTreePaths: [...collapsedTreePaths] }),
+    ...(projectDraft ? { projectDraft: { ...projectDraft } } : {})
   };
 }
 

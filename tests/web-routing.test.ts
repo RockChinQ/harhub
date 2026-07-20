@@ -18,3 +18,19 @@ test("binds Forge sessions to addressable routes", () => {
     { view: "forge" }
   );
 });
+
+test("binds Projects to Library routes", () => {
+  assert.deepEqual(routeFromPath("/projects"), { view: "projects" });
+  assert.deepEqual(routeFromPath("/projects/project%3Aabc%2F123"), {
+    view: "project-detail",
+    projectId: "project:abc/123"
+  });
+  assert.equal(
+    pathForRoute({ view: "project-detail", projectId: "project:abc/123" }),
+    "/projects/project%3Aabc%2F123"
+  );
+  assert.deepEqual(
+    normalizeRoute({ view: "project-detail", projectId: "" }),
+    { view: "projects" }
+  );
+});

@@ -10,12 +10,14 @@ import { AssetsView } from "../views/assets/assets-view";
 import { SkillDetailView } from "../views/assets/skill-detail-view";
 import { WorkspaceView } from "../views/workspace-view";
 import { ForgeView } from "../views/forge-view";
+import { ProjectsView } from "../views/projects-view";
 import type { AppRoute, AppShellView } from "./types";
 
 export function AppContent({
   error,
   view,
   forgeSessionId,
+  projectId,
   activeWorkspace,
   token,
   assets,
@@ -38,6 +40,7 @@ export function AppContent({
   error?: string;
   view: AppShellView;
   forgeSessionId?: string;
+  projectId?: string;
   activeWorkspace?: WorkspaceRecord;
   token: string;
   assets: AssetRecord[];
@@ -102,6 +105,21 @@ export function AppContent({
               ...(sessionId ? { forgeSessionId: sessionId } : {})
             })}
             onOpenWorkspaceSettings={() => onNavigate({ view: "workspace" })}
+            onOpenProject={(nextProjectId) => onNavigate({
+              view: "project-detail",
+              projectId: nextProjectId
+            })}
+          />
+        ) : null}
+        {(view === "projects" || view === "project-detail") && activeWorkspace ? (
+          <ProjectsView
+            token={token}
+            workspace={activeWorkspace}
+            routedProjectId={projectId}
+            onNavigateProject={(nextProjectId) => onNavigate(nextProjectId
+              ? { view: "project-detail", projectId: nextProjectId }
+              : { view: "projects" })}
+            onOpenForge={() => onNavigate({ view: "forge" })}
           />
         ) : null}
         {view === "workspace" && activeWorkspace ? (

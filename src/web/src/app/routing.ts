@@ -16,6 +16,10 @@ export function routeFromPath(pathname: string): AppRoute {
   }
 
   if (section === "workspace") return { view: "workspace" };
+  if (section === "projects") {
+    const projectId = segments[1] ? decodeRoutePart(segments[1]) : undefined;
+    return projectId ? { view: "project-detail", projectId } : { view: "projects" };
+  }
   if (section === "forge") {
     const forgeSessionId = segments[1] ? decodeRoutePart(segments[1]) : undefined;
     return forgeSessionId ? { view: "forge", forgeSessionId } : { view: "forge" };
@@ -34,6 +38,7 @@ export function normalizeRoute(route: AppRoute): AppRoute {
     return { view: "assets" };
   }
   if (route.view === "share" && !route.shareToken) return { view: "assets" };
+  if (route.view === "project-detail" && !route.projectId) return { view: "projects" };
   if (route.view === "forge" && !route.forgeSessionId) return { view: "forge" };
   return route;
 }
@@ -43,6 +48,11 @@ export function pathForRoute(route: AppRoute): string {
     return `/skills/${encodeURIComponent(route.assetQuery)}`;
   }
   if (route.view === "workspace") return "/workspace";
+  if (route.view === "projects" || route.view === "project-detail") {
+    return route.projectId
+      ? `/projects/${encodeURIComponent(route.projectId)}`
+      : "/projects";
+  }
   if (route.view === "forge") {
     return route.forgeSessionId
       ? `/forge/${encodeURIComponent(route.forgeSessionId)}`
@@ -67,6 +77,8 @@ export function replaceBrowserRoute(route: AppRoute): void {
 export function viewTitle(view: View): string {
   if (view === "asset-detail") return "Skill Detail";
   if (view === "workspace") return "Workspace";
+  if (view === "projects") return "Projects";
+  if (view === "project-detail") return "Project";
   if (view === "forge") return "Forge";
   if (view === "account") return "Account";
   if (view === "device") return "Authorize Device";

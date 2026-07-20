@@ -35,6 +35,7 @@ is intentionally Skills-first.
 - Search and browse Skills in a workspace.
 - Preview Skill metadata and package files.
 - Use Forge's AI-guided interview to compose a downloadable project harness
+- Freeze completed Forge sessions as Projects that track repository Skill, MCP, and Rule bindings
   from the current workspace's Skills, with workspace-scoped provider settings
   managed by owners and admins, plus private bounded session history.
 - Publish revocable public share pages with verified zip downloads and Harhub or

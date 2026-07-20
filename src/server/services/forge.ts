@@ -21,6 +21,7 @@ import type {
 import {
   MIN_FORGE_INTERVIEW_ANSWERS
 } from "../../shared/forge.js";
+import { addProjectIntegrationFiles } from "../../features/projects/framework.js";
 import { loadStoredSkill } from "./skill-packages.js";
 
 const MAX_LIST_ITEMS = 6;
@@ -386,7 +387,7 @@ export function buildHarnessTemplate(
     stackNotes: spec.stackNotes
   };
   const selectedAssets = resolveSelectedAssets(spec.selectedAssets, workspaceAssets);
-  const files: HarnessTemplateFile[] = [
+  const files = addProjectIntegrationFiles([
     file("AGENTS.md", agentGuide(spec, selectedAssets)),
     file(".harness/README.md", harnessReadme(spec, selectedAssets)),
     file(".harness/project-brief.md", projectBrief(spec)),
@@ -399,7 +400,7 @@ export function buildHarnessTemplate(
       ".harness/changes/CHANGELOG.md",
       "# Harness Changelog\n\nRecord changes to project instructions, rules, workflows, and reusable assets here.\n"
     )
-  ];
+  ], selectedAssets);
 
   return {
     mode: "llm",
@@ -1202,7 +1203,10 @@ function validateFrameworkFiles(files: HarnessTemplateFile[]): void {
     ".harness/workflows/delivery.md",
     ".harness/skills/README.md",
     ".harness/catalog/skills.json",
-    ".harness/changes/CHANGELOG.md"
+    ".harness/changes/CHANGELOG.md",
+    ".harhub/project.json",
+    ".harhub/scripts/collect-bindings.mjs",
+    ".github/workflows/harhub-sync.yml"
   ]);
   let totalChars = 0;
   for (const item of files) {
@@ -1254,6 +1258,7 @@ Before changing the project, read:
 4. \`.harness/rules/engineering.md\`
 5. \`.harness/workflows/delivery.md\`
 6. \`.harness/skills/README.md\`
+7. \`.harhub/project.json\`
 
 ## Working Contract
 
@@ -1287,7 +1292,9 @@ This directory is a reviewable project harness template. It contains project con
 - \`rules/engineering.md\`: standing instructions for agents.
 - \`workflows/delivery.md\`: the first delivery workflow and verification gates.
 - \`skills/\`: ${selectedAssets.length} selected Skill package${selectedAssets.length === 1 ? "" : "s"} from the current Harhub workspace.
-- \`changes/CHANGELOG.md\`: the history of harness changes.`;
+- \`changes/CHANGELOG.md\`: the history of harness changes.
+- \`../.harhub/project.json\`: the Project binding manifest populated when this framework is frozen in Harhub.
+- \`../.github/workflows/harhub-sync.yml\`: repository automation that reports Skill, MCP, and Rule changes back to Harhub.`;
 }
 
 function selectedSkillsReadme(selectedAssets: HarnessTemplateAssetSelection[]): string {

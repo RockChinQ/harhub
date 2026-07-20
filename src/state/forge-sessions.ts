@@ -15,6 +15,7 @@ import type {
   HarnessTemplateResponse
 } from "../shared/types.js";
 import { requireWorkspaceMembership } from "./records.js";
+import { serializeStateAccess } from "./access.js";
 import { loadState, saveState } from "./store.js";
 import type { AppState, ForgeSessionCacheRecord } from "./types.js";
 
@@ -24,14 +25,13 @@ export const MAX_FORGE_SESSIONS_PER_ACCOUNT = 12;
 const MAX_FORGE_SESSIONS_TOTAL = 200;
 const MAX_FORGE_SESSION_BYTES = 1_250_000;
 const FORGE_SESSION_TTL_MS = FORGE_SESSION_TTL_DAYS * 24 * 60 * 60 * 1_000;
-let forgeSessionAccessTail: Promise<void> = Promise.resolve();
 
 export function createForgeSession(
   accountId: string,
   workspaceId: string,
   requirement: string
 ): Promise<ForgeSessionDetail> {
-  return serializeForgeSessionAccess(() => createForgeSessionImpl(
+  return serializeStateAccess(() => createForgeSessionImpl(
     accountId,
     workspaceId,
     requirement
@@ -42,7 +42,7 @@ export function listForgeSessions(
   accountId: string,
   workspaceId: string
 ): Promise<ForgeSessionListResponse> {
-  return serializeForgeSessionAccess(() => listForgeSessionsImpl(accountId, workspaceId));
+  return serializeStateAccess(() => listForgeSessionsImpl(accountId, workspaceId));
 }
 
 export function getForgeSession(
@@ -50,7 +50,7 @@ export function getForgeSession(
   workspaceId: string,
   sessionId: string
 ): Promise<ForgeSessionDetail> {
-  return serializeForgeSessionAccess(() => getForgeSessionImpl(accountId, workspaceId, sessionId));
+  return serializeStateAccess(() => getForgeSessionImpl(accountId, workspaceId, sessionId));
 }
 
 export function deleteForgeSession(
@@ -58,7 +58,7 @@ export function deleteForgeSession(
   workspaceId: string,
   sessionId: string
 ): Promise<void> {
-  return serializeForgeSessionAccess(() => deleteForgeSessionImpl(
+  return serializeStateAccess(() => deleteForgeSessionImpl(
     accountId,
     workspaceId,
     sessionId
@@ -73,7 +73,7 @@ export function beginForgeSessionOperation(
   operation: ForgeSessionOperation["operation"],
   answers?: HarnessInterviewAnswer[]
 ): Promise<{ input: HarnessFollowUpRequest; session: ForgeSessionDetail }> {
-  return serializeForgeSessionAccess(() => beginForgeSessionOperationImpl(
+  return serializeStateAccess(() => beginForgeSessionOperationImpl(
     accountId,
     workspaceId,
     sessionId,
@@ -91,7 +91,7 @@ export function recordForgeSessionAttempt(
   attempt: number,
   maxAttempts?: number
 ): Promise<void> {
-  return serializeForgeSessionAccess(() => recordForgeSessionAttemptImpl(
+  return serializeStateAccess(() => recordForgeSessionAttemptImpl(
     accountId,
     workspaceId,
     sessionId,
@@ -109,7 +109,7 @@ export function recordForgeSessionProgress(
   step: ForgeGenerationProgressStep,
   status: ForgeGenerationProgressStatus
 ): Promise<void> {
-  return serializeForgeSessionAccess(() => recordForgeSessionProgressImpl(
+  return serializeStateAccess(() => recordForgeSessionProgressImpl(
     accountId,
     workspaceId,
     sessionId,
@@ -125,7 +125,7 @@ export function updateForgeSessionViewState(
   sessionId: string,
   viewState: ForgeSessionViewState
 ): Promise<ForgeSessionDetail> {
-  return serializeForgeSessionAccess(() => updateForgeSessionViewStateImpl(
+  return serializeStateAccess(() => updateForgeSessionViewStateImpl(
     accountId,
     workspaceId,
     sessionId,
@@ -140,7 +140,7 @@ export function recordForgeSessionFollowUp(
   followUp: HarnessFollowUpResponse,
   operationId?: string
 ): Promise<void> {
-  return serializeForgeSessionAccess(() => recordForgeSessionFollowUpImpl(
+  return serializeStateAccess(() => recordForgeSessionFollowUpImpl(
     accountId,
     workspaceId,
     input,
@@ -156,7 +156,7 @@ export function recordForgeSessionTemplate(
   template: HarnessTemplateResponse,
   operationId?: string
 ): Promise<void> {
-  return serializeForgeSessionAccess(() => recordForgeSessionTemplateImpl(
+  return serializeStateAccess(() => recordForgeSessionTemplateImpl(
     accountId,
     workspaceId,
     input,
@@ -172,7 +172,7 @@ export function recordForgeSessionFailure(
   failure: ForgeAiOperationFailure,
   operationId?: string
 ): Promise<void> {
-  return serializeForgeSessionAccess(() => recordForgeSessionFailureImpl(
+  return serializeStateAccess(() => recordForgeSessionFailureImpl(
     accountId,
     workspaceId,
     input,
@@ -669,6 +669,9 @@ function toDetail(session: ForgeSessionCacheRecord): ForgeSessionDetail {
       : {}),
     ...(session.lastOperation
       ? { lastOperation: structuredClone(session.lastOperation) }
+      : {}),
+    ...(session.frozenProject
+      ? { frozenProject: structuredClone(session.frozenProject) }
       : {})
   };
 }
@@ -733,13 +736,18 @@ function validateForgeSessionViewState(
       throw new Error("Forge preview selection is not part of this framework.");
     }
   }
-}
-
-function serializeForgeSessionAccess<T>(action: () => Promise<T>): Promise<T> {
-  const result = forgeSessionAccessTail.then(action, action);
-  forgeSessionAccessTail = result.then(
-    () => undefined,
-    () => undefined
-  );
-  return result;
+  if (viewState.projectDraft) {
+    if (!session.template) {
+      throw new Error("A Project draft requires a completed framework.");
+    }
+    if (viewState.projectDraft.name.length > 120) {
+      throw new Error("Forge Project draft name is too long.");
+    }
+    if (viewState.projectDraft.repository.length > 500) {
+      throw new Error("Forge Project draft repository is too long.");
+    }
+    if (viewState.projectDraft.defaultBranch.length > 255) {
+      throw new Error("Forge Project draft branch is too long.");
+    }
+  }
 }

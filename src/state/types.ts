@@ -6,7 +6,8 @@ import type {
   WorkspaceInvitation,
   WorkspaceMembership,
   WorkspaceRecord,
-  ForgeSessionDetail
+  ForgeSessionDetail,
+  HarhubProject
 } from "../shared/types.js";
 
 export interface AccountRecord extends AccountProfile {
@@ -69,6 +70,7 @@ export interface AppState {
   sessions: SessionRecord[];
   workspaceAiConfigurations: WorkspaceAiConfigurationRecord[];
   forgeSessions: ForgeSessionCacheRecord[];
+  projects: ProjectStateRecord[];
 }
 
 export interface AuthContext {
@@ -95,4 +97,8 @@ export interface WorkspaceAiConfigurationRecord {
 export interface ForgeSessionCacheRecord extends ForgeSessionDetail {
   workspaceId: string;
   accountId: string;
+}
+
+export interface ProjectStateRecord extends HarhubProject {
+  syncTokenHash: string;
 }

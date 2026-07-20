@@ -255,6 +255,7 @@ export function App() {
         error={error}
         view={appView}
         forgeSessionId={route.forgeSessionId}
+        projectId={route.projectId}
         activeWorkspace={activeWorkspace}
         token={token}
         assets={assets}

@@ -1,0 +1,445 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  Archive,
+  ArrowLeft,
+  Check,
+  Copy,
+  ExternalLink,
+  FolderGit2,
+  GitBranch,
+  Loader2,
+  RefreshCw,
+  RotateCcw,
+  ShieldCheck,
+  Sparkles
+} from "lucide-react";
+
+import type {
+  HarhubProject,
+  ProjectBinding,
+  ProjectBindingStatus,
+  ProjectListResponse,
+  WorkspaceRecord
+} from "../../../shared/types";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "../components/ui/alert-dialog";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import {
+  archiveProject,
+  getProject,
+  listProjects,
+  rotateProjectSyncToken
+} from "../lib/api";
+import { cn } from "../lib/utils";
+
+export function ProjectsView({
+  token,
+  workspace,
+  routedProjectId,
+  onNavigateProject,
+  onOpenForge
+}: {
+  token: string;
+  workspace: WorkspaceRecord;
+  routedProjectId?: string;
+  onNavigateProject: (projectId?: string) => void;
+  onOpenForge: () => void;
+}) {
+  const [projects, setProjects] = useState<ProjectListResponse>();
+  const [project, setProject] = useState<HarhubProject>();
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string>();
+  const [syncToken, setSyncToken] = useState<string>();
+  const [copied, setCopied] = useState(false);
+  const [isRotating, setIsRotating] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
+
+  useEffect(() => {
+    setSyncToken(undefined);
+    setCopied(false);
+    void refresh();
+  }, [routedProjectId, token, workspace.id]);
+
+  const bindingCounts = useMemo(
+    () => countBindings(project?.bindings ?? []),
+    [project?.bindings]
+  );
+
+  async function refresh() {
+    setIsLoading(true);
+    setError(undefined);
+    try {
+      if (routedProjectId) {
+        setProject(await getProject(token, workspace.id, routedProjectId));
+      } else {
+        setProject(undefined);
+        setProjects(await listProjects(token, workspace.id));
+      }
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function rotateToken() {
+    if (!project) return;
+    setIsRotating(true);
+    setError(undefined);
+    try {
+      const result = await rotateProjectSyncToken(token, workspace.id, project.id);
+      setProject(result.project);
+      setSyncToken(result.syncToken);
+      setCopied(false);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setIsRotating(false);
+    }
+  }
+
+  async function archiveCurrentProject() {
+    if (!project) return;
+    setIsArchiving(true);
+    setError(undefined);
+    try {
+      await archiveProject(token, workspace.id, project.id);
+      setArchiveOpen(false);
+      onNavigateProject(undefined);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setIsArchiving(false);
+    }
+  }
+
+  async function copyToken() {
+    if (!syncToken) return;
+    await navigator.clipboard.writeText(syncToken);
+    setCopied(true);
+  }
+
+  if (routedProjectId) {
+    return (
+      <section className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto pb-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Button type="button" variant="outline" onClick={() => onNavigateProject(undefined)}>
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Projects
+          </Button>
+          <Button type="button" variant="outline" onClick={() => void refresh()}>
+            <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} aria-hidden="true" />
+            Refresh
+          </Button>
+        </div>
+
+        {error ? <ErrorNotice message={error} /> : null}
+        {isLoading && !project ? <LoadingCard /> : null}
+        {project ? (
+          <>
+            <Card className="shadow-sm">
+              <CardHeader className="border-b">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <CardTitle className="text-xl">{project.name}</CardTitle>
+                      <ProjectStatusBadge project={project} />
+                    </div>
+                    <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                      {project.description}
+                    </p>
+                  </div>
+                  <a
+                    href={project.repository.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-accent"
+                  >
+                    <FolderGit2 className="h-4 w-4" aria-hidden="true" />
+                    {project.repository.owner}/{project.repository.name}
+                    <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                  </a>
+                </div>
+              </CardHeader>
+              <CardContent className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4">
+                <Metric label="Bindings" value={String(project.bindings.length)} />
+                <Metric label="Synced" value={String(bindingCounts.synced)} />
+                <Metric label="Changed" value={String(bindingCounts.modified)} />
+                <Metric
+                  label="Last sync"
+                  value={project.sync.lastSyncedAt
+                    ? formatTime(project.sync.lastSyncedAt)
+                    : "Waiting for GitHub"}
+                />
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm">
+              <CardHeader className="border-b">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <GitBranch className="h-4 w-4 text-blue-700" aria-hidden="true" />
+                  Repository bindings
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {project.bindings.length ? (
+                  <div className="divide-y">
+                    {project.bindings.map((binding) => (
+                      <BindingRow key={binding.id} binding={binding} />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="p-6 text-sm text-muted-foreground">
+                    No bindings have been reported by this repository yet.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm">
+              <CardHeader className="border-b">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <ShieldCheck className="h-4 w-4 text-blue-700" aria-hidden="true" />
+                  GitHub Actions connection
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 p-5">
+                <p className="text-sm leading-6 text-muted-foreground">
+                  The generated framework watches harness Skills, MCP definitions, and Rules. Add
+                  the token below as the repository secret <code>HARHUB_PROJECT_TOKEN</code>.
+                </p>
+                {syncToken ? (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+                    <p className="text-sm font-medium text-amber-950">Copy this token now</p>
+                    <p className="mt-1 text-xs text-amber-800">
+                      Harhub stores only its hash and cannot show this value again.
+                    </p>
+                    <div className="mt-3 flex min-w-0 items-center gap-2">
+                      <code className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded border bg-background px-3 py-2 text-xs">
+                        {syncToken}
+                      </code>
+                      <Button type="button" variant="outline" size="sm" onClick={() => void copyToken()}>
+                        {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                        {copied ? "Copied" : "Copy"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isRotating || project.status === "archived"}
+                    onClick={() => void rotateToken()}
+                  >
+                    {isRotating
+                      ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      : <RotateCcw className="h-4 w-4" aria-hidden="true" />}
+                    Rotate sync token
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={project.status === "archived"}
+                    onClick={() => setArchiveOpen(true)}
+                  >
+                    <Archive className="h-4 w-4" aria-hidden="true" />
+                    Archive project
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        ) : null}
+
+        <AlertDialog open={archiveOpen} onOpenChange={setArchiveOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Archive this Project?</AlertDialogTitle>
+              <AlertDialogDescription>
+                GitHub Actions sync requests will stop working. The tracked binding history remains
+                available in Harhub.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isArchiving}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={isArchiving}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => void archiveCurrentProject()}
+              >
+                {isArchiving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Archive
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </section>
+    );
+  }
+
+  return (
+    <section className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto pb-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+            Track repository relationships with Skills, MCP definitions, and Rules over time.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={() => void refresh()}>
+            <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} aria-hidden="true" />
+            Refresh
+          </Button>
+          <Button type="button" onClick={onOpenForge}>
+            <Sparkles className="h-4 w-4" aria-hidden="true" />
+            Forge a project
+          </Button>
+        </div>
+      </div>
+
+      {error ? <ErrorNotice message={error} /> : null}
+      {isLoading && !projects ? <LoadingCard /> : null}
+      {projects && projects.projects.length === 0 ? (
+        <Card className="shadow-sm">
+          <CardContent className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
+            <FolderGit2 className="h-8 w-8 text-blue-700" aria-hidden="true" />
+            <h2 className="mt-4 text-lg font-semibold">No tracked Projects yet</h2>
+            <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+              Complete a Forge session, then freeze the generated framework into a Project and
+              connect its GitHub repository.
+            </p>
+            <Button type="button" className="mt-5" onClick={onOpenForge}>
+              Open Forge
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+      {projects?.projects.length ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {projects.projects.map((item) => (
+            <Button
+              key={item.id}
+              type="button"
+              variant="outline"
+              className="h-auto min-w-0 flex-col items-stretch rounded-xl bg-card p-5 text-left font-normal shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50/30"
+              onClick={() => onNavigateProject(item.id)}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="truncate font-semibold">{item.name}</h2>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                    {item.repository.owner}/{item.repository.name}
+                  </p>
+                </div>
+                <ProjectStatusBadge project={item} />
+              </div>
+              <p className="mt-3 line-clamp-2 text-sm leading-6 text-muted-foreground">
+                {item.description}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                <span>{item.bindings.length} bindings</span>
+                <span>·</span>
+                <span>{item.sync.revision ? `Revision ${item.sync.revision}` : "Awaiting sync"}</span>
+              </div>
+            </Button>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function BindingRow({ binding }: { binding: ProjectBinding }) {
+  return (
+    <div className="grid gap-2 px-5 py-4 sm:grid-cols-[110px_minmax(0,1fr)_110px] sm:items-center">
+      <Badge variant="outline" className="w-fit uppercase">{binding.kind}</Badge>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium">{binding.name}</p>
+        <p className="mt-1 truncate font-mono text-xs text-muted-foreground">{binding.path}</p>
+      </div>
+      <BindingStatusBadge status={binding.status} />
+    </div>
+  );
+}
+
+function ProjectStatusBadge({ project }: { project: HarhubProject }) {
+  if (project.status === "archived") return <Badge variant="secondary">Archived</Badge>;
+  return project.sync.status === "synced"
+    ? <Badge className="bg-emerald-600">Synced</Badge>
+    : <Badge variant="outline">Awaiting sync</Badge>;
+}
+
+function BindingStatusBadge({ status }: { status: ProjectBindingStatus }) {
+  const label = status === "pending"
+    ? "Pending"
+    : status === "synced"
+      ? "Synced"
+      : status === "modified"
+        ? "Modified"
+        : "Missing";
+  return (
+    <Badge
+      variant={status === "synced" ? "default" : "outline"}
+      className={cn(
+        "w-fit",
+        status === "synced" && "bg-emerald-600",
+        status === "modified" && "border-amber-300 text-amber-800",
+        status === "missing" && "border-red-300 text-red-700"
+      )}
+    >
+      {label}
+    </Badge>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border bg-muted/20 p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-2 text-sm font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function LoadingCard() {
+  return (
+    <Card className="shadow-sm">
+      <CardContent className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin text-blue-700" aria-hidden="true" />
+        Loading Projects…
+      </CardContent>
+    </Card>
+  );
+}
+
+function ErrorNotice({ message }: { message: string }) {
+  return <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{message}</div>;
+}
+
+function countBindings(bindings: ProjectBinding[]) {
+  const result = { pending: 0, synced: 0, modified: 0, missing: 0 };
+  for (const binding of bindings) result[binding.status] += 1;
+  return result;
+}
+
+function formatTime(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Unknown" : date.toLocaleString();
+}
+
+function errorMessage(caught: unknown): string {
+  return caught instanceof Error ? caught.message : String(caught);
+}

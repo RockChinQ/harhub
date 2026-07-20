@@ -117,12 +117,18 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
       followUpDrafts: [],
       markdownView: "code",
       selectedPath: "AGENTS.md",
-      collapsedTreePaths: [".harness/skills/example"]
+      collapsedTreePaths: [".harness/skills/example"],
+      projectDraft: {
+        name: "Release Project",
+        repository: "harhub/release-project",
+        defaultBranch: "main"
+      }
     });
     const restoredPreview = await getForgeSession("acct_demo", "ws_demo", resumable.id);
     assert.equal(restoredPreview.viewState.markdownView, "code");
     assert.equal(restoredPreview.viewState.selectedPath, "AGENTS.md");
     assert.deepEqual(restoredPreview.viewState.collapsedTreePaths, [".harness/skills/example"]);
+    assert.equal(restoredPreview.viewState.projectDraft?.repository, "harhub/release-project");
 
     const authoritative = await createForgeSession(
       "acct_demo",
