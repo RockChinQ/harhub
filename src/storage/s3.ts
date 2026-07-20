@@ -9,7 +9,11 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 import { slugify } from "../shared/markdown.js";
-import type { StorageStatus, StoredObject } from "../shared/types.js";
+import {
+  SKILL_FILES_CHECKSUM_ALGORITHM,
+  type StorageStatus,
+  type StoredObject
+} from "../shared/types.js";
 
 const DEFAULT_REGION = "us-east-1";
 const DIRECTORY_CONTENT_TYPE = "application/vnd.harhub.skill-directory" as const;
@@ -61,6 +65,7 @@ export async function uploadSkillFiles(input: UploadSkillFilesInput): Promise<St
     fileCount: input.files.length,
     contentType: DIRECTORY_CONTENT_TYPE,
     checksum: input.checksum,
+    checksumAlgorithm: SKILL_FILES_CHECKSUM_ALGORITHM,
     uploadedAt: new Date().toISOString()
   };
 
@@ -74,7 +79,8 @@ export async function uploadSkillFiles(input: UploadSkillFilesInput): Promise<St
         Metadata: {
           workspace: input.workspaceId,
           skill: input.skillName,
-          checksum: input.checksum
+          checksum: input.checksum,
+          "checksum-algorithm": SKILL_FILES_CHECKSUM_ALGORITHM
         }
       }));
     });

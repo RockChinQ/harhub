@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Server } from "node:http";
@@ -7,7 +7,10 @@ import type { AddressInfo } from "node:net";
 import test from "node:test";
 import JSZip from "jszip";
 
-import type { StoredObject } from "../src/shared/types.js";
+import {
+  SKILL_FILES_CHECKSUM_ALGORITHM,
+  type StoredObject
+} from "../src/shared/types.js";
 
 const hasObjectStorage = Boolean(process.env.HARHUB_S3_BUCKET);
 
@@ -24,6 +27,7 @@ test("stores repository Skills as Project forks until explicitly published", {
     const { createImportedSkillAsset } = await import("../src/features/assets/index.js");
     const {
       analyzeStoredSkillFiles,
+      legacySkillFilesChecksum,
       skillFilesChecksum
     } = await import("../src/features/skills/index.js");
     const {
@@ -150,6 +154,29 @@ test("stores repository Skills as Project forks until explicitly published", {
     const firstForkKeys = (await loadState()).projects
       .find((item) => item.id === created.project.id)
       ?.skillForks?.map((fork) => fork.storage.key);
+    const legacyForkDigest = legacySkillFilesChecksum(forkFiles, "en");
+    assert.notEqual(legacyForkDigest, digest);
+    const persistedState = JSON.parse(
+      readFileSync(process.env.HARHUB_STATE, "utf8")
+    ) as {
+      projects: Array<{
+        id: string;
+        skillForks?: Array<{
+          path: string;
+          digest: string;
+          storage: StoredObject;
+        }>;
+      }>;
+    };
+    const legacyFork = persistedState.projects
+      .find((item) => item.id === created.project.id)
+      ?.skillForks?.find((fork) => fork.path.endsWith("/release-notes"));
+    assert.ok(legacyFork);
+    legacyFork.digest = legacyForkDigest;
+    legacyFork.storage.checksum = legacyForkDigest;
+    delete legacyFork.storage.checksumAlgorithm;
+    writeFileSync(process.env.HARHUB_STATE, JSON.stringify(persistedState, null, 2));
+
     const repeatedBody = new FormData();
     repeatedBody.set("manifest", JSON.stringify({ ...request, commitSha: "b".repeat(40) }));
     repeatedBody.set(
@@ -163,10 +190,18 @@ test("stores repository Skills as Project forks until explicitly published", {
       body: repeatedBody
     });
     assert.equal(repeatedResponse.status, 200);
-    const repeatedForkKeys = (await loadState()).projects
+    const repeatedForks = (await loadState()).projects
       .find((item) => item.id === created.project.id)
-      ?.skillForks?.map((fork) => fork.storage.key);
+      ?.skillForks;
+    const repeatedForkKeys = repeatedForks?.map((fork) => fork.storage.key);
     assert.deepEqual(repeatedForkKeys, firstForkKeys);
+    const migratedFork = repeatedForks?.find((fork) => fork.path.endsWith("/release-notes"));
+    assert.equal(migratedFork?.digest, digest);
+    assert.equal(migratedFork?.storage.checksum, digest);
+    assert.equal(
+      migratedFork?.storage.checksumAlgorithm,
+      SKILL_FILES_CHECKSUM_ALGORITHM
+    );
 
     const project = await getProject("acct_demo", "ws_demo", created.project.id);
     const binding = project.bindings.find((item) => item.path.endsWith("/release-notes"));

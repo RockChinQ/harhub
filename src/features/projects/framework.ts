@@ -188,7 +188,8 @@ for (const skillFile of skillFilesFound) {
     kind: 'skill',
     name: await skillName(skillFile, known?.name ?? path.posix.basename(skillRoot)),
     path: skillRoot,
-    digest: await directoryDigest(skillRoot, skillFiles)
+    digest: await directoryDigest(skillRoot, skillFiles),
+    digestAlgorithm: 'skill-files-v2'
   });
 }
 
@@ -222,17 +223,19 @@ async function fileBinding(kind, file) {
 
 async function directoryDigest(skillRoot, skillFiles) {
   const manifest = [];
-  for (const file of skillFiles.sort((left, right) =>
-    path.posix.relative(skillRoot, left).localeCompare(
-      path.posix.relative(skillRoot, right),
-      "en"
-    )
-  )) {
+  for (const file of skillFiles.sort((left, right) => comparePaths(
+    path.posix.relative(skillRoot, left),
+    path.posix.relative(skillRoot, right)
+  ))) {
     const relative = path.posix.relative(skillRoot, file);
     const content = await fs.readFile(path.join(root, file));
     manifest.push(Buffer.byteLength(relative) + ':' + relative + ':' + content.byteLength + ':' + sha256(content));
   }
   return sha256(manifest.join('\\n'));
+}
+
+function comparePaths(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 async function skillName(skillFile, fallback) {

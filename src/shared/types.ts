@@ -9,6 +9,7 @@ export type AssetKind = "skill";
 export type AssetHealth = "valid" | "warning" | "error" | "unknown";
 
 export type StorageProvider = "s3";
+export const SKILL_FILES_CHECKSUM_ALGORITHM = "skill-files-v2" as const;
 
 export interface StoredObject {
   provider: StorageProvider;
@@ -23,6 +24,8 @@ export interface StoredObject {
   contentType: "application/vnd.harhub.skill-directory";
   /** Digest of the sorted file paths and contents, used to key generated zip caches. */
   checksum: string;
+  /** Absent for checksums created before canonical path ordering was versioned. */
+  checksumAlgorithm?: typeof SKILL_FILES_CHECKSUM_ALGORITHM;
   uploadedAt: string;
 }
 
@@ -549,6 +552,8 @@ export interface ProjectRepositoryBindingInput {
   name: string;
   path: string;
   digest: string;
+  /** Absent for collectors generated before Skill digest ordering was versioned. */
+  digestAlgorithm?: typeof SKILL_FILES_CHECKSUM_ALGORITHM;
 }
 
 export type ProjectSkillDiffStatus = "added" | "modified" | "removed";

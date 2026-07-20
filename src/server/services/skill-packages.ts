@@ -1,5 +1,6 @@
 import {
   analyzeStoredSkillFiles,
+  canonicalSkillFilesChecksumForStorage,
   packageSkillFiles,
   type DiscoveredSkill,
   type SkillPackageFile
@@ -61,7 +62,7 @@ export async function loadStoredSkill(storage: StoredObject): Promise<{
 }> {
   const files = await readStoredSkillFiles(storage);
   const skill = analyzeStoredSkillFiles(files);
-  if (skill.checksum !== storage.checksum) {
+  if (!canonicalSkillFilesChecksumForStorage(files, storage)) {
     throw new Error("Stored Skill content does not match its catalog checksum.");
   }
   return { files, skill };

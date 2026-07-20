@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -6,10 +7,14 @@ import test from "node:test";
 import JSZip from "jszip";
 
 import {
+  canonicalSkillFilesChecksumForStorage,
   discoverSkillsInArchive,
+  legacySkillFilesChecksum,
   packageSkillDirectory,
   packageSkillFiles,
   scanSkills,
+  SKILL_FILES_CHECKSUM_ALGORITHM,
+  skillFilesChecksum,
   validateSkillArchive
 } from "../src/features/skills/index.js";
 import { contentHash } from "../src/shared/markdown.js";
@@ -76,6 +81,102 @@ test("packages separated files as a deterministic standard root archive", async 
   assert.ok(zip.file("SKILL.md"));
   assert.ok(zip.file("scripts/run.sh"));
   assert.equal(zip.file("demo-skill/SKILL.md"), null);
+});
+
+test("uses a strict canonical order for collation-equivalent Unicode paths", () => {
+  const files = [
+    { path: "SKILL.md", content: Buffer.from(validSkillMarkdown("unicode-order")) },
+    { path: "é.txt", content: Buffer.from("precomposed") },
+    { path: "e\u0301.txt", content: Buffer.from("decomposed") }
+  ];
+
+  assert.equal(skillFilesChecksum(files), skillFilesChecksum(files.slice().reverse()));
+});
+
+test("migrates an unversioned checksum produced by a different runtime locale", () => {
+  const files = [
+    { path: "SKILL.md", content: Buffer.from("skill") },
+    { path: "z.txt", content: Buffer.from("z") },
+    { path: "ä.txt", content: Buffer.from("a-umlaut") },
+    { path: "å.txt", content: Buffer.from("a-ring") }
+  ];
+  const script = `
+    import { legacySkillFilesChecksum } from "./src/features/skills/archive.ts";
+
+    const files = [
+      { path: "SKILL.md", content: Buffer.from("skill") },
+      { path: "z.txt", content: Buffer.from("z") },
+      { path: "ä.txt", content: Buffer.from("a-umlaut") },
+      { path: "å.txt", content: Buffer.from("a-ring") }
+    ];
+    console.log(JSON.stringify({
+      locale: new Intl.Collator().resolvedOptions().locale,
+      legacy: legacySkillFilesChecksum(files),
+      differsFromEnglish: legacySkillFilesChecksum(files) !== legacySkillFilesChecksum(files, "en")
+    }));
+  `;
+  const child = spawnSync(
+    process.execPath,
+    ["--import", "tsx", "--input-type=module", "--eval", script],
+    {
+      cwd: path.resolve(import.meta.dirname, ".."),
+      encoding: "utf8",
+      env: { ...process.env, LANG: "sv_SE.UTF-8", LC_ALL: "sv_SE.UTF-8" }
+    }
+  );
+
+  assert.equal(child.status, 0, child.stderr);
+  const legacy = JSON.parse(child.stdout) as {
+    locale: string;
+    legacy: string;
+    differsFromEnglish: boolean;
+  };
+  const canonical = skillFilesChecksum(files);
+  assert.equal(legacy.locale, "sv-SE");
+  assert.equal(legacy.differsFromEnglish, true);
+  assert.notEqual(legacy.legacy, canonical);
+  assert.notEqual(legacy.legacy, legacySkillFilesChecksum(files, "en"));
+  assert.equal(
+    canonicalSkillFilesChecksumForStorage(files, { checksum: legacy.legacy }),
+    canonical
+  );
+});
+
+test("migrates a legacy checksum when collation-tied paths arrive in a different order", () => {
+  const skill = { path: "SKILL.md", content: Buffer.from("skill") };
+  const precomposed = { path: "é.txt", content: Buffer.from("precomposed") };
+  const decomposed = { path: "e\u0301.txt", content: Buffer.from("decomposed") };
+  const producerFiles = [skill, precomposed, decomposed];
+  const retrievedFiles = [skill, decomposed, precomposed];
+  const legacy = legacySkillFilesChecksum(producerFiles, "en");
+  const canonical = skillFilesChecksum(retrievedFiles);
+
+  assert.equal(precomposed.path.localeCompare(decomposed.path, "en"), 0);
+  assert.notEqual(legacy, legacySkillFilesChecksum(retrievedFiles, "en"));
+  assert.equal(
+    canonicalSkillFilesChecksumForStorage(retrievedFiles, { checksum: legacy }),
+    canonical
+  );
+});
+
+test("does not interpret a legacy checksum as the versioned canonical algorithm", () => {
+  const files = [
+    { path: "SKILL.md", content: Buffer.from(validSkillMarkdown("versioned-checksum")) },
+    { path: "scripts/helper.js", content: Buffer.from("export const ready = true;\n") }
+  ];
+  const legacyManifest = files
+    .slice()
+    .sort((left, right) => left.path.localeCompare(right.path, "en"))
+    .map((file) => `${Buffer.byteLength(file.path)}:${file.path}:${file.content.byteLength}:${contentHash(file.content)}`)
+    .join("\n");
+
+  assert.equal(
+    canonicalSkillFilesChecksumForStorage(files, {
+      checksum: contentHash(legacyManifest),
+      checksumAlgorithm: SKILL_FILES_CHECKSUM_ALGORITHM
+    }),
+    undefined
+  );
 });
 
 test("rejects a public Skill archive with a wrapper directory", async () => {

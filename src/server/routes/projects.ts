@@ -1,11 +1,12 @@
 import type { Express, Request, RequestHandler } from "express";
 
 import { PUBLIC_APP_URL } from "../config.js";
-import type {
-  ProjectBindingKind,
-  ProjectRepository,
-  ProjectRepositoryBindingInput,
-  ProjectSyncRequest
+import {
+  SKILL_FILES_CHECKSUM_ALGORITHM,
+  type ProjectBindingKind,
+  type ProjectRepository,
+  type ProjectRepositoryBindingInput,
+  type ProjectSyncRequest
 } from "../../shared/types.js";
 import {
   archiveProject,
@@ -329,11 +330,18 @@ function readRepositoryBinding(value: unknown): ProjectRepositoryBindingInput {
   }
   const digest = readRequiredString(value.digest, "binding digest", 64);
   if (!/^[a-f0-9]{64}$/i.test(digest)) throw new Error("Project binding digest is invalid");
+  const digestAlgorithm = value.digestAlgorithm;
+  if (digestAlgorithm !== undefined) {
+    if (kind !== "skill" || digestAlgorithm !== SKILL_FILES_CHECKSUM_ALGORITHM) {
+      throw new Error("Project binding digest algorithm is unsupported");
+    }
+  }
   return {
     kind,
     name: readRequiredString(value.name, "binding name", MAX_BINDING_NAME_CHARS),
     path,
-    digest: digest.toLowerCase()
+    digest: digest.toLowerCase(),
+    ...(digestAlgorithm ? { digestAlgorithm } : {})
   };
 }
 

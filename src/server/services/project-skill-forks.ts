@@ -4,7 +4,9 @@ import {
   upsertAsset
 } from "../../features/assets/index.js";
 import {
+  canonicalSkillFilesChecksumForStorage,
   discoverSkillsInArchive,
+  SKILL_FILES_CHECKSUM_ALGORITHM,
   type DiscoveredSkill,
   type SkillPackageFile
 } from "../../features/skills/index.js";
@@ -70,20 +72,34 @@ export async function syncProjectRepositoryBundle(input: {
       const existingBinding = bindingsByPath.get(observed.path);
       const candidate = candidatesByPath.get(observed.path);
       const baseAsset = findBaseAsset(catalog, existingBinding, candidate);
+      if (
+        baseAsset?.storage?.checksumAlgorithm !== undefined &&
+        baseAsset.storage.checksumAlgorithm !== SKILL_FILES_CHECKSUM_ALGORITHM
+      ) {
+        throw new Error(
+          `Stored Skill ${baseAsset.id} uses an unsupported checksum algorithm.`
+        );
+      }
+      const baseDigest = baseAsset?.storage
+        ? candidate
+          ? canonicalSkillFilesChecksumForStorage(candidate.files, baseAsset.storage) ??
+            baseAsset.storage.checksum
+          : baseAsset.storage.checksum
+        : input.skillArchive
+          ? undefined
+          : existingBinding?.sourceDigest;
       if (baseAsset?.storage) {
         baselineUpdates.push({
           path: observed.path,
           assetId: baseAsset.id,
-          digest: baseAsset.storage.checksum
+          digest: baseDigest
         });
       } else if (input.skillArchive) {
         baselineUpdates.push({ path: observed.path });
       }
 
-      const baseDigest = baseAsset?.storage?.checksum ?? (
-        input.skillArchive ? undefined : existingBinding?.sourceDigest
-      );
-      const needsFork = baseDigest !== observed.digest;
+      const observedDigest = candidate?.checksum ?? observed.digest;
+      const needsFork = baseDigest !== observedDigest;
       if (!needsFork) continue;
       if (!candidate) {
         throw new Error(
@@ -92,15 +108,25 @@ export async function syncProjectRepositoryBundle(input: {
       }
 
       const existingFork = existingForks.get(observed.path);
-      const storage = existingFork?.digest === observed.digest
-        ? existingFork.storage
-        : await uploadSkillFiles({
-            workspaceId: authorization.workspaceId,
-            skillName: `project-${input.projectId}-${candidate.name}`,
-            files: candidate.files,
-            checksum: candidate.checksum
-          });
-      if (storage !== existingFork?.storage) newStorage.push(storage);
+      const existingForkDigest = existingFork
+        ? canonicalSkillFilesChecksumForStorage(candidate.files, existingFork.storage)
+        : undefined;
+      let storage: StoredObject;
+      if (existingFork && existingForkDigest === observedDigest) {
+        storage = {
+          ...existingFork.storage,
+          checksum: observedDigest,
+          checksumAlgorithm: SKILL_FILES_CHECKSUM_ALGORITHM
+        };
+      } else {
+        storage = await uploadSkillFiles({
+          workspaceId: authorization.workspaceId,
+          skillName: `project-${input.projectId}-${candidate.name}`,
+          files: candidate.files,
+          checksum: candidate.checksum
+        });
+        newStorage.push(storage);
+      }
       forkUpdates.push({
         path: observed.path,
         digest: candidate.checksum,
@@ -117,7 +143,14 @@ export async function syncProjectRepositoryBundle(input: {
       ...input.request,
       bindings: input.request.bindings.map((binding) => {
         const candidate = binding.kind === "skill" ? candidatesByPath.get(binding.path) : undefined;
-        return candidate ? { ...binding, name: candidate.displayName } : binding;
+        return candidate
+          ? {
+              ...binding,
+              name: candidate.displayName,
+              digest: candidate.checksum,
+              digestAlgorithm: SKILL_FILES_CHECKSUM_ALGORITHM
+            }
+          : binding;
       })
     };
     const result = await syncProjectFromRepository(
@@ -274,7 +307,13 @@ function validateSkillBundle(
   }
   for (const binding of request.bindings.filter((item) => item.kind === "skill")) {
     const candidate = candidatesByPath.get(binding.path);
-    if (candidate && candidate.checksum !== binding.digest) {
+    if (
+      candidate &&
+      canonicalSkillFilesChecksumForStorage(candidate.files, {
+        checksum: binding.digest,
+        checksumAlgorithm: binding.digestAlgorithm
+      }) !== candidate.checksum
+    ) {
       throw new Error(`Skill bundle digest does not match the manifest for ${binding.path}.`);
     }
   }

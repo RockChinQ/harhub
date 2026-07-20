@@ -11,11 +11,13 @@ import { spawnSync } from "node:child_process";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
+import JSZip from "jszip";
 import { parse as parseYaml } from "yaml";
 
-import type {
-  HarnessTemplateResponse,
-  ProjectSyncRequest
+import {
+  SKILL_FILES_CHECKSUM_ALGORITHM,
+  type HarnessTemplateResponse,
+  type ProjectSyncRequest
 } from "../src/shared/types.js";
 
 test("freezes Forge sessions before connecting repository-synchronized Projects", async () => {
@@ -36,10 +38,14 @@ test("freezes Forge sessions before connecting repository-synchronized Projects"
       listProjects,
       loadState,
       recordForgeSessionTemplate,
-      syncProjectFromRepository
+      syncProjectFromRepository,
+      writeWorkspaceAssetCatalog
     } = await import("../src/state/index.js");
     const { buildHarnessTemplate } = await import("../src/server/services/forge.js");
-    const { skillFilesChecksum } = await import("../src/features/skills/archive.js");
+    const {
+      legacySkillFilesChecksum,
+      skillFilesChecksum
+    } = await import("../src/features/skills/archive.js");
     const { readProjectRepository } = await import("../src/server/routes/projects.js");
 
     assert.deepEqual(
@@ -59,6 +65,8 @@ test("freezes Forge sessions before connecting repository-synchronized Projects"
       { path: "scripts/helper.js", content: Buffer.from("export const ready = true;\n") }
     ];
     const skillDigest = skillFilesChecksum(repositorySkillFiles);
+    const legacySkillDigest = legacySkillFilesChecksum(repositorySkillFiles, "en");
+    assert.notEqual(legacySkillDigest, skillDigest);
     const skill = {
       id: "asset:skill:release-notes",
       kind: "skill" as const,
@@ -106,7 +114,7 @@ test("freezes Forge sessions before connecting repository-synchronized Projects"
       sessionId: session.id,
       name: "Release Control",
       apiBaseUrl: "https://harhub.example",
-      assetDigests: { [skill.id]: skillDigest }
+      assetDigests: { [skill.id]: legacySkillDigest }
     });
     assert.equal(frozen.syncToken, undefined);
     assert.equal(frozen.project.repository, undefined);
@@ -119,6 +127,29 @@ test("freezes Forge sessions before connecting repository-synchronized Projects"
     const storedProject = storedState.projects.find((item) => item.id === frozen.project.id);
     assert.ok(storedProject);
     assert.equal(storedProject.syncTokenHash, undefined);
+
+    const legacyAsset = {
+      ...skill,
+      validation: { errors: 0, warnings: 0 },
+      storage: {
+        provider: "s3" as const,
+        layout: "files" as const,
+        bucket: "legacy-bucket",
+        key: "legacy/release-notes/",
+        size: skill.size,
+        fileCount: skill.fileCount,
+        contentType: "application/vnd.harhub.skill-directory" as const,
+        checksum: legacySkillDigest,
+        uploadedAt: new Date().toISOString()
+      }
+    };
+    await writeWorkspaceAssetCatalog("ws_demo", {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      workspaceId: "ws_demo",
+      assets: [legacyAsset],
+      skills: []
+    });
 
     const restoredSession = await getForgeSession("acct_demo", "ws_demo", session.id);
     assert.equal(restoredSession.frozenProject?.id, frozen.project.id);
@@ -194,11 +225,16 @@ test("freezes Forge sessions before connecting repository-synchronized Projects"
     );
     assert.equal(collector.status, 0, collector.stderr);
     const payload = JSON.parse(collector.stdout) as ProjectSyncRequest;
-    assert.equal(
-      payload.bindings.find((item) => item.kind === "skill")?.digest,
-      skillDigest
-    );
+    const collectedSkill = payload.bindings.find((item) => item.kind === "skill");
+    assert.equal(collectedSkill?.digest, skillDigest);
+    assert.equal(collectedSkill?.digestAlgorithm, SKILL_FILES_CHECKSUM_ALGORITHM);
     assert.ok(payload.bindings.some((item) => item.kind === "rule"));
+    const oldCollectorPayload: ProjectSyncRequest = {
+      ...payload,
+      bindings: payload.bindings.map((binding) => binding.kind === "skill"
+        ? { ...binding, digest: legacySkillDigest, digestAlgorithm: undefined }
+        : binding)
+    };
 
     const { createServerApp } = await import("../src/server/app.js");
     server = createServerApp().listen(0, "127.0.0.1");
@@ -263,13 +299,26 @@ test("freezes Forge sessions before connecting repository-synchronized Projects"
     assert.equal(rejectedSync.status, 401);
     assertPrivateNoStore(rejectedSync);
 
+    const skillArchive = new JSZip();
+    for (const file of repositorySkillFiles) {
+      skillArchive.file(`.harness/skills/release-notes/${file.path}`, file.content);
+    }
+    const skillArchiveBuffer = await skillArchive.generateAsync({ type: "nodebuffer" });
+    const syncBody = new FormData();
+    syncBody.set("manifest", JSON.stringify(oldCollectorPayload));
+    syncBody.set(
+      "skills",
+      new Blob([new Uint8Array(skillArchiveBuffer)], {
+        type: "application/zip"
+      }),
+      "skills.zip"
+    );
     const syncResponse = await fetch(`${baseUrl}/api/projects/${frozen.project.id}/sync`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${syncToken}`,
-        "Content-Type": "application/json"
+        Authorization: "Bearer ".concat(syncToken)
       },
-      body: JSON.stringify(payload)
+      body: syncBody
     });
     assert.equal(syncResponse.status, 200);
     assertPrivateNoStore(syncResponse);
@@ -279,6 +328,43 @@ test("freezes Forge sessions before connecting repository-synchronized Projects"
     };
     assert.equal(firstSync.revision, 1);
     assert.equal(firstSync.counts.synced, 2);
+    assert.equal(
+      (await getProject("acct_demo", "ws_demo", frozen.project.id)).bindings
+        .find((item) => item.kind === "skill")?.sourceDigest,
+      skillDigest
+    );
+
+    await writeWorkspaceAssetCatalog("ws_demo", {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      workspaceId: "ws_demo",
+      assets: [{
+        ...legacyAsset,
+        storage: {
+          ...legacyAsset.storage,
+          checksum: skillDigest,
+          checksumAlgorithm: "skill-files-v3" as never
+        }
+      }],
+      skills: []
+    });
+    const unsupportedBody = new FormData();
+    unsupportedBody.set("manifest", JSON.stringify({ ...payload, commitSha: "c".repeat(40) }));
+    unsupportedBody.set(
+      "skills",
+      new Blob([new Uint8Array(skillArchiveBuffer)], { type: "application/zip" }),
+      "skills.zip"
+    );
+    const unsupportedResponse = await fetch(
+      `${baseUrl}/api/projects/${frozen.project.id}/sync`,
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer ".concat(syncToken) },
+        body: unsupportedBody
+      }
+    );
+    assert.equal(unsupportedResponse.status, 400);
+    assert.match(await unsupportedResponse.text(), /unsupported checksum algorithm/);
 
     await assert.rejects(
       syncProjectFromRepository(frozen.project.id, "wrong-token", payload),
