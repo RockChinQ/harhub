@@ -68,7 +68,8 @@ export function SkillOverviewPanel({
   onDeleted?: () => void;
   className?: string;
 }) {
-  const [message, setMessage] = useState<string | undefined>();
+  const [validationMessage, setValidationMessage] = useState<string | undefined>();
+  const [deleteMessage, setDeleteMessage] = useState<string | undefined>();
   const [isDeleting, setIsDeleting] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
@@ -76,14 +77,17 @@ export function SkillOverviewPanel({
   const [copied, setCopied] = useState<"url" | "cli" | "skills" | undefined>();
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareMessage, setShareMessage] = useState<string | undefined>();
+  const [validationDialogOpen, setValidationDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
-    setMessage(undefined);
+    setValidationMessage(undefined);
+    setDeleteMessage(undefined);
     setShare(undefined);
     setCopied(undefined);
     setShareDialogOpen(false);
     setShareMessage(undefined);
+    setValidationDialogOpen(false);
     if (!asset) return;
 
     let active = true;
@@ -126,18 +130,22 @@ export function SkillOverviewPanel({
           item.path === issue.path
       ) === index
   );
+  const issueErrorCount = assetIssues.filter((issue) => issue.severity === "error").length;
+  const issueWarningCount = assetIssues.filter((issue) => issue.severity === "warning").length;
+  const validationErrors = Math.max(selectedAsset.validation.errors, issueErrorCount);
+  const validationWarnings = Math.max(selectedAsset.validation.warnings, issueWarningCount);
+  const validationSummary = `${validationErrors} errors · ${validationWarnings} warnings`;
 
   async function removeAsset() {
     setIsDeleting(true);
-    setMessage(undefined);
+    setDeleteMessage(undefined);
     try {
       await deleteWorkspaceAsset(token, workspace.id, selectedAsset.id);
-      setMessage("Deleted.");
       setDeleteDialogOpen(false);
       await onChanged();
       onDeleted?.();
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : String(caught));
+      setDeleteMessage(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setIsDeleting(false);
     }
@@ -145,16 +153,16 @@ export function SkillOverviewPanel({
 
   async function validateAsset() {
     setIsValidating(true);
-    setMessage(undefined);
+    setValidationMessage(undefined);
     try {
       const response = await validateWorkspaceAsset(token, workspace.id, selectedAsset.id);
       const issueCount =
         response.validatedIssues?.length ??
         ((response.validated?.validation.errors ?? 0) + (response.validated?.validation.warnings ?? 0));
       await onChanged();
-      setMessage(issueCount > 0 ? `${issueCount} issue(s) found.` : "Valid.");
+      setValidationMessage(issueCount > 0 ? `${issueCount} issue(s) found.` : "Validation passed.");
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : String(caught));
+      setValidationMessage(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setIsValidating(false);
     }
@@ -201,39 +209,89 @@ export function SkillOverviewPanel({
   return (
     <div
       className={cn(
-        "flex h-full min-w-0 flex-col overflow-hidden rounded-lg border bg-card",
+        "grid h-full min-w-0 grid-cols-[minmax(0,1fr)_13rem] overflow-hidden rounded-lg border bg-card",
         className
       )}
     >
-      <div className="flex shrink-0 flex-col gap-3 border-b bg-card p-4">
+      <div className="min-w-0 overflow-auto p-5">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h2 className="truncate text-lg font-semibold">{selectedAsset.displayName}</h2>
           <Badge variant="secondary" className={healthBadgeClass(selectedAsset.health)}>
             {selectedAsset.health}
           </Badge>
         </div>
-        <p className="line-clamp-3 text-sm leading-6 text-muted-foreground">
+        <p className="mt-3 line-clamp-4 text-sm leading-6 text-muted-foreground">
           {selectedAsset.description || selectedAsset.name}
+        </p>
+        <p className="mt-4 truncate font-mono text-xs text-muted-foreground">
+          {selectedAsset.name}
         </p>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto p-4">
-        <div className="grid gap-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="outline" onClick={validateAsset} disabled={isValidating}>
-              {isValidating ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-              )}
-              Validate
-            </Button>
+      <div className="flex min-w-0 flex-col justify-center gap-2 border-l bg-muted/10 p-4">
+            <Dialog open={validationDialogOpen} onOpenChange={setValidationDialogOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-12 w-full justify-start px-3 text-left"
+                >
+                  {isValidating ? (
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  )}
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">Validation</span>
+                    <span className="block truncate text-[11px] font-normal text-muted-foreground">
+                      {validationSummary}
+                    </span>
+                  </span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+                <DialogHeader>
+                  <DialogTitle>Validation details</DialogTitle>
+                  <DialogDescription>{validationSummary}</DialogDescription>
+                </DialogHeader>
+                <div className="max-h-[50vh] overflow-auto pr-1">
+                  {assetIssues.length > 0 ? (
+                    <ValidationIssuesList issues={assetIssues} />
+                  ) : (
+                    <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
+                      No validation errors or warnings were found.
+                    </div>
+                  )}
+                </div>
+                {validationMessage ? (
+                  <p className="text-sm text-muted-foreground">{validationMessage}</p>
+                ) : null}
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button type="button" variant="outline" disabled={isValidating}>Close</Button>
+                  </DialogClose>
+                  <Button
+                    type="button"
+                    disabled={isValidating}
+                    onClick={() => void validateAsset()}
+                  >
+                    {isValidating ? (
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    Run validation
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
               <DialogTrigger asChild>
                 <Button
                   type="button"
                   variant={share ? "secondary" : "outline"}
                   disabled={isSharing && !share}
+                  className="h-12 w-full justify-start px-3 text-left"
                 >
                   {isSharing && !share ? (
                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -242,7 +300,14 @@ export function SkillOverviewPanel({
                   ) : (
                     <Share2 className="h-4 w-4" aria-hidden="true" />
                   )}
-                  {isSharing && !share ? "Checking…" : share ? "Shared" : "Share"}
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">
+                      {isSharing && !share ? "Checking…" : share ? "Shared" : "Share"}
+                    </span>
+                    <span className="block truncate text-[11px] font-normal text-muted-foreground">
+                      {share ? "Public link active" : "Manage public access"}
+                    </span>
+                  </span>
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
@@ -330,7 +395,12 @@ export function SkillOverviewPanel({
             </Dialog>
             <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
               <AlertDialogTrigger asChild>
-                <Button type="button" variant="outline" disabled={isDeleting}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isDeleting}
+                  className="h-12 w-full justify-start px-3"
+                >
                   {isDeleting ? (
                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                   ) : (
@@ -346,6 +416,9 @@ export function SkillOverviewPanel({
                     This removes {selectedAsset.displayName} from the workspace catalog.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
+                {deleteMessage ? (
+                  <p className="text-sm text-destructive">{deleteMessage}</p>
+                ) : null}
                 <AlertDialogFooter>
                   <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
                   <AlertDialogAction
@@ -366,11 +439,6 @@ export function SkillOverviewPanel({
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-          </div>
-
-          <ValidationIssuesList issues={assetIssues} />
-          {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
-        </div>
       </div>
     </div>
   );
