@@ -845,7 +845,7 @@ function DiffLineCell({
       )}>
         {marker}
       </span>
-      <code className="min-w-0 whitespace-pre px-1.5 text-foreground">
+      <code className="min-w-0 flex-1 whitespace-pre-wrap break-words px-1.5 text-foreground [overflow-wrap:anywhere]">
         {line ? (
           row.kind === "modified" && other
             ? <ChangedLineText text={line.text} other={other.text} added={side === "after"} />
