@@ -16,6 +16,7 @@ export default defineConfig({
     nav: [
       { text: "Guide", link: "/guide/getting-started" },
       { text: "Product Notes", link: "/00-overview" },
+      { text: "Market Research", link: "/market-research/" },
       { text: "Demo", link: "https://harhub.rcpd.cc" }
     ],
     sidebar: [
@@ -43,6 +44,18 @@ export default defineConfig({
           { text: "08 Roadmap", link: "/08-roadmap" },
           { text: "09 MVP TODO", link: "/09-mvp-todo" },
           { text: "10 Sharing and Installation Loop", link: "/10-sharing-and-installation-loop" }
+        ]
+      },
+      {
+        text: "Market Research",
+        collapsed: true,
+        items: [
+          { text: "Overview", link: "/market-research/" },
+          { text: "01 Market Landscape", link: "/market-research/01-market-landscape" },
+          { text: "02 Why No Category Winner", link: "/market-research/02-why-no-category-winner" },
+          { text: "03 Harhub Positioning", link: "/market-research/03-harhub-positioning" },
+          { text: "04 PMF Strategy", link: "/market-research/04-pmf-strategy" },
+          { text: "05 Evidence and Methodology", link: "/market-research/05-evidence-and-methodology" }
         ]
       }
     ],
