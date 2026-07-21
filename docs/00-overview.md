@@ -6,22 +6,26 @@ Harhub 是面向团队的 agent harness 控制平面。这里的 harness 指让 
 
 ## 当前实现与目标
 
-当前 `0.1.0-beta.3` MVP 只管理 Agent Skills。已经实现的产品表面包括：
+当前 `0.1.0-beta.3` 仍以 Agent Skills 为主要制品，但 `main` 已经形成 Library、Forge、Project 和 repository sync 的早期闭环。已经实现的产品表面包括：
 
 - React Web UI 和 TypeScript CLI。
 - 账号、session、workspace、角色和邀请。
-- 本地 Skill 扫描、官方格式校验和目录打包。
-- Workspace-scoped zip 上传、搜索、详情、文件预览、批量校验和删除。
+- 本地 Skill 扫描、官方格式校验、目录打包和 Workspace-scoped zip 上传。
+- 搜索、详情、文件预览、批量校验、删除和 version-history 元数据。
+- Public share page、下载、CLI 上传/分享和跨 Agent 安装命令。
+- Forge AI 访谈、Harness ZIP 生成和 Project freeze。
+- GitHub Action repository sync、Skill added/modified/missing drift、文件级 diff 和人工回流 Library。
 - Postgres-compatible 运行态持久化和 S3-compatible zip 存储，以及本地 JSON fallback。
 - Email/password、邮件验证码、Google/GitHub OAuth 登录。
 
-仓库扫描器、多资产 inventory、版本发布、组合引擎、策略引擎、跨工具分发和评估仍是目标设计，不是当前 API 已经提供的能力。本文档集会明确区分“当前实现”和“目标架构”。
+GitHub organization 扫描器、多资产完整生命周期、immutable release/rollback、组合与 lockfile、策略引擎、跨工具 rollout 和任务结果评估仍是目标设计，不是当前 API 已经完整提供的能力。本文档集会明确区分“当前实现”和“目标架构”。
 
 ## 文档地图
 
 - [00. 概览](./00-overview.md)：阅读入口、文档地图和 agent harness 工作定义。
 - [01. 问题与缺口分析](./01-problem-and-gap-analysis.md)：说明为什么需要这个品类，以及它解决什么痛点。
 - [02. 市场定位](./02-market-positioning.md)：为什么目标品类是团队 AI harness 管理，以及为什么 Skills 只是第一个切入点。
+- [Harness 市场与 PMF 研究](./market-research/)：基于 GitHub、官方产品资料和当前代码能力的竞品地图、品类分析、Harhub 定位与 PMF 实验。
 - [03. 需求文档](./03-requirements.md)：产品需求、用户、用例和非功能需求。
 - [04. 产品设计](./04-product-design.md)：核心流程、信息架构和运营模型。
 - [05. 架构设计](./05-architecture.md)：系统设计、核心服务、数据模型、组合模型和集成策略。
