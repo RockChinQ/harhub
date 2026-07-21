@@ -16,6 +16,8 @@
   </p>
 </div>
 
+![Harhub abstract city marketing illustration](./docs/public/harhub-social-preview.png)
+
 ## Overview
 
 Harhub is a workspace for managing reusable Agent Skills.
