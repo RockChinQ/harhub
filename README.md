@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./docs/public/harhub-icon.svg" alt="Harhub" width="96" height="96" />
+  <img src="./docs/public/harhub-logo.svg" alt="Harhub" width="96" height="96" />
   <h1>Harhub</h1>
   <p><strong>Asset control for agent teams.</strong></p>
   <p>
