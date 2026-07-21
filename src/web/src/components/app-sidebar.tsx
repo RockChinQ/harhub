@@ -99,13 +99,6 @@ export function AppSidebar({
         <NavMain
           items={[
             {
-              title: "Projects",
-              url: "/projects",
-              icon: FolderGit2,
-              isActive: isProjectsActive,
-              onSelect: () => onNavigate({ view: "projects" }),
-            },
-            {
               title: "Skills",
               url: "/skills",
               icon: Layers3,
@@ -125,6 +118,18 @@ export function AppSidebar({
               icon: ScrollText,
               disabled: true,
               badge: "Soon",
+            },
+          ]}
+        />
+        <NavMain
+          label="Anchor"
+          items={[
+            {
+              title: "Projects",
+              url: "/projects",
+              icon: FolderGit2,
+              isActive: isProjectsActive,
+              onSelect: () => onNavigate({ view: "projects" }),
             },
           ]}
         />
