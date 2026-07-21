@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Harhub icon">
-  <rect width="128" height="128" rx="28" fill="#2563eb"/>
-  <path d="M34 32h60a10 10 0 0 1 10 10v44a10 10 0 0 1-10 10H34a10 10 0 0 1-10-10V42a10 10 0 0 1 10-10Z" fill="#dbeafe"/>
-  <path d="M42 45h44a5 5 0 0 1 5 5v28a5 5 0 0 1-5 5H42a5 5 0 0 1-5-5V50a5 5 0 0 1 5-5Z" fill="#ffffff"/>
-  <path d="M49 57h30M49 70h22" stroke="#2563eb" stroke-width="7" stroke-linecap="round"/>
-  <path d="M88 35v58" stroke="#1d4ed8" stroke-width="8" stroke-linecap="round"/>
-  <circle cx="92" cy="40" r="7" fill="#bfdbfe"/>
-  <circle cx="92" cy="64" r="7" fill="#ffffff"/>
-  <circle cx="92" cy="88" r="7" fill="#bfdbfe"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">Harhub</title>
+  <path
+    fill="#2459b8"
+    d="M22 16h22c5.523 0 10 4.477 10 10v12c0 6.627-3.373 12-8 12-4.418 0-8 3.582-8 8v12c0 4.418 3.582 8 8 8 4.627 0 8 5.373 8 12v12c0 5.523-4.477 10-10 10H22c-5.523 0-10-4.477-10-10V26c0-5.523 4.477-10 10-10Z"
+  />
+  <path
+    fill="#343638"
+    d="M106 16H84c-5.523 0-10 4.477-10 10v12c0 6.627 3.373 12 8 12 4.418 0 8 3.582 8 8v12c0 4.418-3.582 8-8 8-4.627 0-8 5.373-8 12v12c0 5.523 4.477 10 10 10h22c5.523 0 10-4.477 10-10V26c0-5.523-4.477-10-10-10Z"
+  />
 </svg>
