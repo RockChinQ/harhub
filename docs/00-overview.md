@@ -25,7 +25,6 @@ GitHub organization 扫描器、多资产完整生命周期、immutable release/
 - [00. 概览](./00-overview.md)：阅读入口、文档地图和 agent harness 工作定义。
 - [01. 问题与缺口分析](./01-problem-and-gap-analysis.md)：说明为什么需要这个品类，以及它解决什么痛点。
 - [02. 市场定位](./02-market-positioning.md)：为什么目标品类是团队 AI harness 管理，以及为什么 Skills 只是第一个切入点。
-- [Harness 市场与 PMF 研究](./market-research/)：基于 GitHub、官方产品资料和当前代码能力的竞品地图、品类分析、Harhub 定位与 PMF 实验。
 - [03. 需求文档](./03-requirements.md)：产品需求、用户、用例和非功能需求。
 - [04. 产品设计](./04-product-design.md)：核心流程、信息架构和运营模型。
 - [05. 架构设计](./05-architecture.md)：系统设计、核心服务、数据模型、组合模型和集成策略。
