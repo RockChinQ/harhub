@@ -9,12 +9,15 @@ import { registerAssetRoutes } from "./routes/assets.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerForgeRoutes } from "./routes/forge.js";
+import { registerGitHubIntegrationRoutes } from "./routes/github-integrations.js";
+import { registerGitHubWebhookRoute } from "./routes/github-webhooks.js";
 import { registerLegacySkillRoutes } from "./routes/legacy-skills.js";
 import { registerOAuthDeviceRoutes } from "./routes/oauth-device.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerShareRoutes } from "./routes/shares.js";
 import { registerSkillRoutes } from "./routes/skills.js";
 import { registerWorkspaceRoutes } from "./routes/workspaces.js";
+import { recoverProjectRepositoryScans } from "./services/project-repository-inventory.js";
 
 export function createServerApp() {
   const app = express();
@@ -27,6 +30,7 @@ export function createServerApp() {
   });
 
   app.use(cors());
+  registerGitHubWebhookRoute(app);
   app.use(express.json({ limit: "1mb" }));
   app.use(express.urlencoded({ extended: false, limit: "32kb" }));
 
@@ -38,10 +42,12 @@ export function createServerApp() {
   registerAuditEventRoutes(app);
   registerProjectRoutes(app, upload);
   registerForgeRoutes(app);
+  registerGitHubIntegrationRoutes(app);
   registerAssetRoutes(app, upload);
   registerSkillRoutes(app);
   registerLegacySkillRoutes(app);
   registerStaticApp(app);
+  recoverProjectRepositoryScans();
   return app;
 }
 

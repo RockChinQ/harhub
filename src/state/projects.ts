@@ -84,6 +84,24 @@ export function createProject(input: {
   });
 }
 
+export function createGitHubAppProject(input: {
+  accountId: string;
+  workspaceId: string;
+  name: string;
+  description: string;
+  repository: ProjectRepository;
+}): Promise<HarhubProject> {
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    requireWorkspaceAdmin(state, input.accountId, input.workspaceId);
+    assertProjectCapacity(state, input.workspaceId);
+    const created = createProjectRecord(state, { ...input, createSyncToken: false });
+    state.projects.push(created.project);
+    await saveState(state);
+    return toPublicProject(created.project);
+  });
+}
+
 export function freezeForgeSessionAsProject(input: {
   accountId: string;
   workspaceId: string;
@@ -254,6 +272,29 @@ export function authorizeProjectSync(
   });
 }
 
+export function authorizeGitHubAppProjectSync(
+  workspaceId: string,
+  projectId: string,
+  repository: string
+): Promise<ProjectSyncAuthorization> {
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    const project = findProject(state, workspaceId, projectId);
+    if (project.status !== "active") throw new Error("Project is archived.");
+    if (!project.repository) throw new Error("Project does not have a connected repository.");
+    const expected = `${project.repository.owner}/${project.repository.name}`;
+    if (expected.toLowerCase() !== repository.toLowerCase()) {
+      throw new Error("Project sync repository does not match the tracked repository.");
+    }
+    return {
+      workspaceId: project.workspaceId,
+      generation: project.skillForkGeneration ?? 0,
+      bindings: structuredClone(project.bindings),
+      skillForks: structuredClone(project.skillForks ?? [])
+    };
+  });
+}
+
 export function syncProjectFromRepository(
   projectId: string,
   token: string,
@@ -367,6 +408,115 @@ export function syncProjectFromRepository(
   });
 }
 
+export function syncProjectFromGitHubApp(
+  workspaceId: string,
+  projectId: string,
+  input: ProjectSyncRequest,
+  forkUpdates: ProjectSkillForkUpdate[] = [],
+  expectedGeneration?: number,
+  baselineUpdates: ProjectBindingBaselineUpdate[] = []
+): Promise<ProjectSyncResponse> {
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    const project = findProject(state, workspaceId, projectId);
+    if (project.status !== "active") throw new Error("Project is archived.");
+    if (!project.repository) throw new Error("Project does not have a connected repository.");
+    const expectedRepository = `${project.repository.owner}/${project.repository.name}`;
+    if (expectedRepository.toLowerCase() !== input.repository.toLowerCase()) {
+      throw new Error("Project sync repository does not match the tracked repository.");
+    }
+    if (
+      expectedGeneration !== undefined &&
+      (project.skillForkGeneration ?? 0) !== expectedGeneration
+    ) {
+      throw new Error("Project changed while this repository sync was being prepared. Retry the sync.");
+    }
+
+    const now = new Date().toISOString();
+    const incoming = new Map(input.bindings.map((binding) => [bindingKey(binding), binding]));
+    const existingForks = new Map((project.skillForks ?? []).map((fork) => [fork.path, fork]));
+    const updatedForks = new Map(forkUpdates.map((fork) => [fork.path, fork]));
+    const baselines = new Map(baselineUpdates.map((baseline) => [baseline.path, baseline]));
+    const nextForks: ProjectSkillForkRecord[] = [];
+    const nextBindings: ProjectBinding[] = project.bindings.map((binding) => {
+      const observed = incoming.get(bindingKey(binding));
+      if (!observed) {
+        const { fork: _fork, ...retained } = binding;
+        return { ...retained, status: "missing" };
+      }
+      incoming.delete(bindingKey(binding));
+      const forkUpdate = updatedForks.get(binding.path);
+      const baseline = baselines.get(binding.path);
+      const baselineResolved = baselines.has(binding.path);
+      const status = projectBindingStatus(binding, observed.digest, baseline?.digest, baselineResolved);
+      const fork = status === "added" || status === "modified"
+        ? forkUpdate ?? existingForks.get(binding.path)
+        : undefined;
+      if (fork) nextForks.push(structuredClone(fork));
+      const retained = { ...binding };
+      delete retained.fork;
+      if (baselineResolved) {
+        delete retained.assetId;
+        delete retained.sourceDigest;
+        retained.source = baseline?.assetId ? "harhub" : "repository";
+      }
+      return {
+        ...retained,
+        name: observed.name,
+        status,
+        ...(baseline?.assetId ? { assetId: baseline.assetId, source: "harhub" as const } : {}),
+        ...(baseline?.digest ? { sourceDigest: baseline.digest } : {}),
+        repositoryDigest: observed.digest,
+        lastSeenAt: now,
+        ...(fork ? { fork: publicForkSummary(fork) } : {})
+      };
+    });
+    for (const observed of incoming.values()) {
+      const forkUpdate = observed.kind === "skill" ? updatedForks.get(observed.path) : undefined;
+      const baseline = observed.kind === "skill" ? baselines.get(observed.path) : undefined;
+      const status = observed.kind === "skill"
+        ? baseline?.digest === observed.digest
+          ? "synced" as const
+          : baseline?.digest
+            ? "modified" as const
+            : "added" as const
+        : "synced" as const;
+      const fork = status === "added" || status === "modified" ? forkUpdate : undefined;
+      if (fork) nextForks.push(structuredClone(fork));
+      nextBindings.push({
+        id: randomUUID(),
+        kind: observed.kind,
+        name: observed.name,
+        path: observed.path,
+        source: baseline ? "harhub" : "repository",
+        status,
+        ...(baseline ? { assetId: baseline.assetId, sourceDigest: baseline.digest } : {}),
+        repositoryDigest: observed.digest,
+        lastSeenAt: now,
+        ...(fork ? { fork: publicForkSummary(fork) } : {})
+      });
+    }
+    project.bindings = nextBindings.sort(bindingsByPath);
+    project.skillForks = nextForks.sort((left, right) => left.path.localeCompare(right.path));
+    project.skillForkGeneration = (project.skillForkGeneration ?? 0) + 1;
+    project.sync = {
+      status: "synced",
+      revision: project.sync.revision + 1,
+      lastSyncedAt: now,
+      lastCommitSha: input.commitSha,
+      lastRef: input.ref
+    };
+    project.updatedAt = now;
+    await saveState(state);
+    return {
+      projectId: project.id,
+      revision: project.sync.revision,
+      syncedAt: now,
+      counts: countBindingStatuses(project.bindings)
+    };
+  });
+}
+
 export function getProjectSkillFork(
   accountId: string,
   workspaceId: string,
@@ -437,10 +587,13 @@ function createProjectRecord(
     repository?: ProjectRepository;
     bindings?: ProjectBinding[];
     sourceForgeSessionId?: string;
+    createSyncToken?: boolean;
   }
 ): { project: ProjectStateRecord; syncToken?: string } {
   const now = new Date().toISOString();
-  const credential = input.repository ? createSyncCredential() : undefined;
+  const credential = input.repository && input.createSyncToken !== false
+    ? createSyncCredential()
+    : undefined;
   return {
     project: {
       id: randomUUID(),

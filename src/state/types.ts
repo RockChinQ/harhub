@@ -102,6 +102,7 @@ export interface GitHubInstallationAuthorizationRecord {
   redirectPath: string;
   createdAt: string;
   expiresAt: string;
+  installationId?: string;
 }
 
 export interface GitHubWebhookDeliveryRecord {

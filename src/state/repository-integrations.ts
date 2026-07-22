@@ -152,7 +152,8 @@ export interface ProjectInventoryState {
 export async function createGitHubInstallationAuthorization(
   accountId: string,
   workspaceId: string,
-  redirectPath: string
+  redirectPath: string,
+  installationId?: string
 ): Promise<GitHubInstallationAuthorizationRecord> {
   return serializeStateAccess(async () => {
     const state = await loadState();
@@ -167,7 +168,8 @@ export async function createGitHubInstallationAuthorization(
       workspaceId,
       redirectPath: safeRedirectPath(redirectPath),
       createdAt: now.toISOString(),
-      expiresAt: new Date(now.getTime() + AUTHORIZATION_TTL_MS).toISOString()
+      expiresAt: new Date(now.getTime() + AUTHORIZATION_TTL_MS).toISOString(),
+      ...(installationId ? { installationId } : {})
     };
     state.githubInstallationAuthorizations.push(authorization);
     await saveState(state);
@@ -358,6 +360,25 @@ export async function findProjectRepositoryConnection(
   );
 }
 
+export async function listProjectRepositoryConnectionsForInstallation(
+  installationId: string
+): Promise<ProjectRepositoryConnectionRecord[]> {
+  if (isDatabaseStateEnabled()) {
+    await ensureRepositoryDatabase();
+    const rows = await queryDatabase<ConnectionRow>(
+      `select project_id, workspace_id, mode, status, installation_id, permission_mode,
+              repository_id, repository_node_id, owner, name, default_branch, connected_at,
+              last_observed_head_sha, last_observed_at
+       from harhub_project_repository_connections
+       where installation_id = $1`,
+      [installationId]
+    );
+    return rows.map(connectionFromRow);
+  }
+  return (await loadState()).projectRepositoryConnections
+    .filter((item) => item.installationId === installationId);
+}
+
 export async function updateProjectConnectionObservation(
   projectId: string,
   input: { headSha: string; observedAt: string; owner?: string; name?: string; defaultBranch?: string }
@@ -372,6 +393,15 @@ export async function updateProjectConnectionObservation(
     lastObservedHeadSha: input.headSha,
     lastObservedAt: input.observedAt
   });
+}
+
+export async function updateProjectRepositoryConnectionStatus(
+  projectId: string,
+  status: ProjectRepositoryConnection["status"]
+): Promise<void> {
+  const connection = await getProjectRepositoryConnectionInternal(projectId);
+  if (!connection) return;
+  await saveProjectRepositoryConnection({ ...connection, status });
 }
 
 export async function createProjectScanJob(input: {

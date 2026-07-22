@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   createImportedSkillAsset,
   obsoleteAssetStorageObjects,
@@ -7,6 +9,7 @@ import {
 import {
   canonicalSkillFilesChecksumForStorage,
   discoverSkillsInArchive,
+  analyzeStoredSkillFiles,
   SKILL_FILES_CHECKSUM_ALGORITHM,
   type DiscoveredSkill,
   type SkillPackageFile
@@ -25,9 +28,11 @@ import type {
 } from "../../shared/types.js";
 import {
   authorizeProjectSync,
+  authorizeGitHubAppProjectSync,
   getProjectSkillFork,
   recordProjectSkillPublished,
   syncProjectFromRepository,
+  syncProjectFromGitHubApp,
   writeWorkspaceAssetCatalog,
   type ProjectBindingBaselineUpdate,
   type ProjectSkillForkUpdate
@@ -40,6 +45,120 @@ import { loadStoredSkill } from "./skill-packages.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
 
 const MAX_DIFF_PREVIEW_BYTES = 256 * 1024;
+
+export async function syncProjectRepositoryFiles(input: {
+  workspaceId: string;
+  projectId: string;
+  repository: string;
+  commitSha: string;
+  defaultBranch: string;
+  files: Array<{ path: string; content: Buffer }>;
+}): Promise<ProjectSyncResponse> {
+  const authorization = await authorizeGitHubAppProjectSync(
+    input.workspaceId,
+    input.projectId,
+    input.repository
+  );
+  const candidates = input.files
+    .filter((file) => file.path.endsWith("/SKILL.md"))
+    .map((metadata) => {
+      const rootPath = metadata.path.slice(0, -"/SKILL.md".length);
+      const skill = analyzeStoredSkillFiles(
+        input.files
+          .filter((file) => file.path.startsWith(`${rootPath}/`))
+          .map((file) => ({ path: file.path.slice(rootPath.length + 1), content: file.content }))
+      );
+      return { ...skill, rootPath, skillPath: metadata.path };
+    });
+  const request: ProjectSyncRequest = {
+    schemaVersion: 1,
+    repository: input.repository,
+    commitSha: input.commitSha,
+    ref: input.defaultBranch,
+    bindings: [
+      ...candidates.map((candidate) => ({
+        kind: "skill" as const,
+        name: candidate.displayName,
+        path: candidate.rootPath,
+        digest: candidate.checksum,
+        digestAlgorithm: SKILL_FILES_CHECKSUM_ALGORITHM
+      })),
+      ...input.files
+        .filter((file) => !candidates.some((candidate) => file.path.startsWith(`${candidate.rootPath}/`)))
+        .map((file) => ({
+          kind: bindingKindForRepositoryPath(file.path),
+          name: repositoryBindingName(file.path),
+          path: file.path,
+          digest: createHash("sha256").update(file.content).digest("hex")
+        }))
+    ]
+  };
+  const catalog = await loadOrCreateWorkspaceAssetCatalog(workspaceForSync(input.workspaceId));
+  const candidatesByPath = validateSkillBundle(request, candidates, true);
+  const bindingsByPath = new Map(
+    authorization.bindings.filter((binding) => binding.kind === "skill").map((binding) => [binding.path, binding])
+  );
+  const existingForks = new Map(authorization.skillForks.map((fork) => [fork.path, fork]));
+  const newStorage: StoredObject[] = [];
+  const forkUpdates: ProjectSkillForkUpdate[] = [];
+  const baselineUpdates: ProjectBindingBaselineUpdate[] = [];
+
+  try {
+    for (const observed of request.bindings.filter((binding) => binding.kind === "skill")) {
+      const existingBinding = bindingsByPath.get(observed.path);
+      const candidate = candidatesByPath.get(observed.path);
+      const baseAsset = findBaseAsset(catalog, existingBinding, candidate);
+      const baseDigest = baseAsset?.storage
+        ? canonicalSkillFilesChecksumForStorage(candidate!.files, baseAsset.storage) ?? baseAsset.storage.checksum
+        : undefined;
+      baselineUpdates.push({
+        path: observed.path,
+        ...(baseAsset ? { assetId: baseAsset.id } : {}),
+        ...(baseDigest ? { digest: baseDigest } : {})
+      });
+      if (baseDigest === candidate!.checksum) continue;
+      const existingFork = existingForks.get(observed.path);
+      const existingForkDigest = existingFork
+        ? canonicalSkillFilesChecksumForStorage(candidate!.files, existingFork.storage)
+        : undefined;
+      const storage = existingFork && existingForkDigest === candidate!.checksum
+        ? { ...existingFork.storage, checksum: candidate!.checksum, checksumAlgorithm: SKILL_FILES_CHECKSUM_ALGORITHM }
+        : await uploadSkillFiles({
+            workspaceId: input.workspaceId,
+            skillName: `project-${input.projectId}-${candidate!.name}`,
+            files: candidate!.files,
+            checksum: candidate!.checksum
+          });
+      if (!existingFork || existingForkDigest !== candidate!.checksum) newStorage.push(storage);
+      forkUpdates.push({
+        path: observed.path,
+        digest: candidate!.checksum,
+        fileCount: candidate!.fileCount,
+        size: candidate!.size,
+        validation: candidate!.validation,
+        validationIssues: candidate!.validationIssues,
+        updatedAt: new Date().toISOString(),
+        storage
+      });
+    }
+    const result = await syncProjectFromGitHubApp(
+      input.workspaceId,
+      input.projectId,
+      request,
+      forkUpdates,
+      authorization.generation,
+      baselineUpdates
+    );
+    const retained = new Set(forkUpdates.map((fork) => storageKey(fork.storage)));
+    await deleteStoredObjectsBestEffort(
+      authorization.skillForks.filter((fork) => !retained.has(storageKey(fork.storage))).map((fork) => fork.storage)
+    );
+    return result;
+  } catch (error) {
+    await deleteStoredObjectsBestEffort(newStorage);
+    throw error;
+  }
+}
 
 export async function syncProjectRepositoryBundle(input: {
   projectId: string;
@@ -410,4 +529,18 @@ function workspaceForSync(workspaceId: string): WorkspaceRecord {
     name: workspaceId,
     createdAt: new Date(0).toISOString()
   };
+}
+
+function bindingKindForRepositoryPath(filePath: string): "instruction" | "rule" | "mcp" {
+  if (
+    /(^|\/)AGENTS\.md$/.test(filePath) ||
+    /(^|\/)CLAUDE\.md$/.test(filePath) ||
+    filePath.startsWith(".github/")
+  ) return "instruction";
+  if (filePath.endsWith(".json") || filePath.startsWith(".harness/mcp/")) return "mcp";
+  return "rule";
+}
+
+function repositoryBindingName(filePath: string): string {
+  return filePath.split("/").pop()?.replace(/\.(?:md|mdc|json)$/i, "") || filePath;
 }
