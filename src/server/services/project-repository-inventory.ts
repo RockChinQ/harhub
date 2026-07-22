@@ -21,11 +21,15 @@ import {
   completeProjectScan,
   createGitHubAppProject,
   createProjectScanJob,
+  deleteProjectRepositoryConnection,
   failProjectScan,
   getProjectInventoryStateInternal,
   getProjectRepositoryConnectionInternal,
+  findProjectRepositoryConnection,
   listRecoverableProjectScanJobs,
   markProjectScanRunning,
+  removeFailedGitHubAppProjectImport,
+  recordWorkspaceAuditEvent,
   saveProjectRepositoryConnection,
   supersedeQueuedProjectScans,
   updateProjectConnectionObservation
@@ -45,8 +49,12 @@ export async function importGitHubRepository(input: {
   workspaceId: string;
   installationId: string;
   repository: GitHubRepositorySummary;
+  permissionMode: "read" | "write";
 }): Promise<{ project: HarhubProject; scan: ProjectScanJob }> {
   if (input.repository.archived) throw new Error("Archived repositories cannot be imported.");
+  if (await findProjectRepositoryConnection(input.installationId, input.repository.id)) {
+    throw new Error("This repository is already imported as an active Project.");
+  }
   const project = await createGitHubAppProject({
     accountId: input.accountId,
     workspaceId: input.workspaceId,
@@ -68,7 +76,7 @@ export async function importGitHubRepository(input: {
     mode: "github-app",
     status: "active",
     installationId: input.installationId,
-    permissionMode: input.repository.permissions.push ? "write" : "read",
+    permissionMode: input.permissionMode,
     repositoryId: input.repository.id,
     repositoryNodeId: input.repository.nodeId,
     owner: input.repository.owner,
@@ -81,12 +89,14 @@ export async function importGitHubRepository(input: {
     const scan = await queueProjectRepositoryScan({
       workspaceId: input.workspaceId,
       projectId: project.id,
-      trigger: "initial"
+      trigger: "initial",
+      actorAccountId: input.accountId
     });
     return { project, scan };
   } catch (error) {
-    // The Project remains visible if the provider changed between selection and import.
-    // Its failed scan explains the recoverable state instead of silently losing user work.
+    await deleteProjectRepositoryConnection(project.id).catch(() => undefined);
+    await removeFailedGitHubAppProjectImport(input.accountId, input.workspaceId, project.id)
+      .catch(() => undefined);
     throw error;
   }
 }
@@ -96,6 +106,7 @@ export async function queueProjectRepositoryScan(input: {
   projectId: string;
   trigger: ProjectInventoryTrigger;
   requestedSha?: string;
+  actorAccountId?: string;
 }): Promise<ProjectScanJob> {
   const connection = await getProjectRepositoryConnectionInternal(input.projectId);
   if (!connection || connection.workspaceId !== input.workspaceId || connection.status !== "active") {
@@ -103,6 +114,16 @@ export async function queueProjectRepositoryScan(input: {
   }
   const job = await createProjectScanJob(input);
   await supersedeQueuedProjectScans(input.projectId, job.id);
+  await recordWorkspaceAuditEvent({
+    workspaceId: input.workspaceId,
+    eventType: "project.repository.scan.requested",
+    entityType: "project",
+    entityId: input.projectId,
+    ...(input.actorAccountId ? { actorAccountId: input.actorAccountId } : {}),
+    source: input.trigger === "push" ? "github-app" : "api",
+    metadata: { jobId: job.id, trigger: input.trigger, ...(input.requestedSha ? { requestedSha: input.requestedSha } : {}) },
+    deduplicationKey: `project-scan-requested:${job.id}`
+  });
   scheduleJob(job);
   return job;
 }
@@ -120,6 +141,7 @@ export async function executeProjectRepositoryScan(job: ProjectScanJob): Promise
   let running = job;
   try {
     running = await markProjectScanRunning(job.id);
+    if (running.status !== "running") return;
     const connection = await requireConnection(running);
     logScan("started", {
       jobId: running.id,
@@ -144,7 +166,12 @@ export async function executeProjectRepositoryScan(job: ProjectScanJob): Promise
       repository: `${source.repository.owner}/${source.repository.name}`,
       commitSha: source.commitSha,
       defaultBranch: source.repository.defaultBranch,
-      files: includedFiles
+      files: includedFiles,
+      baselineAssetIds: Object.fromEntries(inventory.policies.flatMap((policy) =>
+        policy.ownership === "library" && policy.libraryAssetId
+          ? [[policy.artifactPath, policy.libraryAssetId]]
+          : []
+      ))
     });
     const snapshot: ProjectInventorySnapshot = {
       id: randomUUID(),
@@ -169,6 +196,35 @@ export async function executeProjectRepositoryScan(job: ProjectScanJob): Promise
       name: source.repository.name,
       defaultBranch: source.repository.defaultBranch
     });
+    await recordWorkspaceAuditEvent({
+      workspaceId: running.workspaceId,
+      eventType: "project.repository.scan.succeeded",
+      entityType: "project",
+      entityId: running.projectId,
+      source: "github-app",
+      metadata: {
+        jobId: running.id,
+        commitSha: source.commitSha,
+        artifactCount: artifacts.length,
+        durationMs: Date.now() - startedAt
+      },
+      deduplicationKey: `project-scan-succeeded:${running.id}`
+    });
+    if (inventory.latestSnapshot && inventory.latestSnapshot.commitSha !== source.commitSha) {
+      await recordWorkspaceAuditEvent({
+        workspaceId: running.workspaceId,
+        eventType: "project.inventory.changed",
+        entityType: "project",
+        entityId: running.projectId,
+        source: "github-app",
+        metadata: {
+          previousCommitSha: inventory.latestSnapshot.commitSha,
+          commitSha: source.commitSha,
+          artifactCount: artifacts.length
+        },
+        deduplicationKey: `project-inventory-changed:${running.projectId}:${source.commitSha}`
+      });
+    }
     logScan("succeeded", {
       jobId: running.id,
       projectId: running.projectId,
@@ -179,6 +235,15 @@ export async function executeProjectRepositoryScan(job: ProjectScanJob): Promise
   } catch (error) {
     const failure = scanFailure(error);
     await failProjectScan(running.id, failure).catch(() => undefined);
+    await recordWorkspaceAuditEvent({
+      workspaceId: running.workspaceId,
+      eventType: "project.repository.scan.failed",
+      entityType: "project",
+      entityId: running.projectId,
+      source: "github-app",
+      metadata: { jobId: running.id, code: failure.code, retryable: failure.retryable },
+      deduplicationKey: `project-scan-failed:${running.id}`
+    }).catch(() => undefined);
     logScan("failed", {
       jobId: running.id,
       projectId: running.projectId,
@@ -193,7 +258,8 @@ export async function executeProjectRepositoryScan(job: ProjectScanJob): Promise
         workspaceId: running.workspaceId,
         projectId: running.projectId,
         trigger: "retry",
-        ...(running.requestedSha ? { requestedSha: running.requestedSha } : {})
+        ...(running.requestedSha ? { requestedSha: running.requestedSha } : {}),
+        attempts: running.attempts
       });
       setTimeout(() => scheduleJob(retry), RETRY_BASE_MS * 2 ** Math.max(0, running.attempts - 1)).unref();
     }

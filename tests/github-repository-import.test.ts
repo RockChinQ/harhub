@@ -29,11 +29,11 @@ test("imports an existing GitHub repository and refreshes it from signed push we
         response.end(JSON.stringify(repositoryPayload()));
         return;
       }
-      const commit = request.url?.match(/\/repos\/acme\/product\/git\/commits\/(main|[a-f0-9]{40})$/)?.[1];
+      const commit = request.url?.match(/\/repos\/acme\/product\/commits\/(main|[a-f0-9]{40})$/)?.[1];
       if (commit) {
         response.end(JSON.stringify({
           sha: commit === "main" ? "a".repeat(40) : commit,
-          tree: { sha: commit === "b".repeat(40) ? "tree-2" : "tree-1" }
+          commit: { tree: { sha: commit === "b".repeat(40) ? "tree-2" : "tree-1" } }
         }));
         return;
       }

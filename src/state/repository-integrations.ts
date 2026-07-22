@@ -145,6 +145,7 @@ export interface ProjectInventoryState {
   connection?: ProjectRepositoryConnectionRecord;
   latestSnapshot?: ProjectInventorySnapshot;
   activeJob?: ProjectScanJob;
+  latestJob?: ProjectScanJob;
   policies: ProjectBindingPolicy[];
   proposals: ProjectChangeProposal[];
 }
@@ -320,6 +321,20 @@ export async function saveProjectRepositoryConnection(
   });
 }
 
+export async function deleteProjectRepositoryConnection(projectId: string): Promise<void> {
+  if (isDatabaseStateEnabled()) {
+    await ensureRepositoryDatabase();
+    await queryDatabase("delete from harhub_project_repository_connections where project_id = $1", [projectId]);
+    return;
+  }
+  await serializeStateAccess(async () => {
+    const state = await loadState();
+    state.projectRepositoryConnections = state.projectRepositoryConnections
+      .filter((connection) => connection.projectId !== projectId);
+    await saveState(state);
+  });
+}
+
 export async function getProjectRepositoryConnectionInternal(
   projectId: string
 ): Promise<ProjectRepositoryConnectionRecord | undefined> {
@@ -409,6 +424,7 @@ export async function createProjectScanJob(input: {
   projectId: string;
   trigger: ProjectScanJob["trigger"];
   requestedSha?: string;
+  attempts?: number;
 }): Promise<ProjectScanJob> {
   const job: ProjectScanJob = {
     id: randomUUID(),
@@ -417,7 +433,7 @@ export async function createProjectScanJob(input: {
     trigger: input.trigger,
     status: "queued",
     ...(input.requestedSha ? { requestedSha: input.requestedSha } : {}),
-    attempts: 0,
+    attempts: input.attempts ?? 0,
     createdAt: new Date().toISOString()
   };
   await writeScanJob(job);
@@ -427,6 +443,7 @@ export async function createProjectScanJob(input: {
 export async function markProjectScanRunning(jobId: string): Promise<ProjectScanJob> {
   const job = await getProjectScanJob(jobId);
   if (!job) throw new Error("Project scan job not found.");
+  if (job.status !== "queued" && job.status !== "running") return job;
   const updated: ProjectScanJob = {
     ...job,
     status: "running",
@@ -570,6 +587,7 @@ export async function getProjectInventoryStateInternal(
     ...(jobs.find((job) => job.status === "queued" || job.status === "running")
       ? { activeJob: jobs.find((job) => job.status === "queued" || job.status === "running") }
       : {}),
+    ...(jobs[0] ? { latestJob: jobs[0] } : {}),
     policies,
     proposals
   };

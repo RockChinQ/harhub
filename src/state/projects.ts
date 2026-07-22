@@ -236,6 +236,24 @@ export function archiveProject(
   });
 }
 
+export function removeFailedGitHubAppProjectImport(
+  accountId: string,
+  workspaceId: string,
+  projectId: string
+): Promise<void> {
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    requireWorkspaceAdmin(state, accountId, workspaceId);
+    const project = findProject(state, workspaceId, projectId);
+    if (
+      project.sync.revision !== 0 || project.bindings.length > 0 ||
+      project.syncTokenConfigured || project.sourceForgeSessionId
+    ) throw new Error("A populated Project cannot be removed as a failed import.");
+    state.projects = state.projects.filter((candidate) => candidate.id !== projectId);
+    await saveState(state);
+  });
+}
+
 export interface ProjectSyncAuthorization {
   workspaceId: string;
   generation: number;

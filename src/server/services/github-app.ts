@@ -121,11 +121,11 @@ export async function exchangeGitHubAppOAuthCode(code: string): Promise<string> 
     {
       baseUrl: GITHUB_WEB_URL,
       method: "POST",
-      body: {
-        client_id: GITHUB_APP_CLIENT_ID,
-        client_secret: GITHUB_APP_CLIENT_SECRET,
+      form: new URLSearchParams({
+        client_id: GITHUB_APP_CLIENT_ID!,
+        client_secret: GITHUB_APP_CLIENT_SECRET!,
         code
-      },
+      }),
       auth: undefined
     }
   );
@@ -200,21 +200,11 @@ export async function readRepositoryInventorySource(input: {
     auth: `Bearer ${token}`
   });
   const revision = input.requestedSha || repository.default_branch;
-  const commit = await githubRequest<{ sha: string; tree: { sha: string } }>(
-    repoPath(input, `/git/commits/${encodeURIComponent(revision)}`),
+  const commit = await githubRequest<{ sha: string; commit: { tree: { sha: string } } }>(
+    repoPath(input, `/commits/${encodeURIComponent(revision)}`),
     { auth: `Bearer ${token}` }
-  ).catch(async (error) => {
-    if (!(error instanceof GitHubAppError) || error.status !== 422) throw error;
-    const ref = await githubRequest<{ object: { sha: string } }>(
-      repoPath(input, `/git/ref/heads/${encodeURIComponent(revision)}`),
-      { auth: `Bearer ${token}` }
-    );
-    return githubRequest<{ sha: string; tree: { sha: string } }>(
-      repoPath(input, `/git/commits/${encodeURIComponent(ref.object.sha)}`),
-      { auth: `Bearer ${token}` }
-    );
-  });
-  const entries = await repositoryTree(input, commit.tree.sha, token);
+  );
+  const entries = await repositoryTree(input, commit.commit.tree.sha, token);
   const skillRoots = entries
     .filter((entry) => entry.type === "blob" && entry.path.endsWith("/SKILL.md") && isRepositoryInventoryCandidate(entry.path))
     .map((entry) => entry.path.slice(0, -"/SKILL.md".length));
@@ -253,7 +243,7 @@ export async function readRepositoryInventorySource(input: {
   return {
     repository: repositorySummary(repository),
     commitSha: commit.sha,
-    treeSha: commit.tree.sha,
+    treeSha: commit.commit.tree.sha,
     files
   };
 }
@@ -392,6 +382,7 @@ async function githubRequest<T = unknown>(
     method?: "GET" | "POST";
     auth?: string;
     body?: unknown;
+    form?: URLSearchParams;
   }
 ): Promise<T> {
   const baseUrl = trimSlash(options.baseUrl ?? GITHUB_API_URL);
@@ -406,9 +397,11 @@ async function githubRequest<T = unknown>(
           "X-GitHub-Api-Version": API_VERSION,
           "User-Agent": "harhub-github-app",
           ...(options.auth ? { Authorization: options.auth } : {}),
-          ...(options.body ? { "Content-Type": "application/json" } : {})
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+          ...(options.form ? { "Content-Type": "application/x-www-form-urlencoded" } : {})
         },
         ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+        ...(options.form ? { body: options.form.toString() } : {}),
         signal: controller.signal
       });
       const text = await response.text();

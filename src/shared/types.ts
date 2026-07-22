@@ -214,6 +214,12 @@ export type WorkspaceAuditEventType =
   | "project.frozen"
   | "project.repository.connected"
   | "project.repository.synced"
+  | "project.repository.scan.requested"
+  | "project.repository.scan.succeeded"
+  | "project.repository.scan.failed"
+  | "project.repository.permission_lost"
+  | "project.inventory.changed"
+  | "project.proposal.created"
   | "project.skill.published"
   | "project.sync_token.rotated"
   | "share.created"
@@ -229,7 +235,7 @@ export interface WorkspaceAuditEvent {
   entityType: WorkspaceAuditEntityType;
   entityId: string;
   actorAccountId?: string;
-  source: "api" | "migration" | "project-sync" | "system";
+  source: "api" | "migration" | "project-sync" | "github-app" | "system";
   occurredAt: string;
   metadata: Record<string, unknown>;
 }
@@ -579,6 +585,16 @@ export interface ProjectRepositoryConnection {
   lastObservedAt?: string;
 }
 
+export interface ProjectRepositoryConnectionDetails extends ProjectRepositoryConnection {
+  workspaceId: string;
+  projectId: string;
+  repositoryId: string;
+  repositoryNodeId: string;
+  owner: string;
+  name: string;
+  defaultBranch: string;
+}
+
 export type ProjectInventoryArtifactFormat =
   | "agent-skill"
   | "agents-instructions"
@@ -676,10 +692,12 @@ export interface ProjectBindingPolicy {
 
 export interface ProjectInventoryResponse {
   project: HarhubProject;
-  connection?: ProjectRepositoryConnection;
+  connection?: ProjectRepositoryConnectionDetails;
   latestSnapshot?: ProjectInventorySnapshot;
   activeJob?: ProjectScanJob;
+  latestJob?: ProjectScanJob;
   policies: ProjectBindingPolicy[];
+  proposals: ProjectChangeProposal[];
 }
 
 export interface GitHubIntegrationStatus {

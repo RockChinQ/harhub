@@ -6,6 +6,7 @@ import {
   findProjectRepositoryConnection,
   finishGitHubWebhookDelivery,
   listProjectRepositoryConnectionsForInstallation,
+  recordWorkspaceAuditEvent,
   updateProjectRepositoryConnectionStatus
 } from "../../state/index.js";
 import type { GitHubWebhookDeliveryRecord } from "../../state/types.js";
@@ -64,7 +65,9 @@ async function processDelivery(
     if (delivery.event === "installation" && ["deleted", "suspend"].includes(delivery.action ?? "")) {
       const connections = await listProjectRepositoryConnectionsForInstallation(delivery.installationId);
       await Promise.all(connections.map((connection) =>
-        updateProjectRepositoryConnectionStatus(connection.projectId, "permission-lost")
+        updateProjectRepositoryConnectionStatus(connection.projectId, "permission-lost").then(() =>
+          recordPermissionLost(connection, delivery.deliveryId)
+        )
       ));
       await finishGitHubWebhookDelivery(delivery.deliveryId, { status: "processed" });
       return;
@@ -75,7 +78,10 @@ async function processDelivery(
         const repositoryId = nestedId(repository);
         if (!repositoryId) continue;
         const connection = await findProjectRepositoryConnection(delivery.installationId, repositoryId);
-        if (connection) await updateProjectRepositoryConnectionStatus(connection.projectId, "permission-lost");
+        if (connection) {
+          await updateProjectRepositoryConnectionStatus(connection.projectId, "permission-lost");
+          await recordPermissionLost(connection, delivery.deliveryId);
+        }
       }
       await finishGitHubWebhookDelivery(delivery.deliveryId, { status: "processed" });
       return;
@@ -128,4 +134,19 @@ function nestedId(value: unknown): string | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const id = (value as Record<string, unknown>).id;
   return typeof id === "number" || typeof id === "string" ? String(id) : undefined;
+}
+
+async function recordPermissionLost(
+  connection: { workspaceId: string; projectId: string; repositoryId: string },
+  deliveryId: string
+): Promise<void> {
+  await recordWorkspaceAuditEvent({
+    workspaceId: connection.workspaceId,
+    eventType: "project.repository.permission_lost",
+    entityType: "project",
+    entityId: connection.projectId,
+    source: "github-app",
+    metadata: { repositoryId: connection.repositoryId, deliveryId },
+    deduplicationKey: `project-repository-permission-lost:${deliveryId}:${connection.projectId}`
+  });
 }

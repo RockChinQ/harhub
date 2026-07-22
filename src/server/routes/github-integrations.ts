@@ -7,9 +7,14 @@ import {
   getGitHubInstallationInternal,
   getProject,
   getProjectInventoryState,
+  getProjectInventoryStateInternal,
+  getProjectChangeProposal,
+  getProjectRepositoryConnectionInternal,
   listGitHubInstallations,
   upsertGitHubInstallation,
-  upsertProjectBindingPolicy
+  upsertProjectBindingPolicy,
+  saveProjectChangeProposal,
+  recordWorkspaceAuditEvent
 } from "../../state/index.js";
 import { requireWorkspaceAccess, requireWorkspaceAdminAccess } from "../auth.js";
 import { PUBLIC_APP_URL } from "../config.js";
@@ -25,6 +30,10 @@ import {
   importGitHubRepository,
   queueProjectRepositoryScan
 } from "../services/project-repository-inventory.js";
+import {
+  createBootstrapProposal,
+  openBootstrapProposal
+} from "../services/project-repository-proposals.js";
 import { sendError, setPrivateNoStore } from "../utils/http.js";
 
 export function registerGitHubIntegrationRoutes(app: Express): void {
@@ -124,7 +133,11 @@ export function registerGitHubIntegrationRoutes(app: Express): void {
         accountId: context.account.id,
         workspaceId: context.workspace.id,
         installationId,
-        repository
+        repository,
+        permissionMode: installation.permissions.contents === "write" &&
+          installation.permissions.pull_requests === "write"
+          ? "write"
+          : "read"
       }));
     } catch (error) {
       sendError(res, error, 400);
@@ -155,7 +168,8 @@ export function registerGitHubIntegrationRoutes(app: Express): void {
       res.status(202).json(await queueProjectRepositoryScan({
         workspaceId: context.workspace.id,
         projectId: requiredParam(req.params.projectId, "projectId"),
-        trigger: "manual"
+        trigger: "manual",
+        actorAccountId: context.account.id
       }));
     } catch (error) {
       sendError(res, error, 400);
@@ -183,9 +197,90 @@ export function registerGitHubIntegrationRoutes(app: Express): void {
       const scan = await queueProjectRepositoryScan({
         workspaceId: context.workspace.id,
         projectId,
-        trigger: "manual"
+        trigger: "manual",
+        actorAccountId: context.account.id
       });
       res.json({ policy, scan });
+    } catch (error) {
+      sendError(res, error, 400);
+    }
+  });
+
+  app.post("/api/workspaces/:workspaceId/projects/:projectId/proposals", async (req, res) => {
+    const context = await requireWorkspaceAdminAccess(req, res);
+    if (!context) return;
+    setPrivateNoStore(res);
+    try {
+      if (req.body?.kind !== "bootstrap") throw new Error("Only bootstrap proposals are supported.");
+      const projectId = requiredParam(req.params.projectId, "projectId");
+      const [project, inventory, connection] = await Promise.all([
+        getProject(context.account.id, context.workspace.id, projectId),
+        getProjectInventoryStateInternal(context.workspace.id, projectId),
+        getProjectRepositoryConnectionInternal(projectId)
+      ]);
+      if (!connection || connection.workspaceId !== context.workspace.id || !connection.installationId) {
+        throw new Error("Project GitHub repository connection is unavailable.");
+      }
+      if (!inventory.latestSnapshot) throw new Error("Run the initial repository scan first.");
+      const installation = await getGitHubInstallationInternal(context.workspace.id, connection.installationId);
+      if (!installation) throw new Error("GitHub installation is unavailable.");
+      const proposal = createBootstrapProposal({
+        project,
+        connection,
+        installation,
+        snapshot: inventory.latestSnapshot,
+        policies: inventory.policies,
+        accountId: context.account.id
+      });
+      await saveProjectChangeProposal(proposal);
+      await recordWorkspaceAuditEvent({
+        workspaceId: context.workspace.id,
+        eventType: "project.proposal.created",
+        entityType: "project",
+        entityId: projectId,
+        actorAccountId: context.account.id,
+        source: "api",
+        metadata: { proposalId: proposal.id, kind: proposal.kind, baseSha: proposal.baseSha },
+        deduplicationKey: `project-proposal-created:${proposal.id}`
+      });
+      res.status(201).json(proposal);
+    } catch (error) {
+      sendError(res, error, 400);
+    }
+  });
+
+  app.post("/api/workspaces/:workspaceId/projects/:projectId/proposals/:proposalId/open", async (req, res) => {
+    const context = await requireWorkspaceAdminAccess(req, res);
+    if (!context) return;
+    setPrivateNoStore(res);
+    const projectId = requiredParam(req.params.projectId, "projectId");
+    try {
+      await getProject(context.account.id, context.workspace.id, projectId);
+      const [proposal, connection] = await Promise.all([
+        getProjectChangeProposal(projectId, requiredParam(req.params.proposalId, "proposalId")),
+        getProjectRepositoryConnectionInternal(projectId)
+      ]);
+      if (!proposal || proposal.workspaceId !== context.workspace.id) throw new Error("Proposal not found.");
+      if (!connection || connection.workspaceId !== context.workspace.id || !connection.installationId) {
+        throw new Error("Project GitHub repository connection is unavailable.");
+      }
+      const installation = await getGitHubInstallationInternal(context.workspace.id, connection.installationId);
+      if (!installation) throw new Error("GitHub installation is unavailable.");
+      const creating = { ...proposal, status: "creating" as const, updatedAt: new Date().toISOString() };
+      await saveProjectChangeProposal(creating);
+      try {
+        const opened = await openBootstrapProposal({ proposal, connection, installation });
+        await saveProjectChangeProposal(opened);
+        res.json(opened);
+      } catch (error) {
+        await saveProjectChangeProposal({
+          ...proposal,
+          status: "failed",
+          updatedAt: new Date().toISOString(),
+          failure: error instanceof Error ? error.message : String(error)
+        });
+        throw error;
+      }
     } catch (error) {
       sendError(res, error, 400);
     }

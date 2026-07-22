@@ -29,8 +29,8 @@ test("GitHub App signs requests and reads only repository harness files", async 
         response.end(JSON.stringify(repositoryPayload()));
         return;
       }
-      if (request.url === "/repos/acme/product/git/commits/main") {
-        response.end(JSON.stringify({ sha: "commit-sha", tree: { sha: "tree-sha" } }));
+      if (request.url === "/repos/acme/product/commits/main") {
+        response.end(JSON.stringify({ sha: "commit-sha", commit: { tree: { sha: "tree-sha" } } }));
         return;
       }
       if (request.url === "/repos/acme/product/git/trees/tree-sha?recursive=1") {

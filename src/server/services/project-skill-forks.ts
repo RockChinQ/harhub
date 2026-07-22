@@ -53,6 +53,7 @@ export async function syncProjectRepositoryFiles(input: {
   commitSha: string;
   defaultBranch: string;
   files: Array<{ path: string; content: Buffer }>;
+  baselineAssetIds?: Readonly<Record<string, string>>;
 }): Promise<ProjectSyncResponse> {
   const authorization = await authorizeGitHubAppProjectSync(
     input.workspaceId,
@@ -107,7 +108,10 @@ export async function syncProjectRepositoryFiles(input: {
     for (const observed of request.bindings.filter((binding) => binding.kind === "skill")) {
       const existingBinding = bindingsByPath.get(observed.path);
       const candidate = candidatesByPath.get(observed.path);
-      const baseAsset = findBaseAsset(catalog, existingBinding, candidate);
+      const explicitlyBound = input.baselineAssetIds?.[observed.path];
+      const baseAsset = explicitlyBound
+        ? catalog.assets.find((asset) => asset.id === explicitlyBound)
+        : findBaseAsset(catalog, existingBinding, candidate);
       const baseDigest = baseAsset?.storage
         ? canonicalSkillFilesChecksumForStorage(candidate!.files, baseAsset.storage) ?? baseAsset.storage.checksum
         : undefined;
