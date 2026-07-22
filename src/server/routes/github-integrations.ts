@@ -28,6 +28,7 @@ import {
 } from "../services/github-app.js";
 import {
   importGitHubRepository,
+  connectExistingProjectGitHubRepository,
   queueProjectRepositoryScan
 } from "../services/project-repository-inventory.js";
 import {
@@ -144,6 +145,40 @@ export function registerGitHubIntegrationRoutes(app: Express): void {
     }
   });
 
+  app.post("/api/workspaces/:workspaceId/projects/:projectId/github/connect", async (req, res) => {
+    const context = await requireWorkspaceAdminAccess(req, res);
+    if (!context) return;
+    setPrivateNoStore(res);
+    try {
+      const projectId = requiredParam(req.params.projectId, "projectId");
+      const project = await getProject(context.account.id, context.workspace.id, projectId);
+      const installationId = requiredBodyString(req.body, "installationId");
+      const repositoryId = requiredBodyString(req.body, "repositoryId");
+      const installation = await getGitHubInstallationInternal(context.workspace.id, installationId);
+      if (!installation || installation.suspendedAt) throw new Error("GitHub installation is unavailable.");
+      const repository = (await listInstallationRepositories(installationId))
+        .find((candidate) => candidate.id === repositoryId);
+      if (!repository) throw new Error("Repository is not available to this GitHub App installation.");
+      if (project.repository) {
+        const current = `${project.repository.owner}/${project.repository.name}`.toLowerCase();
+        if (current !== repository.fullName.toLowerCase()) {
+          throw new Error("Select the same GitHub repository already tracked by this Project.");
+        }
+      }
+      res.json(await connectExistingProjectGitHubRepository({
+        accountId: context.account.id,
+        workspaceId: context.workspace.id,
+        projectId,
+        installationId,
+        repository,
+        permissionMode: installation.permissions.contents === "write" &&
+          installation.permissions.pull_requests === "write" ? "write" : "read"
+      }));
+    } catch (error) {
+      sendError(res, error, 400);
+    }
+  });
+
   app.get("/api/workspaces/:workspaceId/projects/:projectId/inventory", async (req, res) => {
     const context = await requireWorkspaceAccess(req, res);
     if (!context) return;
@@ -184,11 +219,15 @@ export function registerGitHubIntegrationRoutes(app: Express): void {
       const projectId = requiredParam(req.params.projectId, "projectId");
       await getProject(context.account.id, context.workspace.id, projectId);
       const ownership = readOwnership(req.body?.ownership);
+      const libraryAssetId = optionalBodyString(req.body, "libraryAssetId");
+      if (ownership === "library" && !libraryAssetId) {
+        throw new Error("libraryAssetId is required for Library ownership.");
+      }
       const policy = {
         projectId,
         artifactPath: requiredBodyString(req.body, "artifactPath"),
         ownership,
-        ...(optionalBodyString(req.body, "libraryAssetId") ? { libraryAssetId: optionalBodyString(req.body, "libraryAssetId") } : {}),
+        ...(libraryAssetId ? { libraryAssetId } : {}),
         ...(Number.isInteger(req.body?.pinnedVersion) ? { pinnedVersion: Number(req.body.pinnedVersion) } : {}),
         decidedByAccountId: context.account.id,
         decidedAt: new Date().toISOString()

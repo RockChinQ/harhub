@@ -191,6 +191,24 @@ export function importGitHubRepository(
   });
 }
 
+export function connectProjectGitHubApp(
+  token: string,
+  workspaceId: string,
+  projectId: string,
+  input: { installationId: string; repositoryId: string }
+): Promise<{ project: HarhubProject; scan: ProjectScanJob }> {
+  return request(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/projects/${encodeURIComponent(projectId)}/github/connect`,
+    {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(input),
+      cache: "no-store",
+      token
+    }
+  );
+}
+
 export function getProjectInventory(
   token: string,
   workspaceId: string,

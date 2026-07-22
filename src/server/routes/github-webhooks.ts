@@ -5,9 +5,13 @@ import {
   claimGitHubWebhookDelivery,
   findProjectRepositoryConnection,
   finishGitHubWebhookDelivery,
+  getProjectInventoryStateInternal,
   listProjectRepositoryConnectionsForInstallation,
   recordWorkspaceAuditEvent,
-  updateProjectRepositoryConnectionStatus
+  saveProjectChangeProposal,
+  updateProjectRepositoryConnectionStatus,
+  updateProjectConnectionRepositoryMetadata,
+  updateProjectGitHubRepositoryMetadata
 } from "../../state/index.js";
 import type { GitHubWebhookDeliveryRecord } from "../../state/types.js";
 import { GITHUB_APP_WEBHOOK_SECRET } from "../config.js";
@@ -64,10 +68,19 @@ async function processDelivery(
     }
     if (delivery.event === "installation" && ["deleted", "suspend"].includes(delivery.action ?? "")) {
       const connections = await listProjectRepositoryConnectionsForInstallation(delivery.installationId);
+      const status = delivery.action === "deleted" ? "disconnected" as const : "permission-lost" as const;
       await Promise.all(connections.map((connection) =>
-        updateProjectRepositoryConnectionStatus(connection.projectId, "permission-lost").then(() =>
+        updateProjectRepositoryConnectionStatus(connection.projectId, status).then(() =>
           recordPermissionLost(connection, delivery.deliveryId)
         )
+      ));
+      await finishGitHubWebhookDelivery(delivery.deliveryId, { status: "processed" });
+      return;
+    }
+    if (delivery.event === "installation" && delivery.action === "unsuspend") {
+      const connections = await listProjectRepositoryConnectionsForInstallation(delivery.installationId);
+      await Promise.all(connections.map((connection) =>
+        updateProjectRepositoryConnectionStatus(connection.projectId, "active")
       ));
       await finishGitHubWebhookDelivery(delivery.deliveryId, { status: "processed" });
       return;
@@ -86,6 +99,20 @@ async function processDelivery(
       await finishGitHubWebhookDelivery(delivery.deliveryId, { status: "processed" });
       return;
     }
+    if (delivery.event === "installation_repositories" && delivery.action === "added") {
+      const added = new Set(
+        (Array.isArray(payload.repositories_added) ? payload.repositories_added : [])
+          .map(nestedId)
+          .filter((id): id is string => Boolean(id))
+      );
+      const connections = await listProjectRepositoryConnectionsForInstallation(delivery.installationId);
+      await Promise.all(connections
+        .filter((connection) => added.has(connection.repositoryId))
+        .map((connection) => updateProjectRepositoryConnectionStatus(connection.projectId, "active"))
+      );
+      await finishGitHubWebhookDelivery(delivery.deliveryId, { status: "processed" });
+      return;
+    }
     if (!delivery.repositoryId) {
       await finishGitHubWebhookDelivery(delivery.deliveryId, { status: "ignored" });
       return;
@@ -96,6 +123,7 @@ async function processDelivery(
       return;
     }
     if (delivery.event === "push") {
+      await updateConnectionFromPayload(connection, payload.repository);
       const ref = typeof payload.ref === "string" ? payload.ref : "";
       const deleted = payload.deleted === true;
       if (deleted || ref !== `refs/heads/${connection.defaultBranch}`) {
@@ -108,6 +136,48 @@ async function processDelivery(
         projectId: connection.projectId,
         trigger: "push",
         ...(after ? { requestedSha: after } : {})
+      });
+      await finishGitHubWebhookDelivery(delivery.deliveryId, { status: "processed" });
+      return;
+    }
+    if (delivery.event === "repository") {
+      if (delivery.action === "deleted" || delivery.action === "archived") {
+        await updateProjectRepositoryConnectionStatus(connection.projectId, "disconnected");
+      } else {
+        await updateConnectionFromPayload(connection, payload.repository);
+      }
+      await finishGitHubWebhookDelivery(delivery.deliveryId, { status: "processed" });
+      return;
+    }
+    if (delivery.event === "pull_request" && delivery.action === "closed") {
+      const pullRequest = payload.pull_request && typeof payload.pull_request === "object" && !Array.isArray(payload.pull_request)
+        ? payload.pull_request as Record<string, unknown>
+        : undefined;
+      const pullNumber = typeof pullRequest?.number === "number" ? pullRequest.number : undefined;
+      const inventory = await getProjectInventoryStateInternal(connection.workspaceId, connection.projectId);
+      const proposal = pullNumber
+        ? inventory.proposals.find((candidate) => candidate.pullNumber === pullNumber)
+        : undefined;
+      if (!proposal) {
+        await finishGitHubWebhookDelivery(delivery.deliveryId, { status: "ignored" });
+        return;
+      }
+      const merged = pullRequest?.merged === true;
+      const updated = {
+        ...proposal,
+        status: merged ? "merged" as const : "closed" as const,
+        updatedAt: new Date().toISOString(),
+        ...(merged ? { mergedAt: new Date().toISOString() } : {})
+      };
+      await saveProjectChangeProposal(updated);
+      await recordWorkspaceAuditEvent({
+        workspaceId: connection.workspaceId,
+        eventType: merged ? "project.proposal.merged" : "project.proposal.closed",
+        entityType: "project",
+        entityId: connection.projectId,
+        source: "github-app",
+        metadata: { proposalId: proposal.id, pullNumber, deliveryId: delivery.deliveryId },
+        deduplicationKey: `project-proposal-${merged ? "merged" : "closed"}:${proposal.id}`
       });
       await finishGitHubWebhookDelivery(delivery.deliveryId, { status: "processed" });
       return;
@@ -134,6 +204,32 @@ function nestedId(value: unknown): string | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const id = (value as Record<string, unknown>).id;
   return typeof id === "number" || typeof id === "string" ? String(id) : undefined;
+}
+
+async function updateConnectionFromPayload(
+  connection: { workspaceId: string; projectId: string; repositoryId: string },
+  value: unknown
+): Promise<void> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  const repository = value as Record<string, unknown>;
+  const owner = repository.owner && typeof repository.owner === "object" && !Array.isArray(repository.owner)
+    ? (repository.owner as Record<string, unknown>).login
+    : undefined;
+  const metadata = {
+    ...(typeof owner === "string" ? { owner } : {}),
+    ...(typeof repository.name === "string" ? { name: repository.name } : {}),
+    ...(typeof repository.default_branch === "string" ? { defaultBranch: repository.default_branch } : {})
+  };
+  await updateProjectConnectionRepositoryMetadata(connection.projectId, metadata);
+  await updateProjectGitHubRepositoryMetadata(
+    connection.workspaceId,
+    connection.projectId,
+    connection.repositoryId,
+    {
+      ...metadata,
+      ...(typeof repository.html_url === "string" ? { url: repository.html_url } : {})
+    }
+  );
 }
 
 async function recordPermissionLost(

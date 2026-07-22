@@ -220,6 +220,8 @@ export type WorkspaceAuditEventType =
   | "project.repository.permission_lost"
   | "project.inventory.changed"
   | "project.proposal.created"
+  | "project.proposal.merged"
+  | "project.proposal.closed"
   | "project.skill.published"
   | "project.sync_token.rotated"
   | "share.created"
@@ -694,8 +696,10 @@ export interface ProjectInventoryResponse {
   project: HarhubProject;
   connection?: ProjectRepositoryConnectionDetails;
   latestSnapshot?: ProjectInventorySnapshot;
+  snapshots: ProjectInventorySnapshot[];
   activeJob?: ProjectScanJob;
   latestJob?: ProjectScanJob;
+  jobs: ProjectScanJob[];
   policies: ProjectBindingPolicy[];
   proposals: ProjectChangeProposal[];
 }
@@ -784,6 +788,7 @@ export interface ProjectBinding {
   status: ProjectBindingStatus;
   assetId?: string;
   sourceDigest?: string;
+  sourceVersion?: number;
   repositoryDigest?: string;
   lastSeenAt?: string;
   fork?: ProjectSkillForkSummary;

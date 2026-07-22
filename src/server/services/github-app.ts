@@ -88,7 +88,7 @@ export function githubIntegrationStatus(): GitHubIntegrationStatus {
     ...(GITHUB_APP_SLUG ? { appSlug: GITHUB_APP_SLUG } : {}),
     ...(configured ? { installUrl: `${trimSlash(GITHUB_WEB_URL)}/apps/${encodeURIComponent(GITHUB_APP_SLUG!)}/installations/new` } : {}),
     webhookConfigured: Boolean(GITHUB_APP_WEBHOOK_SECRET),
-    permissions: { contents: "read", pullRequests: "write" }
+    permissions: { contents: "read", pullRequests: "none" }
   };
 }
 
@@ -223,9 +223,8 @@ export async function readRepositoryInventorySource(input: {
   if (declaredBytes > MAX_INVENTORY_BYTES) {
     throw new GitHubAppError("inventory_too_large", "Repository harness inventory exceeds 20 MB.", false);
   }
-  const files: RepositorySourceFile[] = [];
   let receivedBytes = 0;
-  for (const entry of selected) {
+  const files = await mapConcurrent(selected, 8, async (entry): Promise<RepositorySourceFile> => {
     const blob = await githubRequest<{ content: string; encoding: string }>(
       repoPath(input, `/git/blobs/${entry.sha}`),
       { auth: `Bearer ${token}` }
@@ -238,8 +237,8 @@ export async function readRepositoryInventorySource(input: {
     if (receivedBytes > MAX_INVENTORY_BYTES) {
       throw new GitHubAppError("inventory_too_large", "Repository harness inventory exceeds 20 MB.", false);
     }
-    files.push({ path: entry.path, content });
-  }
+    return { path: entry.path, content };
+  });
   return {
     repository: repositorySummary(repository),
     commitSha: commit.sha,
@@ -496,4 +495,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function mapConcurrent<Input, Output>(
+  values: Input[],
+  concurrency: number,
+  operation: (value: Input) => Promise<Output>
+): Promise<Output[]> {
+  const results = new Array<Output>(values.length);
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, async () => {
+    while (cursor < values.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await operation(values[index]!);
+    }
+  }));
+  return results;
 }

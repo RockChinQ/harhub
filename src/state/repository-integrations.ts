@@ -29,6 +29,7 @@ const AUTHORIZATION_TTL_MS = 10 * 60 * 1_000;
 const LOCAL_SNAPSHOTS_PER_PROJECT = 20;
 const LOCAL_JOBS_PER_PROJECT = 50;
 const LOCAL_WEBHOOK_DELIVERIES = 1000;
+const PROJECT_PROPOSALS_RETAINED = 20;
 let setupPromise: Promise<void> | undefined;
 
 interface InstallationRow {
@@ -144,8 +145,10 @@ export interface ProjectInventoryFile {
 export interface ProjectInventoryState {
   connection?: ProjectRepositoryConnectionRecord;
   latestSnapshot?: ProjectInventorySnapshot;
+  snapshots: ProjectInventorySnapshot[];
   activeJob?: ProjectScanJob;
   latestJob?: ProjectScanJob;
+  jobs: ProjectScanJob[];
   policies: ProjectBindingPolicy[];
   proposals: ProjectChangeProposal[];
 }
@@ -410,6 +413,20 @@ export async function updateProjectConnectionObservation(
   });
 }
 
+export async function updateProjectConnectionRepositoryMetadata(
+  projectId: string,
+  input: { owner?: string; name?: string; defaultBranch?: string }
+): Promise<void> {
+  const connection = await getProjectRepositoryConnectionInternal(projectId);
+  if (!connection) return;
+  await saveProjectRepositoryConnection({
+    ...connection,
+    ...(input.owner ? { owner: input.owner } : {}),
+    ...(input.name ? { name: input.name } : {}),
+    ...(input.defaultBranch ? { defaultBranch: input.defaultBranch } : {})
+  });
+}
+
 export async function updateProjectRepositoryConnectionStatus(
   projectId: string,
   status: ProjectRepositoryConnection["status"]
@@ -575,7 +592,7 @@ export async function getProjectInventoryStateInternal(
 ): Promise<ProjectInventoryState> {
   const [connection, snapshots, jobs, policies, proposals] = await Promise.all([
     getProjectRepositoryConnectionInternal(projectId),
-    listProjectSnapshots(projectId, 1),
+    listProjectSnapshots(projectId, LOCAL_SNAPSHOTS_PER_PROJECT),
     listProjectScanJobs(projectId, 20),
     listProjectBindingPolicies(projectId),
     listProjectChangeProposals(projectId)
@@ -584,10 +601,12 @@ export async function getProjectInventoryStateInternal(
   return {
     ...(connection ? { connection } : {}),
     ...(snapshots[0] ? { latestSnapshot: snapshots[0] } : {}),
+    snapshots,
     ...(jobs.find((job) => job.status === "queued" || job.status === "running")
       ? { activeJob: jobs.find((job) => job.status === "queued" || job.status === "running") }
       : {}),
     ...(jobs[0] ? { latestJob: jobs[0] } : {}),
+    jobs,
     policies,
     proposals
   };
@@ -672,6 +691,9 @@ export async function saveProjectChangeProposal(proposal: ProjectChangeProposal)
          created_by_account_id, created_at, updated_at, pull_number, pull_url, merged_at, failure
        ) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15)
        on conflict (id) do update set
+         base_sha = excluded.base_sha,
+         branch = excluded.branch,
+         files = excluded.files,
          status = excluded.status,
          updated_at = excluded.updated_at,
          pull_number = excluded.pull_number,
@@ -680,6 +702,16 @@ export async function saveProjectChangeProposal(proposal: ProjectChangeProposal)
          failure = excluded.failure`,
       proposalValues(proposal)
     );
+    await queryDatabase(
+      `delete from harhub_project_change_proposals
+       where id in (
+         select id from harhub_project_change_proposals
+         where project_id = $1
+         order by created_at desc
+         offset $2
+       )`,
+      [proposal.projectId, PROJECT_PROPOSALS_RETAINED]
+    );
     return;
   }
   await serializeStateAccess(async () => {
@@ -687,7 +719,16 @@ export async function saveProjectChangeProposal(proposal: ProjectChangeProposal)
     state.projectChangeProposals = [
       ...state.projectChangeProposals.filter((item) => item.id !== proposal.id),
       structuredClone(proposal)
-    ];
+    ].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    const retainedIds = new Set(
+      state.projectChangeProposals
+        .filter((candidate) => candidate.projectId === proposal.projectId)
+        .slice(0, PROJECT_PROPOSALS_RETAINED)
+        .map((candidate) => candidate.id)
+    );
+    state.projectChangeProposals = state.projectChangeProposals.filter((candidate) =>
+      candidate.projectId !== proposal.projectId || retainedIds.has(candidate.id)
+    );
     await saveState(state);
   });
 }
@@ -719,6 +760,10 @@ export async function claimGitHubWebhookDelivery(
         delivery.status,
         delivery.receivedAt
       ]
+    );
+    await queryDatabase(
+      `delete from harhub_github_webhook_deliveries
+       where received_at < now() - interval '30 days' and status <> 'received'`
     );
     return rows.length === 1;
   }

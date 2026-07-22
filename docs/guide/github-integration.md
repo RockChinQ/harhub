@@ -25,7 +25,8 @@ Repository permissions for read-only inventory:
 - Metadata: read
 - Contents: read
 
-Subscribe to `push`, `installation`, and `installation_repositories` events.
+Subscribe to `push`, `installation`, `installation_repositories`, `repository`,
+and `pull_request` events.
 Harhub verifies every webhook with `X-Hub-Signature-256` and deduplicates the
 GitHub delivery ID before queueing a scan.
 
@@ -82,4 +83,3 @@ is neither downloaded nor retained.
 Failed provider requests use bounded automatic retries. The latest failure is
 shown on the Project and a workspace administrator can manually rescan. Pushes
 are coalesced so only the latest queued default-branch revision remains pending.
-

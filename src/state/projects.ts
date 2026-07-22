@@ -196,6 +196,49 @@ export function connectProjectRepository(
   });
 }
 
+export function connectProjectGitHubAppRepository(
+  accountId: string,
+  workspaceId: string,
+  projectId: string,
+  repository: ProjectRepository
+): Promise<HarhubProject> {
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    requireWorkspaceAdmin(state, accountId, workspaceId);
+    const project = findProject(state, workspaceId, projectId);
+    if (project.status !== "active") throw new Error("Archived Projects cannot connect repositories.");
+    project.repository = structuredClone(repository);
+    project.syncTokenConfigured = false;
+    delete project.syncTokenHash;
+    delete project.syncTokenLastFour;
+    project.updatedAt = new Date().toISOString();
+    await saveState(state);
+    return toPublicProject(project);
+  });
+}
+
+export function updateProjectGitHubRepositoryMetadata(
+  workspaceId: string,
+  projectId: string,
+  repositoryId: string,
+  input: { owner?: string; name?: string; url?: string; defaultBranch?: string }
+): Promise<void> {
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    const project = findProject(state, workspaceId, projectId);
+    if (!project.repository || project.repository.id !== repositoryId) return;
+    project.repository = {
+      ...project.repository,
+      ...(input.owner ? { owner: input.owner } : {}),
+      ...(input.name ? { name: input.name } : {}),
+      ...(input.url ? { url: input.url } : {}),
+      ...(input.defaultBranch ? { defaultBranch: input.defaultBranch } : {})
+    };
+    project.updatedAt = new Date().toISOString();
+    await saveState(state);
+  });
+}
+
 export function rotateProjectSyncToken(
   accountId: string,
   workspaceId: string,
@@ -271,6 +314,7 @@ export interface ProjectBindingBaselineUpdate {
   path: string;
   assetId?: string;
   digest?: string;
+  version?: number;
 }
 
 export function authorizeProjectSync(
@@ -364,6 +408,7 @@ export function syncProjectFromRepository(
       if (baselineResolved) {
         delete retained.assetId;
         delete retained.sourceDigest;
+        delete retained.sourceVersion;
         retained.source = baseline?.assetId ? "harhub" : "repository";
       }
       return {
@@ -372,6 +417,7 @@ export function syncProjectFromRepository(
         status,
         ...(baseline?.assetId ? { assetId: baseline.assetId, source: "harhub" as const } : {}),
         ...(baseline?.digest ? { sourceDigest: baseline.digest } : {}),
+        ...(baseline?.version ? { sourceVersion: baseline.version } : {}),
         repositoryDigest: observed.digest,
         lastSeenAt: now,
         ...(fork ? { fork: publicForkSummary(fork) } : {})
@@ -399,6 +445,7 @@ export function syncProjectFromRepository(
         status,
         ...(baseline ? { assetId: baseline.assetId } : {}),
         ...(baseline ? { sourceDigest: baseline.digest } : {}),
+        ...(baseline?.version ? { sourceVersion: baseline.version } : {}),
         repositoryDigest: observed.digest,
         lastSeenAt: now,
         ...(fork ? { fork: publicForkSummary(fork) } : {})
@@ -476,6 +523,7 @@ export function syncProjectFromGitHubApp(
       if (baselineResolved) {
         delete retained.assetId;
         delete retained.sourceDigest;
+        delete retained.sourceVersion;
         retained.source = baseline?.assetId ? "harhub" : "repository";
       }
       return {
@@ -484,6 +532,7 @@ export function syncProjectFromGitHubApp(
         status,
         ...(baseline?.assetId ? { assetId: baseline.assetId, source: "harhub" as const } : {}),
         ...(baseline?.digest ? { sourceDigest: baseline.digest } : {}),
+        ...(baseline?.version ? { sourceVersion: baseline.version } : {}),
         repositoryDigest: observed.digest,
         lastSeenAt: now,
         ...(fork ? { fork: publicForkSummary(fork) } : {})
@@ -509,6 +558,7 @@ export function syncProjectFromGitHubApp(
         source: baseline ? "harhub" : "repository",
         status,
         ...(baseline ? { assetId: baseline.assetId, sourceDigest: baseline.digest } : {}),
+        ...(baseline?.version ? { sourceVersion: baseline.version } : {}),
         repositoryDigest: observed.digest,
         lastSeenAt: now,
         ...(fork ? { fork: publicForkSummary(fork) } : {})
@@ -585,6 +635,7 @@ export function recordProjectSkillPublished(input: {
     if (input.name) binding.name = input.name;
     binding.source = "harhub";
     binding.sourceDigest = input.digest;
+    delete binding.sourceVersion;
     binding.repositoryDigest = input.digest;
     binding.status = "synced";
     delete binding.fork;

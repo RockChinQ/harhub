@@ -49,6 +49,13 @@ test("imports an existing GitHub repository and refreshes it from signed push we
             sha: tree === "tree-2" ? "agents-2" : "agents-1",
             size: 40,
             url: "https://example.invalid/blob"
+          }, {
+            path: ".agents/skills/broken/SKILL.md",
+            mode: "100644",
+            type: "blob",
+            sha: "broken-skill",
+            size: 0,
+            url: "https://example.invalid/blob"
           }]
         }));
         return;
@@ -59,6 +66,10 @@ test("imports an existing GitHub repository and refreshes it from signed push we
           encoding: "base64",
           content: Buffer.from(blob === "agents-2" ? "# Updated agent instructions\n" : "# Agent instructions\n").toString("base64")
         }));
+        return;
+      }
+      if (request.url?.endsWith("/git/blobs/broken-skill")) {
+        response.end(JSON.stringify({ encoding: "base64", content: "" }));
         return;
       }
       response.statusCode = 404;
@@ -75,7 +86,7 @@ test("imports an existing GitHub repository and refreshes it from signed push we
     process.env.HARHUB_GITHUB_WEBHOOK_SECRET = "webhook-secret";
     process.env.HARHUB_GITHUB_API_URL = githubUrl;
 
-    const [{ createServerApp }, { createSession, upsertGitHubInstallation }] = await Promise.all([
+    const [{ createServerApp }, { createProject, createSession, upsertGitHubInstallation }] = await Promise.all([
       import(`../src/server/app.js?test=${Date.now()}`),
       import("../src/state/index.js")
     ]);
@@ -103,7 +114,11 @@ test("imports an existing GitHub repository and refreshes it from signed push we
     const imported = JSON.parse(importedBody) as { project: { id: string }; scan: { status: string } };
     assert.equal(imported.scan.status, "queued");
     const first = await waitForInventory(baseUrl, token, imported.project.id, "a".repeat(40));
-    assert.equal(first.latestSnapshot?.artifacts[0]?.format, "agents-instructions");
+    assert.ok(first.latestSnapshot?.artifacts.some((artifact: any) => artifact.format === "agents-instructions"));
+    assert.equal(
+      first.latestSnapshot?.artifacts.find((artifact: any) => artifact.path.includes("broken"))?.relationship,
+      "blocked"
+    );
     assert.equal(first.project.bindings[0]?.kind, "instruction");
     assert.equal(first.project.syncTokenConfigured, false);
 
@@ -135,6 +150,39 @@ test("imports an existing GitHub repository and refreshes it from signed push we
     assert.equal((await duplicate.json() as { duplicate?: boolean }).duplicate, true);
     const refreshed = await waitForInventory(baseUrl, token, imported.project.id, "b".repeat(40));
     assert.equal(refreshed.project.sync.revision, 2);
+
+    const archived = await fetch(
+      `${baseUrl}/api/workspaces/ws_demo/projects/${imported.project.id}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
+    );
+    assert.equal(archived.status, 200);
+    const legacy = await createProject({
+      accountId: "acct_demo",
+      workspaceId: "ws_demo",
+      name: "Legacy Action Project",
+      description: "Migrate without creating a duplicate Project.",
+      repository: {
+        provider: "github",
+        owner: "acme",
+        name: "product",
+        url: "https://github.com/acme/product",
+        defaultBranch: "main"
+      }
+    });
+    assert.ok(legacy.syncToken);
+    const migration = await fetch(
+      `${baseUrl}/api/workspaces/ws_demo/projects/${legacy.project.id}/github/connect`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ installationId: "42", repositoryId: "99" })
+      }
+    );
+    assert.equal(migration.status, 200, await migration.clone().text());
+    const migrated = await migration.json() as { project: { id: string; syncTokenConfigured: boolean } };
+    assert.equal(migrated.project.id, legacy.project.id);
+    assert.equal(migrated.project.syncTokenConfigured, false);
+    await waitForInventory(baseUrl, token, legacy.project.id, "a".repeat(40));
   } finally {
     if (app) await close(app);
     if (github) await close(github);

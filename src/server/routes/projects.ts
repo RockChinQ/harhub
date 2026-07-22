@@ -16,7 +16,8 @@ import {
   getForgeSession,
   getProject,
   listProjects,
-  rotateProjectSyncToken
+  rotateProjectSyncToken,
+  updateProjectRepositoryConnectionStatus
 } from "../../state/index.js";
 import { requireWorkspaceAccess, requireWorkspaceAdminAccess } from "../auth.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "../services/workspace-catalogs.js";
@@ -191,11 +192,14 @@ export function registerProjectRoutes(
     if (!context) return;
     setPrivateNoStore(res);
     try {
-      res.json(await archiveProject(
+      const projectId = readRequiredString(req.params.projectId, "projectId", 128);
+      const project = await archiveProject(
         context.account.id,
         context.workspace.id,
-        readRequiredString(req.params.projectId, "projectId", 128)
-      ));
+        projectId
+      );
+      await updateProjectRepositoryConnectionStatus(projectId, "disconnected");
+      res.json(project);
     } catch (error) {
       sendError(res, error, 400);
     }

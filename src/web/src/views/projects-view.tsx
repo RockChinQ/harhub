@@ -60,6 +60,7 @@ import {
   archiveProject,
   authorizeGitHubInstallation,
   connectProjectRepository,
+  connectProjectGitHubApp,
   createProjectBootstrapProposal,
   getGitHubIntegrationStatus,
   getProjectInventory,
@@ -127,6 +128,7 @@ export function ProjectsView({
   const [proposalOpen, setProposalOpen] = useState(false);
   const [isCreatingProposal, setIsCreatingProposal] = useState(false);
   const [isOpeningProposal, setIsOpeningProposal] = useState(false);
+  const [connectingExistingProject, setConnectingExistingProject] = useState(false);
 
   useEffect(() => {
     setSyncToken(undefined);
@@ -152,6 +154,7 @@ export function ProjectsView({
       if (routedProjectId) {
         const result = await getProjectInventory(token, workspace.id, routedProjectId);
         setInventory(result);
+        setProposal(result.proposals[0]);
         setProject(result.project);
         setRepository(result.project.repository
           ? `${result.project.repository.owner}/${result.project.repository.name}`
@@ -173,13 +176,15 @@ export function ProjectsView({
     try {
       const result = await getProjectInventory(token, workspace.id, routedProjectId);
       setInventory(result);
+      setProposal(result.proposals[0]);
       setProject(result.project);
     } catch (caught) {
       setError(errorMessage(caught));
     }
   }
 
-  async function openRepositoryImport() {
+  async function openRepositoryImport(connectExisting = false) {
+    setConnectingExistingProject(connectExisting);
     setImportOpen(true);
     setIsLoadingGitHub(true);
     setError(undefined);
@@ -229,12 +234,22 @@ export function ProjectsView({
     if (!selectedInstallationId) return;
     setImportingRepositoryId(repositoryId);
     try {
-      const result = await importGitHubRepository(token, workspace.id, {
-        installationId: selectedInstallationId,
-        repositoryId
-      });
+      const result = connectingExistingProject && project
+        ? await connectProjectGitHubApp(token, workspace.id, project.id, {
+            installationId: selectedInstallationId,
+            repositoryId
+          })
+        : await importGitHubRepository(token, workspace.id, {
+            installationId: selectedInstallationId,
+            repositoryId
+          });
       setImportOpen(false);
-      onNavigateProject(result.project.id);
+      if (connectingExistingProject && project) {
+        setProject(result.project);
+        await refreshInventory();
+      } else {
+        onNavigateProject(result.project.id);
+      }
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -490,12 +505,20 @@ export function ProjectsView({
                     </CardTitle>
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="outline">GitHub App</Badge>
+                      {inventory.connection.status !== "active" ? (
+                        <Badge variant="outline" className="border-red-300 text-red-700">
+                          {inventory.connection.status === "permission-lost" ? "Permission lost" : "Disconnected"}
+                        </Badge>
+                      ) : null}
                       <Badge variant="outline">{inventory.connection.permissionMode === "write" ? "Managed changes" : "Read only"}</Badge>
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        disabled={isRescanning || Boolean(inventory.activeJob) || project.status === "archived"}
+                        disabled={
+                          isRescanning || Boolean(inventory.activeJob) || project.status === "archived" ||
+                          inventory.connection.status !== "active"
+                        }
                         onClick={() => void rescanRepository()}
                       >
                         {isRescanning || inventory.activeJob
@@ -572,18 +595,51 @@ export function ProjectsView({
                       Read-only tracking requires no workflow and no repository secret.
                     </p>
                     {inventory.connection.permissionMode === "write" && inventory.latestSnapshot ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={isCreatingProposal}
-                        onClick={() => void previewBootstrapProposal()}
-                      >
-                        {isCreatingProposal ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileJson2 className="h-4 w-4" />}
-                        Preview managed config PR
-                      </Button>
+                      proposal?.status === "open" && proposal.pullUrl ? (
+                        <a
+                          href={proposal.pullUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-accent"
+                        >
+                          <GitPullRequest className="h-4 w-4" />
+                          Pull request #{proposal.pullNumber}
+                        </a>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={isCreatingProposal}
+                          onClick={() => void previewBootstrapProposal()}
+                        >
+                          {isCreatingProposal ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileJson2 className="h-4 w-4" />}
+                          Preview managed config PR
+                        </Button>
+                      )
                     ) : null}
                   </div>
+                  {inventory.jobs.length > 0 ? (
+                    <div className="border-t px-5 py-4">
+                      <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent scans</p>
+                      <div className="space-y-2">
+                        {inventory.jobs.slice(0, 5).map((job) => (
+                          <div key={job.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span>{job.trigger} · {formatTime(job.completedAt ?? job.startedAt ?? job.createdAt)}</span>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                job.status === "succeeded" && "border-emerald-300 text-emerald-800",
+                                job.status === "failed" && "border-red-300 text-red-700"
+                              )}
+                            >
+                              {job.status}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
             ) : null}
@@ -623,7 +679,9 @@ export function ProjectsView({
               <CardHeader className="border-b">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <ShieldCheck className="h-4 w-4 text-blue-700" aria-hidden="true" />
-                  GitHub repository connection
+                  {inventory?.connection?.mode === "github-app"
+                    ? "GitHub App connection"
+                    : "GitHub Actions connection (self-hosted mode)"}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4 p-5">
@@ -699,6 +757,16 @@ export function ProjectsView({
                   </div>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
+                  {project.repository && inventory?.connection?.mode !== "github-app" ? (
+                    <Button
+                      type="button"
+                      disabled={project.status === "archived"}
+                      onClick={() => void openRepositoryImport(true)}
+                    >
+                      <Github className="h-4 w-4" />
+                      Switch to GitHub App
+                    </Button>
+                  ) : null}
                   {project.repository && inventory?.connection?.mode !== "github-app" ? (
                     <Button
                       type="button"
@@ -852,6 +920,24 @@ export function ProjectsView({
             </div>
           </DialogContent>
         </Dialog>
+
+        <RepositoryImportDialog
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          connectingExistingProject={connectingExistingProject}
+          project={project}
+          githubStatus={githubStatus}
+          installations={installations}
+          selectedInstallationId={selectedInstallationId}
+          repositories={repositories}
+          repositorySearch={repositorySearch}
+          isLoading={isLoadingGitHub}
+          importingRepositoryId={importingRepositoryId}
+          onInstall={() => void installGitHubApp()}
+          onSelectInstallation={(id) => void selectInstallation(id)}
+          onSearch={setRepositorySearch}
+          onImport={(id) => void importRepository(id)}
+        />
       </section>
     );
   }
@@ -936,70 +1022,131 @@ export function ProjectsView({
         </div>
       ) : null}
 
-      <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="flex max-h-[86vh] max-w-3xl flex-col overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>Import an existing repository</DialogTitle>
-            <DialogDescription>
-              Harhub scans only supported harness files. It does not clone or retain the rest of the codebase.
-            </DialogDescription>
-          </DialogHeader>
-          {isLoadingGitHub && !githubStatus ? (
-            <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading GitHub connections…
-            </div>
-          ) : null}
-          {githubStatus && !githubStatus.configured ? (
-            <div className="rounded-lg border bg-muted/20 p-5">
-              <p className="font-medium">GitHub App is not configured on this Harhub instance</p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Configure the App ID, slug, OAuth credentials, private key, and webhook secret on the server first.
-              </p>
-            </div>
-          ) : null}
-          {githubStatus?.configured && installations.length === 0 ? (
-            <div className="rounded-lg border p-5">
-              <p className="font-medium">Connect the Harhub GitHub App</p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Select only the repositories this workspace should be allowed to inventory.
-              </p>
-              <Button className="mt-4" disabled={isLoadingGitHub} onClick={() => void installGitHubApp()}>
-                {isLoadingGitHub ? <Loader2 className="h-4 w-4 animate-spin" /> : <Github className="h-4 w-4" />}
-                Install GitHub App
-              </Button>
-            </div>
-          ) : null}
-          {installations.length > 0 ? (
-            <div className="flex min-h-0 flex-1 flex-col gap-4">
-              <div className="flex flex-wrap gap-2">
-                {installations.map((installation) => (
-                  <Button
-                    key={installation.id}
-                    type="button"
-                    size="sm"
-                    variant={installation.id === selectedInstallationId ? "default" : "outline"}
-                    onClick={() => void selectInstallation(installation.id)}
-                  >
-                    {installation.accountLogin}
-                  </Button>
-                ))}
-                <Button type="button" size="sm" variant="ghost" onClick={() => void installGitHubApp()}>
-                  Add installation
+      <RepositoryImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        connectingExistingProject={connectingExistingProject}
+        githubStatus={githubStatus}
+        installations={installations}
+        selectedInstallationId={selectedInstallationId}
+        repositories={repositories}
+        repositorySearch={repositorySearch}
+        isLoading={isLoadingGitHub}
+        importingRepositoryId={importingRepositoryId}
+        onInstall={() => void installGitHubApp()}
+        onSelectInstallation={(id) => void selectInstallation(id)}
+        onSearch={setRepositorySearch}
+        onImport={(id) => void importRepository(id)}
+      />
+    </section>
+  );
+}
+
+function RepositoryImportDialog({
+  open,
+  onOpenChange,
+  connectingExistingProject,
+  project,
+  githubStatus,
+  installations,
+  selectedInstallationId,
+  repositories,
+  repositorySearch,
+  isLoading,
+  importingRepositoryId,
+  onInstall,
+  onSelectInstallation,
+  onSearch,
+  onImport
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  connectingExistingProject: boolean;
+  project?: HarhubProject;
+  githubStatus?: GitHubIntegrationStatus;
+  installations: GitHubInstallation[];
+  selectedInstallationId: string;
+  repositories: GitHubRepositorySummary[];
+  repositorySearch: string;
+  isLoading: boolean;
+  importingRepositoryId?: string;
+  onInstall: () => void;
+  onSelectInstallation: (id: string) => void;
+  onSearch: (value: string) => void;
+  onImport: (id: string) => void;
+}) {
+  const expectedRepository = project?.repository
+    ? `${project.repository.owner}/${project.repository.name}`.toLowerCase()
+    : undefined;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[86vh] max-w-3xl flex-col overflow-hidden">
+        <DialogHeader>
+          <DialogTitle>
+            {connectingExistingProject ? "Switch this Project to GitHub App" : "Import an existing repository"}
+          </DialogTitle>
+          <DialogDescription>
+            {connectingExistingProject
+              ? "Select the repository already tracked by this Project. The legacy sync token will be revoked after connection."
+              : "Harhub scans only supported harness files. It does not clone or retain the rest of the codebase."}
+          </DialogDescription>
+        </DialogHeader>
+        {isLoading && !githubStatus ? (
+          <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading GitHub connections…
+          </div>
+        ) : null}
+        {githubStatus && !githubStatus.configured ? (
+          <div className="rounded-lg border bg-muted/20 p-5">
+            <p className="font-medium">GitHub App is not configured on this Harhub instance</p>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Configure the App ID, slug, OAuth credentials, private key, and webhook secret on the server first.
+            </p>
+          </div>
+        ) : null}
+        {githubStatus?.configured && installations.length === 0 ? (
+          <div className="rounded-lg border p-5">
+            <p className="font-medium">Connect the Harhub GitHub App</p>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Select only the repositories this workspace should be allowed to inventory.
+            </p>
+            <Button className="mt-4" disabled={isLoading} onClick={onInstall}>
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Github className="h-4 w-4" />}
+              Install GitHub App
+            </Button>
+          </div>
+        ) : null}
+        {installations.length > 0 ? (
+          <div className="flex min-h-0 flex-1 flex-col gap-4">
+            <div className="flex flex-wrap gap-2">
+              {installations.map((installation) => (
+                <Button
+                  key={installation.id}
+                  type="button"
+                  size="sm"
+                  variant={installation.id === selectedInstallationId ? "default" : "outline"}
+                  onClick={() => onSelectInstallation(installation.id)}
+                >
+                  {installation.accountLogin}
                 </Button>
-              </div>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  value={repositorySearch}
-                  className="pl-9"
-                  placeholder="Search repositories"
-                  onChange={(event) => setRepositorySearch(event.target.value)}
-                />
-              </div>
-              <div className="min-h-0 flex-1 divide-y overflow-auto rounded-lg border">
-                {repositories
-                  .filter((candidate) => candidate.fullName.toLowerCase().includes(repositorySearch.trim().toLowerCase()))
-                  .map((candidate) => (
+              ))}
+              <Button type="button" size="sm" variant="ghost" onClick={onInstall}>Add installation</Button>
+            </div>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={repositorySearch}
+                className="pl-9"
+                placeholder="Search repositories"
+                onChange={(event) => onSearch(event.target.value)}
+              />
+            </div>
+            <div className="min-h-0 flex-1 divide-y overflow-auto rounded-lg border">
+              {repositories
+                .filter((candidate) => candidate.fullName.toLowerCase().includes(repositorySearch.trim().toLowerCase()))
+                .map((candidate) => {
+                  const mismatch = Boolean(connectingExistingProject && expectedRepository && candidate.fullName.toLowerCase() !== expectedRepository);
+                  return (
                     <div key={candidate.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -1008,29 +1155,31 @@ export function ProjectsView({
                           {candidate.archived ? <Badge variant="secondary">Archived</Badge> : null}
                         </div>
                         <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                          {candidate.description || `Default branch: ${candidate.defaultBranch}`}
+                          {mismatch
+                            ? "This Project tracks a different repository."
+                            : candidate.description || `Default branch: ${candidate.defaultBranch}`}
                         </p>
                       </div>
                       <Button
                         type="button"
                         size="sm"
-                        disabled={candidate.archived || Boolean(importingRepositoryId)}
-                        onClick={() => void importRepository(candidate.id)}
+                        disabled={candidate.archived || mismatch || Boolean(importingRepositoryId)}
+                        onClick={() => onImport(candidate.id)}
                       >
                         {importingRepositoryId === candidate.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                        Import
+                        {connectingExistingProject ? "Connect" : "Import"}
                       </Button>
                     </div>
-                  ))}
-                {!isLoadingGitHub && repositories.length === 0 ? (
-                  <p className="p-6 text-center text-sm text-muted-foreground">No accessible repositories.</p>
-                ) : null}
-              </div>
+                  );
+                })}
+              {!isLoading && repositories.length === 0 ? (
+                <p className="p-6 text-center text-sm text-muted-foreground">No accessible repositories.</p>
+              ) : null}
             </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
-    </section>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -5,7 +5,10 @@ import {
   REPOSITORY_DETECTOR_VERSION,
   type RepositorySourceFile
 } from "../../features/repository-inventory/index.js";
-import { analyzeStoredSkillFiles } from "../../features/skills/index.js";
+import {
+  analyzeStoredSkillFiles,
+  canonicalSkillFilesChecksumForStorage
+} from "../../features/skills/index.js";
 import type {
   AssetCatalog,
   GitHubRepositorySummary,
@@ -19,6 +22,7 @@ import type {
 } from "../../shared/types.js";
 import {
   completeProjectScan,
+  connectProjectGitHubAppRepository,
   createGitHubAppProject,
   createProjectScanJob,
   deleteProjectRepositoryConnection,
@@ -32,7 +36,8 @@ import {
   recordWorkspaceAuditEvent,
   saveProjectRepositoryConnection,
   supersedeQueuedProjectScans,
-  updateProjectConnectionObservation
+  updateProjectConnectionObservation,
+  updateProjectGitHubRepositoryMetadata
 } from "../../state/index.js";
 import { type ProjectRepositoryConnectionRecord } from "../../state/types.js";
 import { GitHubAppError, readRepositoryInventorySource } from "./github-app.js";
@@ -101,6 +106,61 @@ export async function importGitHubRepository(input: {
   }
 }
 
+export async function connectExistingProjectGitHubRepository(input: {
+  accountId: string;
+  workspaceId: string;
+  projectId: string;
+  installationId: string;
+  repository: GitHubRepositorySummary;
+  permissionMode: "read" | "write";
+}): Promise<{ project: HarhubProject; scan: ProjectScanJob }> {
+  const existing = await findProjectRepositoryConnection(input.installationId, input.repository.id);
+  if (existing && existing.projectId !== input.projectId) {
+    throw new Error("This repository is already imported as another active Project.");
+  }
+  const connection: ProjectRepositoryConnectionRecord = {
+    workspaceId: input.workspaceId,
+    projectId: input.projectId,
+    mode: "github-app",
+    status: "active",
+    installationId: input.installationId,
+    permissionMode: input.permissionMode,
+    repositoryId: input.repository.id,
+    repositoryNodeId: input.repository.nodeId,
+    owner: input.repository.owner,
+    name: input.repository.name,
+    defaultBranch: input.repository.defaultBranch,
+    connectedAt: new Date().toISOString()
+  };
+  await saveProjectRepositoryConnection(connection);
+  try {
+    const project = await connectProjectGitHubAppRepository(
+      input.accountId,
+      input.workspaceId,
+      input.projectId,
+      {
+        provider: "github",
+        id: input.repository.id,
+        nodeId: input.repository.nodeId,
+        owner: input.repository.owner,
+        name: input.repository.name,
+        url: input.repository.url,
+        defaultBranch: input.repository.defaultBranch
+      }
+    );
+    const scan = await queueProjectRepositoryScan({
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
+      trigger: "initial",
+      actorAccountId: input.accountId
+    });
+    return { project, scan };
+  } catch (error) {
+    await deleteProjectRepositoryConnection(input.projectId).catch(() => undefined);
+    throw error;
+  }
+}
+
 export async function queueProjectRepositoryScan(input: {
   workspaceId: string;
   projectId: string;
@@ -123,7 +183,7 @@ export async function queueProjectRepositoryScan(input: {
     source: input.trigger === "push" ? "github-app" : "api",
     metadata: { jobId: job.id, trigger: input.trigger, ...(input.requestedSha ? { requestedSha: input.requestedSha } : {}) },
     deduplicationKey: `project-scan-requested:${job.id}`
-  });
+  }).catch((error) => logScan("audit_failed", { jobId: job.id, error: errorMessage(error) }));
   scheduleJob(job);
   return job;
 }
@@ -158,6 +218,17 @@ export async function executeProjectRepositoryScan(job: ProjectScanJob): Promise
     const inventory = await getProjectInventoryStateInternal(running.workspaceId, running.projectId);
     const catalog = await loadOrCreateWorkspaceAssetCatalog(workspaceRecord(running.workspaceId));
     const detected = detectRepositoryInventory(source.files);
+    await updateProjectGitHubRepositoryMetadata(
+      running.workspaceId,
+      running.projectId,
+      connection.repositoryId,
+      {
+        owner: source.repository.owner,
+        name: source.repository.name,
+        url: source.repository.url,
+        defaultBranch: source.repository.defaultBranch
+      }
+    );
     const artifacts = resolveRelationships(detected, source.files, catalog, inventory.policies);
     const includedFiles = filesIncludedByPolicies(source.files, artifacts, inventory.policies);
     await syncProjectRepositoryFiles({
@@ -171,7 +242,15 @@ export async function executeProjectRepositoryScan(job: ProjectScanJob): Promise
         policy.ownership === "library" && policy.libraryAssetId
           ? [[policy.artifactPath, policy.libraryAssetId]]
           : []
-      ))
+      )),
+      baselineVersions: Object.fromEntries(inventory.policies.flatMap((policy) =>
+        policy.ownership === "library" && policy.pinnedVersion
+          ? [[policy.artifactPath, policy.pinnedVersion]]
+          : []
+      )),
+      repositoryOwnedPaths: new Set(inventory.policies
+        .filter((policy) => policy.ownership === "repository")
+        .map((policy) => policy.artifactPath))
     });
     const snapshot: ProjectInventorySnapshot = {
       id: randomUUID(),
@@ -294,7 +373,9 @@ function resolveRelationships(
     if (artifact.validation.errors > 0) return { ...artifact, relationship: "blocked" };
     const policy = policyByPath.get(artifact.path);
     if (policy?.ownership === "ignored") return { ...artifact, relationship: "ignored" };
-    if (artifact.kind !== "skill") return { ...artifact, relationship: "repository-owned" };
+    if (policy?.ownership === "repository" || artifact.kind !== "skill") {
+      return { ...artifact, relationship: "repository-owned" };
+    }
     const skill = skillAtPath(files, artifact.path);
     const base = policy?.libraryAssetId
       ? catalog.assets.find((asset) => asset.id === policy.libraryAssetId)
@@ -302,7 +383,10 @@ function resolveRelationships(
     const version = policy?.pinnedVersion
       ? base?.versionHistory?.find((candidate) => candidate.version === policy.pinnedVersion)
       : undefined;
-    const digest = version?.checksum ?? base?.storage?.checksum;
+    const baseStorage = version?.storage ?? base?.storage;
+    const digest = baseStorage && skill
+      ? canonicalSkillFilesChecksumForStorage(skill.files, baseStorage) ?? baseStorage.checksum
+      : version?.checksum ?? base?.storage?.checksum;
     if (!base || !digest) return { ...artifact, relationship: "repository-owned" };
     return {
       ...artifact,
@@ -321,8 +405,10 @@ function filesIncludedByPolicies(
   const ignored = new Set(
     policies.filter((policy) => policy.ownership === "ignored").map((policy) => policy.artifactPath)
   );
-  const ignoredArtifacts = artifacts.filter((artifact) => ignored.has(artifact.path));
-  return files.filter((file) => !ignoredArtifacts.some((artifact) =>
+  const excludedArtifacts = artifacts.filter((artifact) =>
+    ignored.has(artifact.path) || artifact.relationship === "blocked"
+  );
+  return files.filter((file) => !excludedArtifacts.some((artifact) =>
     artifact.kind === "skill" ? file.path.startsWith(`${artifact.path}/`) : file.path === artifact.path
   ));
 }
@@ -351,7 +437,9 @@ function scanFailure(error: unknown): NonNullable<ProjectScanJob["failure"]> {
   if (error instanceof GitHubAppError) {
     return { code: error.code, message: error.message, retryable: error.retryable };
   }
-  return { code: "scan_failed", message: errorMessage(error), retryable: false };
+  const message = errorMessage(error);
+  const terminal = /archived|not active|unavailable|does not match|invalid|exceeds/i.test(message);
+  return { code: "scan_failed", message, retryable: !terminal };
 }
 
 function workspaceRecord(workspaceId: string): WorkspaceRecord {

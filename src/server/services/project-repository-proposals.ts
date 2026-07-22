@@ -74,13 +74,16 @@ export async function openBootstrapProposal(input: {
   if (input.proposal.status !== "preview" && input.proposal.status !== "failed") {
     throw new Error("Only a preview or failed proposal can be opened.");
   }
+  const branch = input.proposal.status === "failed"
+    ? `${input.proposal.branch.replace(/-retry-[a-z0-9]+$/, "")}-retry-${Date.now().toString(36)}`
+    : input.proposal.branch;
   const pull = await createRepositoryPullRequest({
     installationId: input.connection.installationId!,
     owner: input.connection.owner,
     name: input.connection.name,
     defaultBranch: input.connection.defaultBranch,
     baseSha: input.proposal.baseSha,
-    branch: input.proposal.branch,
+    branch,
     title: "Configure Harhub repository tracking",
     body: [
       "This PR adds the explicit Harhub Project manifest for this repository.",
@@ -91,6 +94,7 @@ export async function openBootstrapProposal(input: {
   });
   return {
     ...input.proposal,
+    branch,
     status: "open",
     pullNumber: pull.number,
     pullUrl: pull.url,

@@ -33,6 +33,32 @@ test("GitHub App signs requests and reads only repository harness files", async 
         response.end(JSON.stringify({ sha: "commit-sha", commit: { tree: { sha: "tree-sha" } } }));
         return;
       }
+      if (request.url === "/repos/acme/product/git/commits/commit-sha" && request.method === "GET") {
+        response.end(JSON.stringify({ tree: { sha: "base-tree" } }));
+        return;
+      }
+      if (request.url === "/repos/acme/product/git/blobs" && request.method === "POST") {
+        response.end(JSON.stringify({ sha: "proposal-blob" }));
+        return;
+      }
+      if (request.url === "/repos/acme/product/git/trees" && request.method === "POST") {
+        response.end(JSON.stringify({ sha: "proposal-tree" }));
+        return;
+      }
+      if (request.url === "/repos/acme/product/git/commits" && request.method === "POST") {
+        response.end(JSON.stringify({ sha: "proposal-commit" }));
+        return;
+      }
+      if (request.url === "/repos/acme/product/git/refs" && request.method === "POST") {
+        response.statusCode = 201;
+        response.end(JSON.stringify({ ref: "refs/heads/harhub/bootstrap" }));
+        return;
+      }
+      if (request.url === "/repos/acme/product/pulls" && request.method === "POST") {
+        response.statusCode = 201;
+        response.end(JSON.stringify({ number: 7, html_url: "https://github.com/acme/product/pull/7" }));
+        return;
+      }
       if (request.url === "/repos/acme/product/git/trees/tree-sha?recursive=1") {
         response.end(JSON.stringify({
           sha: "tree-sha",
@@ -70,6 +96,7 @@ test("GitHub App signs requests and reads only repository harness files", async 
 
     const {
       createGitHubAppJwt,
+      createRepositoryPullRequest,
       listInstallationRepositories,
       readRepositoryInventorySource
     } = await import(`../src/server/services/github-app.js?test=${Date.now()}`);
@@ -98,6 +125,29 @@ test("GitHub App signs requests and reads only repository harness files", async 
     assert.equal(requests.some((request) => request.url.includes("src/index.ts")), false);
     assert.ok(requests.some((request) => request.authorization?.startsWith("Bearer eyJ")));
     assert.ok(requests.some((request) => request.authorization === "Bearer installation-token"));
+    const pull = await createRepositoryPullRequest({
+      installationId: "42",
+      owner: "acme",
+      name: "product",
+      defaultBranch: "main",
+      baseSha: "commit-sha",
+      branch: "harhub/bootstrap",
+      title: "Configure Harhub",
+      body: "Managed config",
+      files: [{ path: ".harhub/project.json", status: "added", content: "{}\n" }]
+    });
+    assert.deepEqual(pull, { number: 7, url: "https://github.com/acme/product/pull/7" });
+    assert.deepEqual(
+      requests.filter((request) => request.method === "POST" && request.url.startsWith("/repos/acme/product"))
+        .map((request) => request.url),
+      [
+        "/repos/acme/product/git/blobs",
+        "/repos/acme/product/git/trees",
+        "/repos/acme/product/git/commits",
+        "/repos/acme/product/git/refs",
+        "/repos/acme/product/pulls"
+      ]
+    );
   } finally {
     if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
     delete process.env.HARHUB_GITHUB_APP_ID;

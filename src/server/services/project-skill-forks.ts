@@ -54,6 +54,8 @@ export async function syncProjectRepositoryFiles(input: {
   defaultBranch: string;
   files: Array<{ path: string; content: Buffer }>;
   baselineAssetIds?: Readonly<Record<string, string>>;
+  baselineVersions?: Readonly<Record<string, number>>;
+  repositoryOwnedPaths?: ReadonlySet<string>;
 }): Promise<ProjectSyncResponse> {
   const authorization = await authorizeGitHubAppProjectSync(
     input.workspaceId,
@@ -109,16 +111,27 @@ export async function syncProjectRepositoryFiles(input: {
       const existingBinding = bindingsByPath.get(observed.path);
       const candidate = candidatesByPath.get(observed.path);
       const explicitlyBound = input.baselineAssetIds?.[observed.path];
-      const baseAsset = explicitlyBound
-        ? catalog.assets.find((asset) => asset.id === explicitlyBound)
-        : findBaseAsset(catalog, existingBinding, candidate);
-      const baseDigest = baseAsset?.storage
-        ? canonicalSkillFilesChecksumForStorage(candidate!.files, baseAsset.storage) ?? baseAsset.storage.checksum
+      const baseAsset = input.repositoryOwnedPaths?.has(observed.path)
+        ? undefined
+        : explicitlyBound
+          ? catalog.assets.find((asset) => asset.id === explicitlyBound)
+          : findBaseAsset(catalog, existingBinding, candidate);
+      const pinnedVersion = input.baselineVersions?.[observed.path];
+      const baseVersion = pinnedVersion
+        ? baseAsset?.versionHistory?.find((version) => version.version === pinnedVersion)
+        : undefined;
+      if (pinnedVersion && !baseVersion?.storage) {
+        throw new Error(`Pinned Library version ${pinnedVersion} is unavailable for ${observed.path}.`);
+      }
+      const baseStorage = baseVersion?.storage ?? baseAsset?.storage;
+      const baseDigest = baseStorage
+        ? canonicalSkillFilesChecksumForStorage(candidate!.files, baseStorage) ?? baseStorage.checksum
         : undefined;
       baselineUpdates.push({
         path: observed.path,
         ...(baseAsset ? { assetId: baseAsset.id } : {}),
-        ...(baseDigest ? { digest: baseDigest } : {})
+        ...(baseDigest ? { digest: baseDigest } : {}),
+        ...(baseVersion ? { version: baseVersion.version } : {})
       });
       if (baseDigest === candidate!.checksum) continue;
       const existingFork = existingForks.get(observed.path);
@@ -319,8 +332,11 @@ export async function getProjectSkillDiff(input: {
   const baseAsset = binding.assetId
     ? catalog.assets.find((asset) => asset.id === binding.assetId)
     : undefined;
-  const baseFiles = baseAsset?.storage
-    ? (await loadStoredSkill(baseAsset.storage)).files
+  const baseStorage = binding.sourceVersion
+    ? baseAsset?.versionHistory?.find((version) => version.version === binding.sourceVersion)?.storage
+    : baseAsset?.storage;
+  const baseFiles = baseStorage
+    ? (await loadStoredSkill(baseStorage)).files
     : [];
   const files = compareSkillFiles(baseFiles, forkFiles);
   const selected = input.selectedPath
