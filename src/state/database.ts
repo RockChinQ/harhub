@@ -79,7 +79,17 @@ export async function readDatabaseState(): Promise<AppState | undefined> {
   return state;
 }
 
-export async function writeDatabaseState(state: AppState): Promise<void> {
+export interface DatabaseStateWriteOptions {
+  accountReferenceReplacement?: {
+    sourceAccountIds: string[];
+    targetAccountId: string;
+  };
+}
+
+export async function writeDatabaseState(
+  state: AppState,
+  options: DatabaseStateWriteOptions = {}
+): Promise<void> {
   if (!isDatabaseStateEnabled()) return;
   await ensureDatabase();
   const client = await getPool().connect();
@@ -99,6 +109,9 @@ export async function writeDatabaseState(state: AppState): Promise<void> {
       ["app", JSON.stringify(snapshot)]
     );
     await insertAuditEvents(client, stateAuditEvents(previous, state));
+    if (options.accountReferenceReplacement) {
+      await replaceDatabaseAccountReferences(client, options.accountReferenceReplacement);
+    }
     await client.query("commit");
   } catch (error) {
     await client.query("rollback").catch(() => undefined);
@@ -197,6 +210,53 @@ export async function queryDatabase<Row extends QueryResultRow>(
   if (!isDatabaseStateEnabled()) return [];
   await ensureDatabase();
   return (await getPool().query<Row>(query, values)).rows;
+}
+
+const DATABASE_ACCOUNT_REFERENCES = [
+  ["harhub_asset_versions", "created_by_account_id"],
+  ["harhub_audit_events", "actor_account_id"],
+  ["harhub_github_installations", "linked_by_account_id"],
+  ["harhub_project_binding_policies", "decided_by_account_id"],
+  ["harhub_project_change_proposals", "created_by_account_id"]
+] as const;
+
+async function replaceDatabaseAccountReferences(
+  client: PoolClient,
+  replacement: NonNullable<DatabaseStateWriteOptions["accountReferenceReplacement"]>
+): Promise<void> {
+  const sources = [...new Set(replacement.sourceAccountIds)].filter(
+    (id) => id !== replacement.targetAccountId
+  );
+  if (sources.length === 0) return;
+
+  const references = await client.query<{ table_name: string; column_name: string }>(
+    `select table_name, column_name
+     from information_schema.columns
+     where table_schema = current_schema()
+       and table_name like 'harhub\\_%' escape '\\'
+       and column_name like '%account_id'
+     order by table_name, column_name`
+  );
+  const allowed = new Set(DATABASE_ACCOUNT_REFERENCES.map(([table, column]) => `${table}.${column}`));
+  const actual = new Set(references.rows.map(({ table_name, column_name }) => `${table_name}.${column_name}`));
+  const unknown = [...actual].filter((reference) => !allowed.has(reference));
+  if (unknown.length > 0) {
+    throw new Error(`Account convergence does not cover database references: ${unknown.join(", ")}`);
+  }
+
+  for (const [tableName, columnName] of DATABASE_ACCOUNT_REFERENCES) {
+    if (!actual.has(`${tableName}.${columnName}`)) continue;
+    const table = quoteIdentifier(tableName);
+    const column = quoteIdentifier(columnName);
+    await client.query(
+      `update ${table} set ${column} = $1 where ${column} = any($2::text[])`,
+      [replacement.targetAccountId, sources]
+    );
+  }
+}
+
+function quoteIdentifier(identifier: string): string {
+  return `"${identifier.replaceAll('"', '""')}"`;
 }
 
 export async function withDatabaseTransaction<T>(
