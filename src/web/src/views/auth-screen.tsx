@@ -1,4 +1,13 @@
-import { Github, KeyRound, Loader2, LogIn, Mail, Send } from "lucide-react";
+import {
+  CheckCircle2,
+  Github,
+  KeyRound,
+  Loader2,
+  LogIn,
+  Mail,
+  RefreshCw,
+  Send
+} from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
 import { Badge } from "../components/ui/badge";
@@ -35,7 +44,7 @@ export function AuthScreen({
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState<string | undefined>(error);
+  const [errorMessage, setErrorMessage] = useState<string | undefined>(error);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDevelopmentLoginSubmitting, setIsDevelopmentLoginSubmitting] = useState(false);
   const [authConfig, setAuthConfig] = useState<AuthConfigResponse>();
@@ -43,35 +52,70 @@ export function AuthScreen({
   const [emailCode, setEmailCode] = useState("");
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
+  const [emailCodeRequest, setEmailCodeRequest] = useState<{
+    email: string;
+    expiresAt: string;
+    resendAt: number;
+  }>();
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   useEffect(() => {
     const callbackError = sessionStorage.getItem("harhub.auth_error");
     if (callbackError) {
       sessionStorage.removeItem("harhub.auth_error");
-      setMessage(callbackError);
+      setErrorMessage(callbackError);
       return;
     }
-    setMessage(error);
+    setErrorMessage(error);
   }, [error]);
 
   useEffect(() => {
     void getAuthConfig()
       .then(setAuthConfig)
       .catch((caught) => {
-        setMessage(caught instanceof Error ? caught.message : "Sign-in options could not be loaded.");
+        setErrorMessage(
+          caught instanceof Error ? caught.message : "Sign-in options could not be loaded."
+        );
       })
       .finally(() => setIsAuthConfigLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (!emailCodeRequest) return;
+    const now = Date.now();
+    const expiresAt = Date.parse(emailCodeRequest.expiresAt);
+    setCurrentTime(now);
+
+    let resendTimer: number | undefined;
+    if (emailCodeRequest.resendAt > now) {
+      resendTimer = window.setInterval(() => {
+        const tick = Date.now();
+        setCurrentTime(tick);
+        if (tick >= emailCodeRequest.resendAt && resendTimer) {
+          window.clearInterval(resendTimer);
+        }
+      }, 1_000);
+    }
+
+    const expirationTimer = Number.isFinite(expiresAt) && expiresAt > now
+      ? window.setTimeout(() => setCurrentTime(Date.now()), expiresAt - now)
+      : undefined;
+
+    return () => {
+      if (resendTimer) window.clearInterval(resendTimer);
+      if (expirationTimer) window.clearTimeout(expirationTimer);
+    };
+  }, [emailCodeRequest]);
+
   async function submitPassword(event: FormEvent) {
     event.preventDefault();
     setIsSubmitting(true);
-    setMessage(undefined);
+    setErrorMessage(undefined);
     try {
       const response = await login({ email, password, inviteToken });
       onAuthenticated(response);
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : String(caught));
+      setErrorMessage(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setIsSubmitting(false);
     }
@@ -79,12 +123,12 @@ export function AuthScreen({
 
   async function submitDevelopmentLogin() {
     setIsDevelopmentLoginSubmitting(true);
-    setMessage(undefined);
+    setErrorMessage(undefined);
     try {
       const response = await developmentLogin({ email, inviteToken });
       onAuthenticated(response);
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : String(caught));
+      setErrorMessage(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setIsDevelopmentLoginSubmitting(false);
     }
@@ -92,12 +136,19 @@ export function AuthScreen({
 
   async function sendEmailCode() {
     setIsSendingCode(true);
-    setMessage(undefined);
+    setErrorMessage(undefined);
     try {
-      await requestEmailCode({ email, inviteToken });
-      setMessage("Verification code sent.");
+      const result = await requestEmailCode({ email, inviteToken });
+      const sentAt = Date.now();
+      setCurrentTime(sentAt);
+      setEmailCodeRequest({
+        email: email.trim().toLowerCase(),
+        expiresAt: result.expiresAt,
+        resendAt: sentAt + 30_000
+      });
+      setEmailCode("");
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : String(caught));
+      setErrorMessage(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setIsSendingCode(false);
     }
@@ -106,12 +157,12 @@ export function AuthScreen({
   async function submitEmailCode(event: FormEvent) {
     event.preventDefault();
     setIsVerifyingCode(true);
-    setMessage(undefined);
+    setErrorMessage(undefined);
     try {
       const response = await verifyEmailCode({ email, code: emailCode, inviteToken });
       onAuthenticated(response);
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : String(caught));
+      setErrorMessage(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setIsVerifyingCode(false);
     }
@@ -130,6 +181,25 @@ export function AuthScreen({
   );
   const hasAnyAuth = Boolean(hasOAuth || hasEmailAuth);
   const hasBothOAuthProviders = Boolean(authConfig?.oauth.google && authConfig?.oauth.github);
+  const normalizedEmail = email.trim().toLowerCase();
+  const emailCodeExpiresAt = emailCodeRequest ? Date.parse(emailCodeRequest.expiresAt) : 0;
+  const isEmailCodeSent = Boolean(
+    emailCodeRequest?.email === normalizedEmail &&
+      Number.isFinite(emailCodeExpiresAt) &&
+      emailCodeExpiresAt > currentTime
+  );
+  const resendSeconds = isEmailCodeSent && emailCodeRequest
+    ? Math.max(0, Math.ceil((emailCodeRequest.resendAt - currentTime) / 1_000))
+    : 0;
+
+  function updateEmail(value: string) {
+    setEmail(value);
+    setErrorMessage(undefined);
+    if (emailCodeRequest && emailCodeRequest.email !== value.trim().toLowerCase()) {
+      setEmailCodeRequest(undefined);
+      setEmailCode("");
+    }
+  }
 
   return (
     <main className="flex min-h-[100dvh] items-center justify-center px-4 py-8">
@@ -177,7 +247,7 @@ export function AuthScreen({
                   <Input
                     type="email"
                     value={email}
-                    onChange={(event) => setEmail(event.target.value)}
+                    onChange={(event) => updateEmail(event.target.value)}
                     autoComplete="email"
                     placeholder={authConfig.developmentLogin ? "admin@harhub.local" : undefined}
                     required
@@ -253,35 +323,63 @@ export function AuthScreen({
               {authConfig.emailCode ? (
                 <form className="grid gap-3" onSubmit={submitEmailCode}>
                   <label className="grid gap-2 text-sm font-medium">
-                    Email verification code
+                    <span className="flex min-w-0 items-center justify-between gap-3">
+                      <span>Email verification code</span>
+                      {isEmailCodeSent ? (
+                        <span
+                          className="inline-flex min-w-0 items-center gap-1 text-xs font-normal text-emerald-700"
+                          aria-live="polite"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          <span className="truncate">Sent to {emailCodeRequest?.email}</span>
+                        </span>
+                      ) : null}
+                    </span>
                     <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                       <Input
                         value={emailCode}
                         onChange={(event) => setEmailCode(event.target.value)}
-                        placeholder="6-digit code"
+                        placeholder={isEmailCodeSent ? "6-digit code" : "Send a code first"}
                         inputMode="numeric"
                         autoComplete="one-time-code"
                         maxLength={6}
+                        disabled={!isEmailCodeSent}
+                        className={isEmailCodeSent ? "border-emerald-300" : undefined}
                       />
                       <Button
                         type="button"
-                        variant="outline"
-                        disabled={isSendingCode || !email.trim()}
+                        variant={isEmailCodeSent ? "secondary" : "outline"}
+                        disabled={isSendingCode || !email.trim() || resendSeconds > 0}
                         onClick={() => void sendEmailCode()}
                       >
                         {isSendingCode ? (
                           <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        ) : resendSeconds > 0 ? (
+                          <CheckCircle2 className="h-4 w-4 text-emerald-700" aria-hidden="true" />
+                        ) : isEmailCodeSent ? (
+                          <RefreshCw className="h-4 w-4" aria-hidden="true" />
                         ) : (
                           <Send className="h-4 w-4" aria-hidden="true" />
                         )}
-                        Send code
+                        {isSendingCode
+                          ? "Sending…"
+                          : resendSeconds > 0
+                            ? `Code sent · ${resendSeconds}s`
+                            : isEmailCodeSent
+                              ? "Resend code"
+                              : "Send code"}
                       </Button>
                     </div>
                   </label>
                   <Button
                     type="submit"
                     variant="secondary"
-                    disabled={isVerifyingCode || !email.trim() || emailCode.length < 6}
+                    disabled={
+                      isVerifyingCode ||
+                      !isEmailCodeSent ||
+                      !email.trim() ||
+                      emailCode.length < 6
+                    }
                   >
                     {isVerifyingCode ? (
                       <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -301,7 +399,11 @@ export function AuthScreen({
             </>
           ) : null}
 
-          {message ? <p className="text-sm text-destructive">{message}</p> : null}
+          {errorMessage ? (
+            <p className="text-sm text-destructive" role="alert">
+              {errorMessage}
+            </p>
+          ) : null}
         </CardContent>
       </Card>
     </main>
