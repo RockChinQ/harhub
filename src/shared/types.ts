@@ -537,7 +537,7 @@ export type ForgeOperationStreamEvent =
 export type ForgeSessionStatus = "interviewing" | "working" | "failed" | "complete";
 
 export type ProjectStatus = "active" | "archived";
-export type ProjectBindingKind = "skill" | "mcp" | "rule";
+export type ProjectBindingKind = "skill" | "mcp" | "rule" | "instruction";
 export type ProjectBindingSource = "harhub" | "framework" | "repository";
 export type ProjectBindingStatus = "pending" | "synced" | "added" | "modified" | "missing";
 
@@ -554,10 +554,132 @@ export interface ProjectSkillForkSummary {
 
 export interface ProjectRepository {
   provider: "github";
+  /** Immutable provider identity. Names can change after a repository transfer or rename. */
+  id?: string;
+  nodeId?: string;
   owner: string;
   name: string;
   url: string;
   defaultBranch: string;
+}
+
+export type ProjectRepositoryConnectionMode = "github-app" | "action";
+export type ProjectRepositoryConnectionStatus =
+  | "active"
+  | "permission-lost"
+  | "disconnected";
+
+export interface ProjectRepositoryConnection {
+  mode: ProjectRepositoryConnectionMode;
+  status: ProjectRepositoryConnectionStatus;
+  installationId?: string;
+  permissionMode: "read" | "write";
+  connectedAt: string;
+  lastObservedHeadSha?: string;
+  lastObservedAt?: string;
+}
+
+export type ProjectInventoryArtifactFormat =
+  | "agent-skill"
+  | "agents-instructions"
+  | "claude-instructions"
+  | "copilot-instructions"
+  | "cursor-rule"
+  | "windsurf-rule"
+  | "harhub-rule"
+  | "mcp-json"
+  | "harhub-mcp";
+
+export type ProjectInventoryRelationship =
+  | "library-synced"
+  | "library-modified"
+  | "repository-owned"
+  | "review-required"
+  | "blocked"
+  | "ignored";
+
+export interface ProjectInventoryArtifact {
+  id: string;
+  kind: ProjectBindingKind;
+  format: ProjectInventoryArtifactFormat;
+  path: string;
+  name: string;
+  description: string;
+  digest: string;
+  fileCount: number;
+  size: number;
+  health: AssetHealth;
+  validation: {
+    errors: number;
+    warnings: number;
+  };
+  issues: Array<{
+    severity: SkillValidationSeverity;
+    message: string;
+  }>;
+  relationship: ProjectInventoryRelationship;
+  bindingId?: string;
+  libraryAssetId?: string;
+  libraryVersion?: number;
+}
+
+export type ProjectInventoryTrigger = "initial" | "manual" | "push" | "retry";
+export type ProjectScanJobStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "superseded";
+
+export interface ProjectScanJob {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  trigger: ProjectInventoryTrigger;
+  status: ProjectScanJobStatus;
+  requestedSha?: string;
+  effectiveSha?: string;
+  attempts: number;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  failure?: {
+    code: string;
+    message: string;
+    retryable: boolean;
+  };
+}
+
+export interface ProjectInventorySnapshot {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  commitSha: string;
+  treeSha?: string;
+  detectorVersion: string;
+  trigger: ProjectInventoryTrigger;
+  artifacts: ProjectInventoryArtifact[];
+  createdAt: string;
+}
+
+export type ProjectBindingOwnership = "library" | "repository" | "ignored";
+
+export interface ProjectBindingPolicy {
+  projectId: string;
+  artifactPath: string;
+  ownership: ProjectBindingOwnership;
+  libraryAssetId?: string;
+  pinnedVersion?: number;
+  decidedByAccountId: string;
+  decidedAt: string;
+}
+
+export interface ProjectInventoryResponse {
+  project: HarhubProject;
+  connection?: ProjectRepositoryConnection;
+  latestSnapshot?: ProjectInventorySnapshot;
+  activeJob?: ProjectScanJob;
+  policies: ProjectBindingPolicy[];
 }
 
 export interface ProjectBinding {
