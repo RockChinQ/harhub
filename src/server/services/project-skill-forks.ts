@@ -1,5 +1,6 @@
 import {
   createImportedSkillAsset,
+  obsoleteAssetStorageObjects,
   removeCatalogAsset,
   upsertAsset
 } from "../../features/assets/index.js";
@@ -280,11 +281,7 @@ export async function publishProjectSkillFork(input: {
     });
     await deleteStoredObjectsBestEffort([
       fork.storage,
-      ...replacedAssets.flatMap((replaced) =>
-        replaced.storage && storageKey(replaced.storage) !== storageKey(storage)
-          ? [replaced.storage]
-          : []
-      )
+      ...obsoleteAssetStorageObjects(replacedAssets, [asset])
     ]);
     return { project, asset };
   } catch (error) {

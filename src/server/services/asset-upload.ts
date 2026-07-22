@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 
 import {
   createImportedSkillAsset,
+  obsoleteAssetStorageObjects,
   upsertAsset
 } from "../../features/assets/index.js";
 import {
@@ -17,6 +18,7 @@ import type {
 } from "../../shared/types.js";
 import { writeWorkspaceAssetCatalog } from "../../state/index.js";
 import type { WorkspaceContext } from "../../state/types.js";
+import { assertWorkspaceAdminContext } from "../authorization.js";
 import {
   deleteStoredObject,
   uploadSkillFiles
@@ -53,6 +55,7 @@ export async function handleAssetUpload(
   res: Response,
   context: WorkspaceContext
 ): Promise<void> {
+  assertWorkspaceAdminContext(context);
   const file = req.file;
   if (!file) {
     res.status(400).json({ error: "A zip file is required." });
@@ -68,7 +71,7 @@ export async function handleAssetUpload(
 
     const originalCatalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
     let catalog: AssetCatalog = originalCatalog;
-    const replacedStorage: StoredObject[] = [];
+    const obsoleteStorage: StoredObject[] = [];
 
     for (const skill of selected) {
       const assetId = `asset:skill:${context.workspace.id}:${skill.name}`;
@@ -91,13 +94,15 @@ export async function handleAssetUpload(
         previous,
         createdByAccountId: context.account.id
       });
-      if (!hasSamePackage && previous?.storage) replacedStorage.push(previous.storage);
+      if (previous) {
+        obsoleteStorage.push(...obsoleteAssetStorageObjects([previous], [asset]));
+      }
       storedAssets.push(asset);
       catalog = upsertAsset(catalog, asset);
     }
 
     await writeWorkspaceAssetCatalog(context.workspace.id, catalog);
-    await Promise.all(replacedStorage.map((storage) =>
+    await Promise.all(obsoleteStorage.map((storage) =>
       deleteStoredObject(storage).catch(() => undefined)
     ));
 

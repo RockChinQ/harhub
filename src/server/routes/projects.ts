@@ -18,7 +18,7 @@ import {
   listProjects,
   rotateProjectSyncToken
 } from "../../state/index.js";
-import { requireWorkspaceAccess } from "../auth.js";
+import { requireWorkspaceAccess, requireWorkspaceAdminAccess } from "../auth.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "../services/workspace-catalogs.js";
 import {
   getProjectSkillDiff,
@@ -82,7 +82,7 @@ export function registerProjectRoutes(
   app.post(
     "/api/workspaces/:workspaceId/projects/:projectId/bindings/:bindingId/publish",
     async (req, res) => {
-      const context = await requireWorkspaceAccess(req, res);
+      const context = await requireWorkspaceAdminAccess(req, res);
       if (!context) return;
       setPrivateNoStore(res);
       try {
@@ -110,7 +110,7 @@ export function registerProjectRoutes(
   });
 
   app.post("/api/workspaces/:workspaceId/projects", async (req, res) => {
-    const context = await requireWorkspaceAccess(req, res);
+    const context = await requireWorkspaceAdminAccess(req, res);
     if (!context) return;
     setPrivateNoStore(res);
     try {
@@ -151,7 +151,7 @@ export function registerProjectRoutes(
   app.post(
     "/api/workspaces/:workspaceId/projects/:projectId/rotate-sync-token",
     async (req, res) => {
-      const context = await requireWorkspaceAccess(req, res);
+      const context = await requireWorkspaceAdminAccess(req, res);
       if (!context) return;
       setPrivateNoStore(res);
       try {
@@ -169,7 +169,7 @@ export function registerProjectRoutes(
   app.put(
     "/api/workspaces/:workspaceId/projects/:projectId/repository",
     async (req, res) => {
-      const context = await requireWorkspaceAccess(req, res);
+      const context = await requireWorkspaceAdminAccess(req, res);
       if (!context) return;
       setPrivateNoStore(res);
       try {
@@ -187,7 +187,7 @@ export function registerProjectRoutes(
   );
 
   app.delete("/api/workspaces/:workspaceId/projects/:projectId", async (req, res) => {
-    const context = await requireWorkspaceAccess(req, res);
+    const context = await requireWorkspaceAdminAccess(req, res);
     if (!context) return;
     setPrivateNoStore(res);
     try {
@@ -204,7 +204,7 @@ export function registerProjectRoutes(
   app.post(
     "/api/workspaces/:workspaceId/forge/sessions/:sessionId/freeze",
     async (req, res) => {
-      const context = await requireWorkspaceAccess(req, res);
+      const context = await requireWorkspaceAdminAccess(req, res);
       if (!context) return;
       setPrivateNoStore(res);
       try {

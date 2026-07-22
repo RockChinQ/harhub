@@ -33,7 +33,7 @@ harhub_workspace_catalogs
   updated_at
 ```
 
-这些表保存 accounts、sessions、workspaces、memberships、invitations、device authorization、asset shares 和 workspace asset indexes。上传源 zip 不进数据库，也不会保留在对象存储中；每个导入后的 Skill 都以独立 S3 prefix 逐文件存储。
+这些表保存 accounts、sessions、workspaces、memberships、invitations、device authorization、asset shares 和 workspace asset indexes。上传源 zip 不进数据库，也不会保留在对象存储中；每个导入后的 Skill 版本都以独立 S3 prefix 逐文件存储。每个 Skill 最多保留当前版本和最近四个旧版本，超出窗口的对象会在 catalog 成功更新后清理。
 
 本地 JSON fallback 仍然可用：当没有设置 `HARHUB_DATABASE_URL` 时，运行态状态存储在 `.harhub/state.json`，workspace catalog 存储在 `.harhub/workspaces/<workspace-id>/` 下。这只用于 self-host demo 和本地开发，不是 hosted operation 的默认路径。
 
@@ -140,10 +140,12 @@ POST /api/invitations/accept
 GET  /api/workspaces/:workspaceId/assets
 GET  /api/workspaces/:workspaceId/assets/:query
 GET  /api/workspaces/:workspaceId/assets/:query/preview
+GET  /api/workspaces/:workspaceId/assets/:query/versions/:version/download
 POST /api/workspaces/:workspaceId/assets/upload
 POST /api/workspaces/:workspaceId/assets/validate
 POST /api/workspaces/:workspaceId/assets/bulk
 POST /api/workspaces/:workspaceId/assets/:query/validate
+POST /api/workspaces/:workspaceId/assets/:query/versions/:version/rollback
 DELETE /api/workspaces/:workspaceId/assets/:query
 GET  /api/workspaces/:workspaceId/assets/:query/share
 POST /api/workspaces/:workspaceId/assets/:query/share
@@ -168,4 +170,4 @@ GET  /api/skills
 
 服务端已经移除 path-based scan、create 和 patch routes。Uploaded packages 不支持原地 patch，修改后应重新上传 zip。
 
-当前角色执行范围并不完全一致：workspace 重命名、邀请、成员角色修改和成员移除会执行 owner/admin 检查；资产 upload、validate 和 delete 目前只要求 workspace membership。按角色限制资产 mutation 仍是发布前 TODO。
+当前采用简化 workspace RBAC：owner/admin 可以执行 Asset upload、validate、share、delete、历史版本回滚以及 Project create、freeze、repository connection、sync-token rotation 和 Library publish；member/viewer 可以读取 workspace 资源。Project GitHub Action 继续使用单个 Project 的专用 sync token。

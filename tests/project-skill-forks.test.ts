@@ -18,7 +18,9 @@ test("stores repository Skills as Project forks until explicitly published", {
   skip: hasObjectStorage ? false : "requires HARHUB_S3_BUCKET"
 }, async () => {
   const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "harhub-project-forks-"));
+  const originalDirectory = process.cwd();
   const previousStatePath = process.env.HARHUB_STATE;
+  process.chdir(temporaryDirectory);
   process.env.HARHUB_STATE = path.join(temporaryDirectory, "state.json");
   const cleanupStorage: StoredObject[] = [];
   let server: Server | undefined;
@@ -255,9 +257,20 @@ test("stores repository Skills as Project forks until explicitly published", {
     assert.equal(published.asset.version, 2);
     assert.equal(published.asset.versionHistory?.length, 2);
     assert.equal(published.asset.versionHistory?.[1]?.source, "project-sync");
+    assert.equal(published.asset.versionHistory?.[0]?.storage?.key, baseStorage.key);
     if (published.asset.storage) cleanupStorage.push(published.asset.storage);
     const stored = await loadStoredSkill(published.asset.storage!);
     assert.equal(stored.skill.checksum, digest);
+    const previousVersionResponse = await fetch(
+      `${baseUrl}/api/workspaces/ws_demo/assets/${encodeURIComponent(published.asset.id)}/versions/1/download`,
+      { headers: { Authorization: `Bearer ${accountToken}` } }
+    );
+    assert.equal(previousVersionResponse.status, 200);
+    const previousVersionZip = await JSZip.loadAsync(await previousVersionResponse.arrayBuffer());
+    assert.match(
+      await previousVersionZip.file("SKILL.md")!.async("string"),
+      /concise release notes/
+    );
 
     const addedPublishResponse = await fetch(
       `${baseUrl}/api/workspaces/ws_demo/projects/${project.id}/bindings/${addedBinding.id}/publish`,
@@ -311,6 +324,7 @@ test("stores repository Skills as Project forks until explicitly published", {
     }
     if (previousStatePath === undefined) delete process.env.HARHUB_STATE;
     else process.env.HARHUB_STATE = previousStatePath;
+    process.chdir(originalDirectory);
     rmSync(temporaryDirectory, { recursive: true, force: true });
   }
 });

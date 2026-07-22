@@ -3,7 +3,7 @@ import {
   filterAssets,
   findAsset
 } from "../../features/assets/index.js";
-import { requireWorkspaceAccess } from "../auth.js";
+import { requireWorkspaceAccess, requireWorkspaceAdminAccess } from "../auth.js";
 import {
   deleteAsset,
   deleteWorkspaceAssetBatch
@@ -12,6 +12,10 @@ import {
   handleAssetImportPreview,
   handleAssetUpload
 } from "../services/asset-upload.js";
+import {
+  getWorkspaceAssetVersionArchive,
+  rollbackWorkspaceAssetVersion
+} from "../services/asset-versions.js";
 import { assetListPayload } from "../services/asset-responses.js";
 import { loadStoredSkill } from "../services/skill-packages.js";
 import {
@@ -85,6 +89,31 @@ export function registerAssetRoutes(
     res.json(asset);
   });
 
+  app.get(
+    "/api/workspaces/:workspaceId/assets/:query/versions/:version/download",
+    async (req, res) => {
+      const context = await requireWorkspaceAccess(req, res);
+      if (!context) return;
+      setPrivateNoStore(res);
+      try {
+        const archive = await getWorkspaceAssetVersionArchive({
+          workspace: context.workspace,
+          assetQuery: req.params.query,
+          version: readVersion(req.params.version)
+        });
+        res.setHeader("Content-Type", "application/zip");
+        res.setHeader("Content-Length", String(archive.buffer.byteLength));
+        res.setHeader("Content-Disposition", `attachment; filename="${archive.fileName}"`);
+        res.setHeader("ETag", `"sha256-${archive.checksum}"`);
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        res.send(archive.buffer);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendError(res, error, assetVersionErrorStatus(message, 400));
+      }
+    }
+  );
+
   registerAssetMutationRoutes(app, upload);
 }
 
@@ -93,7 +122,7 @@ function registerAssetMutationRoutes(
   upload: { single(fieldName: string): RequestHandler }
 ): void {
   app.post("/api/workspaces/:workspaceId/assets/validate", async (req, res) => {
-    const context = await requireWorkspaceAccess(req, res);
+    const context = await requireWorkspaceAdminAccess(req, res);
     if (!context) return;
 
     try {
@@ -105,7 +134,7 @@ function registerAssetMutationRoutes(
   });
 
   app.post("/api/workspaces/:workspaceId/assets/bulk", async (req, res) => {
-    const context = await requireWorkspaceAccess(req, res);
+    const context = await requireWorkspaceAdminAccess(req, res);
     if (!context) return;
 
     try {
@@ -133,7 +162,7 @@ function registerAssetMutationRoutes(
   });
 
   app.post("/api/workspaces/:workspaceId/assets/upload", upload.single("file"), async (req, res) => {
-    const context = await requireWorkspaceAccess(req, res);
+    const context = await requireWorkspaceAdminAccess(req, res);
     if (!context) return;
     await handleAssetUpload(req, res, context);
   });
@@ -145,7 +174,7 @@ function registerAssetMutationRoutes(
   });
 
   app.post("/api/workspaces/:workspaceId/assets/:query/validate", async (req, res) => {
-    const context = await requireWorkspaceAccess(req, res);
+    const context = await requireWorkspaceAdminAccess(req, res);
     if (!context) return;
 
     try {
@@ -157,10 +186,43 @@ function registerAssetMutationRoutes(
   });
 
   app.delete("/api/workspaces/:workspaceId/assets/:query", async (req, res) => {
-    const context = await requireWorkspaceAccess(req, res);
+    const context = await requireWorkspaceAdminAccess(req, res);
     if (!context) return;
     await deleteAsset(req, res, context);
   });
+
+  app.post(
+    "/api/workspaces/:workspaceId/assets/:query/versions/:version/rollback",
+    async (req, res) => {
+      const context = await requireWorkspaceAdminAccess(req, res);
+      if (!context) return;
+      setPrivateNoStore(res);
+      try {
+        res.json(await rollbackWorkspaceAssetVersion({
+          context,
+          assetQuery: req.params.query,
+          version: readVersion(req.params.version)
+        }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendError(res, error, assetVersionErrorStatus(message, 400));
+      }
+    }
+  );
+}
+
+function readVersion(value: string): number {
+  const version = Number(value);
+  if (!Number.isSafeInteger(version) || version < 1) {
+    throw new Error("Version must be a positive integer.");
+  }
+  return version;
+}
+
+function assetVersionErrorStatus(message: string, fallback: number): number {
+  if (message.includes("no longer retained")) return 410;
+  if (message === "Asset not found." || message === "Asset version not found.") return 404;
+  return fallback;
 }
 
 function readAssetIds(value: unknown): string[] {

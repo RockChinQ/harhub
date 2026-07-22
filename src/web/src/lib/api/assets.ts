@@ -151,3 +151,49 @@ export async function getWorkspaceAssetTree(
     { token, cache: "no-store" }
   );
 }
+
+export async function downloadWorkspaceAssetVersion(
+  token: string,
+  workspaceId: string,
+  assetId: string,
+  version: number
+): Promise<{ blob: Blob; fileName: string }> {
+  const response = await fetch(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/assets/${encodeURIComponent(assetId)}/versions/${version}/download`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store"
+    }
+  );
+  if (!response.ok) {
+    const data = await response.json().catch(() => undefined);
+    throw new Error(
+      typeof data?.error === "string"
+        ? data.error
+        : `Version download failed with ${response.status}`
+    );
+  }
+  const disposition = response.headers.get("content-disposition");
+  const fileName = disposition?.match(/filename\s*=\s*"?([^";]+)"?/i)?.[1];
+  return {
+    blob: await response.blob(),
+    fileName: fileName?.split(/[\\/]/).pop()?.trim() || `${assetId}-v${version}.zip`
+  };
+}
+
+export async function rollbackWorkspaceAssetVersion(
+  token: string,
+  workspaceId: string,
+  assetId: string,
+  version: number
+): Promise<{ asset: AssetRecord; restoredFromVersion: number }> {
+  return request(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/assets/${encodeURIComponent(assetId)}/versions/${version}/rollback`,
+    {
+      token,
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({})
+    }
+  );
+}

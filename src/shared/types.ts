@@ -8,7 +8,7 @@ export type AssetKind = "skill";
 
 export type AssetHealth = "valid" | "warning" | "error" | "unknown";
 
-export type AssetVersionSource = "upload" | "project-sync" | "migration" | "scan";
+export type AssetVersionSource = "upload" | "project-sync" | "migration" | "rollback" | "scan";
 
 export type StorageProvider = "s3";
 export const SKILL_FILES_CHECKSUM_ALGORITHM = "skill-files-v2" as const;
@@ -200,6 +200,8 @@ export interface AssetVersionRecord {
   description: string;
   health: AssetHealth;
   validation: AssetRecord["validation"];
+  /** Retained package snapshot used for version download and rollback. */
+  storage?: StoredObject;
 }
 
 export interface AssetShareRecord {

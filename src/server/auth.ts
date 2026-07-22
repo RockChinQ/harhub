@@ -4,6 +4,7 @@ import {
   listAccountWorkspaces
 } from "../state/index.js";
 import type { AccountProfile } from "../shared/types.js";
+import { canManageWorkspace } from "./authorization.js";
 import { getBearerToken } from "./utils/http.js";
 
 export async function buildSessionPayload(account: AccountProfile) {
@@ -45,4 +46,16 @@ export async function requireWorkspaceAccess(req: Request, res: Response) {
     workspace,
     membership
   };
+}
+
+export async function requireWorkspaceAdminAccess(req: Request, res: Response) {
+  const context = await requireWorkspaceAccess(req, res);
+  if (!context) return undefined;
+
+  if (!canManageWorkspace(context)) {
+    res.status(403).json({ error: "Workspace admin access is required." });
+    return undefined;
+  }
+
+  return context;
 }

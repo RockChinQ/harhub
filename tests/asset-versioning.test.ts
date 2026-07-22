@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  MAX_RETAINED_ASSET_VERSIONS,
+  assetStorageObjects,
   normalizeAssetCatalog,
   normalizeAssetVersioning,
+  obsoleteAssetStorageObjects,
   recordAssetVersion
 } from "../src/features/assets/index.js";
 import type { AssetRecord, StoredObject } from "../src/shared/types.js";
@@ -18,6 +21,7 @@ test("creates monotonic Skill versions only when package content changes", () =>
   assert.equal(initial.version, 1);
   assert.equal(initial.versionHistory?.length, 1);
   assert.equal(initial.versionHistory?.[0]?.source, "upload");
+  assert.equal(initial.versionHistory?.[0]?.storage?.key, initial.storage?.key);
   assert.deepEqual(initial.versionHistory?.[0]?.changes, ["Initial version"]);
 
   const updated = recordAssetVersion({
@@ -35,6 +39,10 @@ test("creates monotonic Skill versions only when package content changes", () =>
   assert.equal(updated.updatedAt, "2026-07-20T09:00:00.000Z");
   assert.equal(updated.versionHistory?.length, 2);
   assert.equal(updated.versionHistory?.[1]?.source, "project-sync");
+  assert.deepEqual(assetStorageObjects(updated).map((item) => item.checksum), [
+    "checksum-b",
+    "checksum-a"
+  ]);
   assert.deepEqual(updated.versionHistory?.[1]?.changes, [
     "Package contents changed",
     "Description changed",
@@ -56,6 +64,35 @@ test("creates monotonic Skill versions only when package content changes", () =>
   assert.equal(duplicate.updatedAt, updated.updatedAt);
 });
 
+test("retains only the five most recent Skill packages", () => {
+  let asset = recordAssetVersion({
+    asset: assetWithStorage(storage("checksum-1", "2026-07-20T08:00:00.000Z", 1)),
+    source: "upload"
+  });
+  let previous = asset;
+  for (let version = 2; version <= 7; version += 1) {
+    previous = asset;
+    asset = recordAssetVersion({
+      asset: assetWithStorage(storage(
+        `checksum-${version}`,
+        `2026-07-20T${String(7 + version).padStart(2, "0")}:00:00.000Z`,
+        version
+      )),
+      previous,
+      source: "upload"
+    });
+  }
+
+  assert.equal(asset.version, 7);
+  assert.equal(asset.versionHistory?.length, MAX_RETAINED_ASSET_VERSIONS);
+  assert.deepEqual(asset.versionHistory?.map((entry) => entry.version), [3, 4, 5, 6, 7]);
+  assert.ok(asset.versionHistory?.every((entry) => Boolean(entry.storage)));
+  assert.deepEqual(
+    obsoleteAssetStorageObjects([previous], [asset]).map((item) => item.checksum),
+    ["checksum-2"]
+  );
+});
+
 test("normalizes legacy catalogs into a stable initial version", () => {
   const legacy = assetWithStorage(storage("legacy-checksum", "2025-01-02T03:04:05.000Z", 1));
   const normalized = normalizeAssetVersioning(legacy);
@@ -63,6 +100,7 @@ test("normalizes legacy catalogs into a stable initial version", () => {
   assert.equal(normalized.version, 1);
   assert.equal(normalized.createdAt, "2025-01-02T03:04:05.000Z");
   assert.equal(normalized.versionHistory?.[0]?.source, "migration");
+  assert.equal(normalized.versionHistory?.[0]?.storage?.key, legacy.storage?.key);
 
   const catalog = normalizeAssetCatalog({
     schemaVersion: 1,

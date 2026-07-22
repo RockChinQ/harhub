@@ -1,10 +1,12 @@
 import type {
   AssetRecord,
   AssetVersionRecord,
-  AssetVersionSource
+  AssetVersionSource,
+  StoredObject
 } from "../../shared/types.js";
 
 const LEGACY_TIMESTAMP = "1970-01-01T00:00:00.000Z";
+export const MAX_RETAINED_ASSET_VERSIONS = 5;
 
 export function recordAssetVersion(input: {
   asset: AssetRecord;
@@ -55,15 +57,19 @@ export function recordAssetVersion(input: {
     displayName: input.asset.displayName,
     description: input.asset.description,
     health: input.asset.health,
-    validation: input.asset.validation
+    validation: input.asset.validation,
+    ...(input.asset.storage ? { storage: { ...input.asset.storage } } : {})
   };
+
+  const versionHistory = [...(previous?.versionHistory ?? []), entry]
+    .slice(-MAX_RETAINED_ASSET_VERSIONS);
 
   return {
     ...input.asset,
     version,
     createdAt: previous?.createdAt ?? createdAt,
     updatedAt: createdAt,
-    versionHistory: [...(previous?.versionHistory ?? []), entry]
+    versionHistory
   };
 }
 
@@ -80,9 +86,29 @@ export function normalizeAssetVersioning(asset: AssetRecord): AssetRecord {
     asset.version ?? 0,
     ...history.map((entry) => entry.version)
   );
-  const normalizedHistory = history.length > 0
+  let normalizedHistory = history.length > 0
     ? history
     : [legacyVersion(asset, fallbackVersion, fallbackCreatedAt)];
+  if (asset.storage) {
+    let currentIndex = -1;
+    for (let index = normalizedHistory.length - 1; index >= 0; index -= 1) {
+      const entry = normalizedHistory[index]!;
+      if (
+        entry.version === fallbackVersion ||
+        Boolean(entry.checksum && entry.checksum === asset.storage.checksum)
+      ) {
+        currentIndex = index;
+        break;
+      }
+    }
+    if (currentIndex >= 0 && !normalizedHistory[currentIndex]?.storage) {
+      normalizedHistory[currentIndex] = {
+        ...normalizedHistory[currentIndex]!,
+        storage: { ...asset.storage }
+      };
+    }
+  }
+  normalizedHistory = normalizedHistory.slice(-MAX_RETAINED_ASSET_VERSIONS);
 
   return {
     ...asset,
@@ -94,6 +120,29 @@ export function normalizeAssetVersioning(asset: AssetRecord): AssetRecord {
       fallbackCreatedAt,
     versionHistory: normalizedHistory
   };
+}
+
+export function assetStorageObjects(asset: AssetRecord): StoredObject[] {
+  const storage = [
+    asset.storage,
+    ...(asset.versionHistory ?? []).map((entry) => entry.storage)
+  ].filter((item): item is StoredObject => Boolean(item));
+  return Array.from(new Map(storage.map((item) => [storageIdentity(item), item])).values());
+}
+
+export function obsoleteAssetStorageObjects(
+  previousAssets: AssetRecord[],
+  retainedAssets: AssetRecord[]
+): StoredObject[] {
+  const retained = new Set(
+    retainedAssets.flatMap(assetStorageObjects).map(storageIdentity)
+  );
+  return Array.from(new Map(
+    previousAssets
+      .flatMap(assetStorageObjects)
+      .filter((item) => !retained.has(storageIdentity(item)))
+      .map((item) => [storageIdentity(item), item])
+  ).values());
 }
 
 function normalizeHistory(value: AssetVersionRecord[] | undefined): AssetVersionRecord[] {
@@ -126,7 +175,8 @@ function legacyVersion(
     displayName: asset.displayName,
     description: asset.description,
     health: asset.health,
-    validation: asset.validation
+    validation: asset.validation,
+    ...(asset.storage ? { storage: { ...asset.storage } } : {})
   };
 }
 
@@ -139,8 +189,18 @@ function defaultVersionSummary(
       ? "Published Project changes to the Library Skill"
       : "Published a Project Skill to the Library";
   }
+  if (source === "rollback") return "Restored a retained Skill version";
   if (source === "scan") return isUpdate ? "Rescanned the local Skill" : "Indexed the local Skill";
   return isUpdate ? "Uploaded an updated Skill package" : "Imported the Skill package";
+}
+
+function storageIdentity(storage: StoredObject): string {
+  return [
+    storage.provider,
+    storage.endpoint ?? "aws",
+    storage.bucket,
+    storage.key
+  ].join(":");
 }
 
 function describeChanges(previous: AssetRecord | undefined, asset: AssetRecord): string[] {

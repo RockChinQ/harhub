@@ -16,6 +16,7 @@ import type {
   WorkspaceRecord
 } from "../../shared/types.js";
 import type { WorkspaceContext } from "../../state/types.js";
+import { assertWorkspaceAdminContext } from "../authorization.js";
 import { publicAppUrl } from "./oauth.js";
 import { getStoredSkillArchive } from "./skill-packages.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
@@ -35,6 +36,7 @@ export async function shareWorkspaceAsset(
   context: WorkspaceContext,
   assetQuery: string
 ): Promise<AssetShareResponse> {
+  assertWorkspaceAdminContext(context);
   const asset = await requireStoredWorkspaceAsset(context.workspace, assetQuery);
   const share = await createAssetShare({
     workspaceId: context.workspace.id,
@@ -48,6 +50,7 @@ export async function unshareWorkspaceAsset(
   context: WorkspaceContext,
   assetQuery: string
 ): Promise<boolean> {
+  assertWorkspaceAdminContext(context);
   const asset = await requireStoredWorkspaceAsset(context.workspace, assetQuery);
   return revokeAssetShare(context.workspace.id, asset.id);
 }
