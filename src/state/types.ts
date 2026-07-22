@@ -22,6 +22,7 @@ import type {
 
 export interface AccountRecord extends AccountProfile {
   passwordHash: string;
+  emailVerifiedAt?: string;
 }
 
 export interface SessionRecord {
@@ -67,7 +68,7 @@ export interface OAuthDeviceAuthorizationRecord {
 }
 
 export interface AppState {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   accounts: AccountRecord[];
   identities: AccountIdentity[];
   workspaces: WorkspaceRecord[];

@@ -5,6 +5,7 @@ import {
   ensureAccountHasWorkspace
 } from "./invitations.js";
 import { hashPassword, verifyPassword } from "./passwords.js";
+import { serializeStateAccess } from "./access.js";
 import { loadState, saveState } from "./store.js";
 import type {
   AccountProfile,
@@ -22,22 +23,62 @@ import type {
 const EMAIL_CODE_TTL_MS = 10 * 60 * 1000;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
-export async function createSession(accountId: string): Promise<string> {
-  const state = await loadState();
+interface AuthenticatedSignInResult {
+  account: AccountProfile;
+  token: string;
+}
+
+interface PasswordSignInInput {
+  email: string;
+  password: string;
+  inviteToken?: string;
+}
+
+interface DevelopmentSignInInput {
+  email: string;
+  inviteToken?: string;
+}
+
+interface EmailCodeVerificationInput {
+  email: string;
+  code: string;
+  inviteToken?: string;
+}
+
+interface OAuthProfileSignInInput {
+  provider: AuthProvider;
+  providerAccountId: string;
+  email: string;
+  emailVerified: boolean;
+  name: string;
+  inviteToken?: string;
+}
+
+function appendSession(state: AppState, accountId: string): string {
   const token = randomBytes(32).toString("hex");
   state.sessions.push({
     token,
     accountId,
     createdAt: new Date().toISOString()
   });
-  await saveState(state);
   return token;
 }
 
+export async function createSession(accountId: string): Promise<string> {
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    const token = appendSession(state, accountId);
+    await saveState(state);
+    return token;
+  });
+}
+
 export async function deleteSession(token: string): Promise<void> {
-  const state = await loadState();
-  state.sessions = state.sessions.filter((session) => session.token !== token);
-  await saveState(state);
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    state.sessions = state.sessions.filter((session) => session.token !== token);
+    await saveState(state);
+  });
 }
 
 export async function authenticate(token: string | undefined): Promise<AuthContext | undefined> {
@@ -76,96 +117,135 @@ export async function listAccountWorkspaces(accountId: string): Promise<{
   };
 }
 
-export async function signInWithPassword(input: {
-  email: string;
-  password: string;
-  inviteToken?: string;
-}): Promise<AccountProfile> {
-  const state = await loadState();
-  const email = normalizeEmail(input.email);
-  if (!email) throw new Error("A valid email is required.");
+export function signInWithPassword(
+  input: PasswordSignInInput,
+  issueSession: true
+): Promise<AuthenticatedSignInResult>;
+export function signInWithPassword(
+  input: PasswordSignInInput,
+  issueSession?: false
+): Promise<AccountProfile>;
+export async function signInWithPassword(
+  input: PasswordSignInInput,
+  issueSession = false
+): Promise<AccountProfile | AuthenticatedSignInResult> {
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    const email = normalizeEmail(input.email);
+    if (!email) throw new Error("A valid email is required.");
 
-  let account = state.accounts.find(
-    (item) => item.email.toLowerCase() === email
-  );
+    const matchingAccounts = state.accounts.filter(
+      (item) => normalizeEmail(item.email) === email
+    );
+    const passwordCandidates = matchingAccounts.some((item) => item.emailVerifiedAt)
+      ? matchingAccounts.filter((item) => item.emailVerifiedAt)
+      : matchingAccounts;
+    let account = passwordCandidates.find((item) =>
+      verifyPassword(input.password, item.passwordHash)
+    );
 
-  if (account) {
-    if (!verifyPassword(input.password, account.passwordHash)) {
-      throw new Error("Invalid email or password.");
+    if (matchingAccounts.length > 0) {
+      if (!account) throw new Error("Invalid email or password.");
+      account.email = email;
+      account.updatedAt = new Date().toISOString();
+    } else {
+      if (input.password.length < 6) {
+        throw new Error("Password must be at least 6 characters.");
+      }
+
+      account = {
+        id: randomUUID(),
+        email,
+        name: email.split("@")[0] ?? "User",
+        passwordHash: hashPassword(input.password),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      state.accounts.push(account);
     }
-  } else {
-    if (input.password.length < 6) {
-      throw new Error("Password must be at least 6 characters.");
-    }
 
-    account = {
-      id: randomUUID(),
-      email,
-      name: email.split("@")[0] ?? "User",
-      passwordHash: hashPassword(input.password),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    state.accounts.push(account);
-  }
-
-  acceptMatchingPendingInvitations(state, account, input.inviteToken);
-  ensureAccountHasWorkspace(state, account);
-  await saveState(state);
-  return toPublicAccount(account);
+    acceptMatchingPendingInvitations(state, account, input.inviteToken);
+    ensureAccountHasWorkspace(state, account);
+    const profile = toPublicAccount(account);
+    const token = issueSession ? appendSession(state, account.id) : undefined;
+    await saveState(state);
+    return token ? { account: profile, token } : profile;
+  });
 }
 
-export async function signInForDevelopment(input: {
-  email: string;
-  inviteToken?: string;
-}): Promise<AccountProfile> {
-  const state = await loadState();
-  const email = normalizeEmail(input.email);
-  if (!email) throw new Error("A valid email is required.");
+export function signInForDevelopment(
+  input: DevelopmentSignInInput,
+  issueSession: true
+): Promise<AuthenticatedSignInResult>;
+export function signInForDevelopment(
+  input: DevelopmentSignInInput,
+  issueSession?: false
+): Promise<AccountProfile>;
+export async function signInForDevelopment(
+  input: DevelopmentSignInInput,
+  issueSession = false
+): Promise<AccountProfile | AuthenticatedSignInResult> {
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    const email = normalizeEmail(input.email);
+    if (!email) throw new Error("A valid email is required.");
 
-  const account = findOrCreateAccountByEmail(state, {
-    email,
-    name: email.split("@")[0] ?? "User"
+    const { account, mergedAccountIds } = resolveAccountByEmail(state, {
+      email,
+      name: email.split("@")[0] ?? "User"
+    }, true);
+    acceptMatchingPendingInvitations(state, account, input.inviteToken);
+    ensureAccountHasWorkspace(state, account);
+    account.updatedAt = new Date().toISOString();
+    const profile = toPublicAccount(account);
+    const token = issueSession ? appendSession(state, account.id) : undefined;
+    await saveState(state, accountReferenceReplacement(mergedAccountIds, account.id));
+    return token ? { account: profile, token } : profile;
   });
-  acceptMatchingPendingInvitations(state, account, input.inviteToken);
-  ensureAccountHasWorkspace(state, account);
-  account.updatedAt = new Date().toISOString();
-  await saveState(state);
-  return toPublicAccount(account);
 }
 
 export async function createEmailLoginCode(input: {
   email: string;
   inviteToken?: string;
 }): Promise<{ email: string; code: string; expiresAt: string }> {
-  const state = await loadState();
-  const email = normalizeEmail(input.email);
-  if (!email) throw new Error("A valid email is required.");
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    const email = normalizeEmail(input.email);
+    if (!email) throw new Error("A valid email is required.");
 
-  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
-  const expiresAt = new Date(Date.now() + EMAIL_CODE_TTL_MS).toISOString();
-  state.emailLoginCodes = state.emailLoginCodes.filter(
-    (item) => !item.consumedAt && new Date(item.expiresAt).getTime() > Date.now()
-  );
-  state.emailLoginCodes.push({
-    id: randomUUID(),
-    email,
-    codeHash: hashCode(email, code),
-    inviteToken: input.inviteToken,
-    attempts: 0,
-    createdAt: new Date().toISOString(),
-    expiresAt
+    const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+    const expiresAt = new Date(Date.now() + EMAIL_CODE_TTL_MS).toISOString();
+    state.emailLoginCodes = state.emailLoginCodes.filter(
+      (item) => !item.consumedAt && new Date(item.expiresAt).getTime() > Date.now()
+    );
+    state.emailLoginCodes.push({
+      id: randomUUID(),
+      email,
+      codeHash: hashCode(email, code),
+      inviteToken: input.inviteToken,
+      attempts: 0,
+      createdAt: new Date().toISOString(),
+      expiresAt
+    });
+    await saveState(state);
+    return { email, code, expiresAt };
   });
-  await saveState(state);
-  return { email, code, expiresAt };
 }
 
-export async function verifyEmailLoginCode(input: {
-  email: string;
-  code: string;
-  inviteToken?: string;
-}): Promise<AccountProfile> {
-  const state = await loadState();
+export function verifyEmailLoginCode(
+  input: EmailCodeVerificationInput,
+  issueSession: true
+): Promise<AuthenticatedSignInResult>;
+export function verifyEmailLoginCode(
+  input: EmailCodeVerificationInput,
+  issueSession?: false
+): Promise<AccountProfile>;
+export async function verifyEmailLoginCode(
+  input: EmailCodeVerificationInput,
+  issueSession = false
+): Promise<AccountProfile | AuthenticatedSignInResult> {
+  return serializeStateAccess(async () => {
+    const state = await loadState();
   const email = normalizeEmail(input.email);
   if (!email) throw new Error("A valid email is required.");
 
@@ -185,15 +265,18 @@ export async function verifyEmailLoginCode(input: {
   }
 
   record.consumedAt = new Date().toISOString();
-  const account = findOrCreateAccountByEmail(state, {
+  const { account, mergedAccountIds } = resolveAccountByEmail(state, {
     email,
     name: email.split("@")[0] ?? "User"
-  });
+  }, true);
   acceptMatchingPendingInvitations(state, account, input.inviteToken ?? record.inviteToken);
   ensureAccountHasWorkspace(state, account);
   account.updatedAt = new Date().toISOString();
-  await saveState(state);
-  return toPublicAccount(account);
+  const profile = toPublicAccount(account);
+  const token = issueSession ? appendSession(state, account.id) : undefined;
+  await saveState(state, accountReferenceReplacement(mergedAccountIds, account.id));
+  return token ? { account: profile, token } : profile;
+  });
 }
 
 export async function createOAuthState(input: {
@@ -201,52 +284,61 @@ export async function createOAuthState(input: {
   redirectPath: string;
   inviteToken?: string;
 }): Promise<OAuthStateRecord> {
-  const state = await loadState();
-  const record: OAuthStateRecord = {
-    state: randomBytes(32).toString("base64url"),
-    provider: input.provider,
-    redirectPath: normalizeRedirectPath(input.redirectPath),
-    inviteToken: input.inviteToken,
-    createdAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + OAUTH_STATE_TTL_MS).toISOString()
-  };
-  state.oauthStates = state.oauthStates.filter(
-    (item) => new Date(item.expiresAt).getTime() > Date.now()
-  );
-  state.oauthStates.push(record);
-  await saveState(state);
-  return record;
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    const record: OAuthStateRecord = {
+      state: randomBytes(32).toString("base64url"),
+      provider: input.provider,
+      redirectPath: normalizeRedirectPath(input.redirectPath),
+      inviteToken: input.inviteToken,
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + OAUTH_STATE_TTL_MS).toISOString()
+    };
+    state.oauthStates = state.oauthStates.filter(
+      (item) => new Date(item.expiresAt).getTime() > Date.now()
+    );
+    state.oauthStates.push(record);
+    await saveState(state);
+    return record;
+  });
 }
 
 export async function consumeOAuthState(
   provider: AuthProvider,
   stateValue: string
 ): Promise<OAuthStateRecord> {
-  const state = await loadState();
-  const record = state.oauthStates.find(
-    (item) => item.provider === provider && item.state === stateValue
-  );
-  if (!record || new Date(record.expiresAt).getTime() <= Date.now()) {
-    throw new Error("OAuth state is invalid or expired.");
-  }
-  state.oauthStates = state.oauthStates.filter((item) => item.state !== stateValue);
-  await saveState(state);
-  return record;
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    const record = state.oauthStates.find(
+      (item) => item.provider === provider && item.state === stateValue
+    );
+    if (!record || new Date(record.expiresAt).getTime() <= Date.now()) {
+      throw new Error("OAuth state is invalid or expired.");
+    }
+    state.oauthStates = state.oauthStates.filter((item) => item.state !== stateValue);
+    await saveState(state);
+    return record;
+  });
 }
 
-export async function signInWithOAuthProfile(input: {
-  provider: AuthProvider;
-  providerAccountId: string;
-  email: string;
-  emailVerified: boolean;
-  name: string;
-  inviteToken?: string;
-}): Promise<AccountProfile> {
-  const state = await loadState();
+export function signInWithOAuthProfile(
+  input: OAuthProfileSignInInput,
+  issueSession: true
+): Promise<AuthenticatedSignInResult>;
+export function signInWithOAuthProfile(
+  input: OAuthProfileSignInInput,
+  issueSession?: false
+): Promise<AccountProfile>;
+export async function signInWithOAuthProfile(
+  input: OAuthProfileSignInInput,
+  issueSession = false
+): Promise<AccountProfile | AuthenticatedSignInResult> {
+  return serializeStateAccess(async () => {
+    const state = await loadState();
   const email = normalizeEmail(input.email);
   if (!email) throw new Error("OAuth provider did not return an email.");
-  if (input.provider === "github" && !/^\d+$/.test(input.providerAccountId)) {
-    throw new Error("GitHub OAuth account ID must be numeric.");
+  if (!input.emailVerified) {
+    throw new Error("OAuth provider did not return a verified email.");
   }
 
   const existingIdentity = state.identities.find(
@@ -254,48 +346,11 @@ export async function signInWithOAuthProfile(input: {
       identity.provider === input.provider &&
       identity.providerAccountId === input.providerAccountId
   );
-  const matchingEmailAccounts = input.emailVerified
-    ? state.accounts.filter((candidate) => normalizeEmail(candidate.email) === email)
-    : [];
-  const conflictingIdentity = input.emailVerified
-    ? state.identities.find((identity) => {
-        if (identity.accountId === existingIdentity?.accountId) return false;
-        return (
-          normalizeEmail(identity.email) === email ||
-          matchingEmailAccounts.some((candidate) => candidate.id === identity.accountId)
-        );
-      })
-    : undefined;
-  if (conflictingIdentity) {
-    throw new Error("OAuth email is already linked to another account.");
-  }
-  if (!existingIdentity && matchingEmailAccounts.length > 1) {
-    throw new Error("OAuth email matches multiple accounts and requires manual review.");
-  }
-  const matchingEmailAccount = !existingIdentity && input.emailVerified
-    ? matchingEmailAccounts[0]
-    : undefined;
-  const account = existingIdentity
-    ? requireAccountRecord(state, existingIdentity.accountId)
-    : matchingEmailAccount ?? createAccount(state, { email, name: input.name });
-  const canConvergeByEmail = Boolean(
-    existingIdentity && input.provider === "github" && input.emailVerified
-  );
-
   const now = new Date().toISOString();
-  const duplicateAccountIds = canConvergeByEmail
-    ? state.accounts
-        .filter(
-          (candidate) =>
-            candidate.id !== account.id &&
-            normalizeEmail(candidate.email) === email &&
-            !state.identities.some((identity) => identity.accountId === candidate.id)
-        )
-        .map((candidate) => candidate.id)
-    : [];
-  for (const duplicateAccountId of duplicateAccountIds) {
-    mergeAccountInto(state, duplicateAccountId, account.id, now);
-  }
+  const { account, mergedAccountIds } = resolveAccountByEmail(state, {
+    email,
+    name: input.name
+  }, true, now);
 
   if (!existingIdentity) {
     state.identities.push({
@@ -307,23 +362,22 @@ export async function signInWithOAuthProfile(input: {
       createdAt: now,
       updatedAt: now
     });
-  } else if (input.emailVerified) {
+  } else {
+    existingIdentity.accountId = account.id;
     existingIdentity.email = email;
     existingIdentity.updatedAt = now;
   }
 
-  if (!existingIdentity || input.emailVerified) account.email = email;
+  account.email = email;
   account.name = input.name.trim() || account.name;
   account.updatedAt = now;
   acceptMatchingPendingInvitations(state, account, input.inviteToken);
   ensureAccountHasWorkspace(state, account);
-  await saveState(state, {
-    accountReferenceReplacement: {
-      sourceAccountIds: duplicateAccountIds,
-      targetAccountId: account.id
-    }
+  const profile = toPublicAccount(account);
+  const token = issueSession ? appendSession(state, account.id) : undefined;
+  await saveState(state, accountReferenceReplacement(mergedAccountIds, account.id));
+  return token ? { account: profile, token } : profile;
   });
-  return toPublicAccount(account);
 }
 
 function mergeAccountInto(
@@ -397,6 +451,18 @@ function mergeAccountInto(
       installation.linkedByAccountId = targetAccountId;
     }
   }
+  const installationsByAccount = new Map<
+    string,
+    (typeof state.githubInstallations)[number]
+  >();
+  for (const installation of state.githubInstallations) {
+    const key = `${installation.linkedByAccountId}\u0000${installation.id}`;
+    const existing = installationsByAccount.get(key);
+    if (!existing || installation.linkedAt > existing.linkedAt) {
+      installationsByAccount.set(key, installation);
+    }
+  }
+  state.githubInstallations = [...installationsByAccount.values()];
   for (const policy of state.projectBindingPolicies) {
     if (policy.decidedByAccountId === sourceAccountId) policy.decidedByAccountId = targetAccountId;
   }
@@ -420,67 +486,99 @@ export async function updateAccountProfile(
   accountId: string,
   input: { name?: string; email?: string }
 ): Promise<AccountProfile> {
-  const state = await loadState();
-  const account = state.accounts.find((item) => item.id === accountId);
-  if (!account) throw new Error("Account not found.");
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    const account = state.accounts.find((item) => item.id === accountId);
+    if (!account) throw new Error("Account not found.");
 
-  const nextEmail = input.email?.trim().toLowerCase();
-  if (nextEmail) {
-    if (!nextEmail.includes("@")) {
-      throw new Error("A valid email is required.");
+    const nextEmail = input.email === undefined ? undefined : normalizeEmail(input.email);
+    if (nextEmail !== undefined) {
+      if (!nextEmail) throw new Error("A valid email is required.");
+      if (nextEmail !== normalizeEmail(account.email)) {
+        throw new Error("Account email is managed by sign-in and cannot be changed here.");
+      }
     }
 
-    if (
-      state.accounts.some(
-        (item) => item.id !== account.id && item.email.toLowerCase() === nextEmail
-      )
-    ) {
-      throw new Error("An account already exists for this email.");
+    if (input.name?.trim()) {
+      account.name = input.name.trim();
     }
 
-    account.email = nextEmail;
-  }
-
-  if (input.name?.trim()) {
-    account.name = input.name.trim();
-  }
-
-  account.updatedAt = new Date().toISOString();
-  await saveState(state);
-  return toPublicAccount(account);
+    account.updatedAt = new Date().toISOString();
+    await saveState(state);
+    return toPublicAccount(account);
+  });
 }
 
 export async function changeAccountPassword(
   accountId: string,
   input: { currentPassword: string; newPassword: string }
 ): Promise<void> {
-  const state = await loadState();
-  const account = state.accounts.find((item) => item.id === accountId);
-  if (!account) throw new Error("Account not found.");
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    const account = state.accounts.find((item) => item.id === accountId);
+    if (!account) throw new Error("Account not found.");
 
-  if (!verifyPassword(input.currentPassword, account.passwordHash)) {
-    throw new Error("Current password is incorrect.");
-  }
+    if (!verifyPassword(input.currentPassword, account.passwordHash)) {
+      throw new Error("Current password is incorrect.");
+    }
 
-  if (input.newPassword.length < 6) {
-    throw new Error("Password must be at least 6 characters.");
-  }
+    if (input.newPassword.length < 6) {
+      throw new Error("Password must be at least 6 characters.");
+    }
 
-  account.passwordHash = hashPassword(input.newPassword);
-  account.updatedAt = new Date().toISOString();
-  state.sessions = state.sessions.filter((session) => session.accountId !== accountId);
-  await saveState(state);
+    account.passwordHash = hashPassword(input.newPassword);
+    account.updatedAt = new Date().toISOString();
+    state.sessions = state.sessions.filter((session) => session.accountId !== accountId);
+    await saveState(state);
+  });
 }
 
-function findOrCreateAccountByEmail(
+function resolveAccountByEmail(
   state: Awaited<ReturnType<typeof loadState>>,
-  input: { email: string; name: string }
-): AccountRecord {
-  const existing = state.accounts.find(
-    (item) => item.email.toLowerCase() === input.email.toLowerCase()
-  );
-  if (existing) return existing;
-  return createAccount(state, input);
+  input: { email: string; name: string },
+  emailVerified: boolean,
+  now = new Date().toISOString()
+): { account: AccountRecord; mergedAccountIds: string[] } {
+  const matches = state.accounts
+    .filter((item) => normalizeEmail(item.email) === input.email)
+    .sort((left, right) =>
+      Number(Boolean(right.emailVerifiedAt)) - Number(Boolean(left.emailVerifiedAt)) ||
+      left.createdAt.localeCompare(right.createdAt) ||
+      left.id.localeCompare(right.id)
+    );
+  const account = matches[0] ?? createAccount(state, input);
+  if (emailVerified) {
+    const unverifiedMatches = matches.filter((candidate) => !candidate.emailVerifiedAt);
+    const unverifiedAccountIds = new Set(unverifiedMatches.map((candidate) => candidate.id));
+    for (const candidate of unverifiedMatches) {
+      candidate.passwordHash = hashPassword(randomBytes(32).toString("hex"));
+    }
+    state.sessions = state.sessions.filter(
+      (session) => !unverifiedAccountIds.has(session.accountId)
+    );
+  }
+  const mergedAccountIds = matches.slice(1).map((candidate) => candidate.id);
+  for (const duplicateAccountId of mergedAccountIds) {
+    mergeAccountInto(state, duplicateAccountId, account.id, now);
+  }
+  if (emailVerified && !account.emailVerifiedAt) {
+    account.emailVerifiedAt = now;
+    account.passwordHash = hashPassword(randomBytes(32).toString("hex"));
+    state.sessions = state.sessions.filter((session) => session.accountId !== account.id);
+  }
+  account.email = input.email;
+  return { account, mergedAccountIds };
+}
+
+function accountReferenceReplacement(sourceAccountIds: string[], targetAccountId: string): {
+  accountReferenceReplacement?: {
+    sourceAccountIds: string[];
+    targetAccountId: string;
+  };
+} {
+  return sourceAccountIds.length > 0
+    ? { accountReferenceReplacement: { sourceAccountIds, targetAccountId } }
+    : {};
 }
 
 function createAccount(

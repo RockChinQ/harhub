@@ -35,7 +35,6 @@ export function AccountView({
   onPasswordChanged: () => Promise<void>;
 }) {
   const [name, setName] = useState(account.name);
-  const [email, setEmail] = useState(account.email);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [profileMessage, setProfileMessage] = useState<string | undefined>();
@@ -46,8 +45,7 @@ export function AccountView({
 
   useEffect(() => {
     setName(account.name);
-    setEmail(account.email);
-  }, [account.id, account.name, account.email]);
+  }, [account.id, account.name]);
 
   useEffect(() => {
     void getAuthConfig()
@@ -60,7 +58,7 @@ export function AccountView({
     setIsSavingProfile(true);
     setProfileMessage(undefined);
     try {
-      const nextSession = await updateAccount(token, { name, email });
+      const nextSession = await updateAccount(token, { name });
       onSessionChange(nextSession);
       setProfileMessage("Account saved.");
     } catch (caught) {
@@ -101,11 +99,10 @@ export function AccountView({
               </label>
               <label className="grid gap-1.5 text-sm font-medium">
                 Email
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                />
+                <Input type="email" value={account.email} disabled />
+                <span className="text-xs font-normal text-muted-foreground">
+                  Managed by your sign-in email.
+                </span>
               </label>
               <div className="grid gap-3 text-sm">
                 <KeyValue label="Created" value={new Date(account.createdAt).toLocaleString()} />

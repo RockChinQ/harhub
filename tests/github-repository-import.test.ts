@@ -86,7 +86,15 @@ test("imports an existing GitHub repository and refreshes it from signed push we
     process.env.HARHUB_GITHUB_WEBHOOK_SECRET = "webhook-secret";
     process.env.HARHUB_GITHUB_API_URL = githubUrl;
 
-    const [{ createServerApp }, { createProject, createSession, upsertGitHubInstallation }] = await Promise.all([
+    const [{ createServerApp }, {
+      createProject,
+      createSession,
+      createWorkspaceForAccount,
+      loadState,
+      saveState,
+      signInForDevelopment,
+      upsertGitHubInstallation
+    }] = await Promise.all([
       import(`../src/server/app.js?test=${Date.now()}`),
       import("../src/state/index.js")
     ]);
@@ -101,12 +109,76 @@ test("imports an existing GitHub repository and refreshes it from signed push we
       linkedByAccountId: "acct_demo",
       linkedAt: new Date().toISOString()
     });
+    const secondWorkspace = await createWorkspaceForAccount("acct_demo", { name: "Second Workspace" });
+    const otherAccount = await signInForDevelopment({ email: "other@example.com" });
+    const sharedState = await loadState();
+    const membershipTime = new Date().toISOString();
+    sharedState.memberships.push({
+      id: "other-account-second-workspace-membership",
+      accountId: otherAccount.id,
+      workspaceId: secondWorkspace.id,
+      role: "admin",
+      createdAt: membershipTime,
+      updatedAt: membershipTime
+    });
+    await saveState(sharedState);
+    const otherToken = await createSession(otherAccount.id);
+
+    const independentAccount = await signInForDevelopment({
+      email: "independent@example.com"
+    });
+    const independentWorkspace = await createWorkspaceForAccount(independentAccount.id, {
+      name: "Independent Workspace"
+    });
+    await upsertGitHubInstallation({
+      id: "42",
+      workspaceId: independentWorkspace.id,
+      accountLogin: "acme",
+      accountType: "Organization",
+      repositorySelection: "selected",
+      permissions: { contents: "read", metadata: "read" },
+      linkedByAccountId: independentAccount.id,
+      linkedAt: new Date().toISOString()
+    });
+    const independentToken = await createSession(independentAccount.id);
+
     app = createServerApp().listen(0, "127.0.0.1");
     await new Promise<void>((resolve) => app!.once("listening", resolve));
-    const baseUrl = serverUrl(app);
+    const baseUrl = serverUrl(app!);
+    const secondWorkspaceInstallations = await fetch(
+      `${baseUrl}/api/workspaces/${secondWorkspace.id}/github/installations`,
+      { headers: { Authorization: "Bearer " + token } }
+    );
+    assert.equal(secondWorkspaceInstallations.status, 200);
+    assert.deepEqual(
+      (await secondWorkspaceInstallations.json() as { installations: Array<{ id: string }> })
+        .installations.map((installation) => installation.id),
+      ["42"]
+    );
+    const secondWorkspaceRepositories = await fetch(
+      `${baseUrl}/api/workspaces/${secondWorkspace.id}/github/installations/42/repositories`,
+      { headers: { Authorization: "Bearer " + token } }
+    );
+    assert.equal(secondWorkspaceRepositories.status, 200, await secondWorkspaceRepositories.clone().text());
+
+    const otherInstallations = await fetch(
+      `${baseUrl}/api/workspaces/${secondWorkspace.id}/github/installations`,
+      { headers: { Authorization: "Bearer " + otherToken } }
+    );
+    assert.equal(otherInstallations.status, 200);
+    assert.deepEqual(
+      (await otherInstallations.json() as { installations: Array<{ id: string }> }).installations,
+      []
+    );
+    const forbiddenRepositories = await fetch(
+      `${baseUrl}/api/workspaces/${secondWorkspace.id}/github/installations/42/repositories`,
+      { headers: { Authorization: "Bearer " + otherToken } }
+    );
+    assert.equal(forbiddenRepositories.status, 400);
+
     const importedResponse = await fetch(`${baseUrl}/api/workspaces/ws_demo/github/repositories/import`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
       body: JSON.stringify({ installationId: "42", repositoryId: "99" })
     });
     const importedBody = await importedResponse.text();
@@ -121,6 +193,32 @@ test("imports an existing GitHub repository and refreshes it from signed push we
     );
     assert.equal(first.project.bindings[0]?.kind, "instruction");
     assert.equal(first.project.syncTokenConfigured, false);
+
+    const independentImportedResponse = await fetch(
+      `${baseUrl}/api/workspaces/${independentWorkspace.id}/github/repositories/import`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + independentToken,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ installationId: "42", repositoryId: "99" })
+      }
+    );
+    const independentImportedBody = await independentImportedResponse.text();
+    assert.equal(independentImportedResponse.status, 201, independentImportedBody);
+    const independentImported = JSON.parse(independentImportedBody) as {
+      project: { id: string };
+      scan: { status: string };
+    };
+    assert.equal(independentImported.scan.status, "queued");
+    await waitForInventory(
+      baseUrl,
+      independentToken,
+      independentImported.project.id,
+      "a".repeat(40),
+      independentWorkspace.id
+    );
 
     const webhookBody = JSON.stringify({
       ref: "refs/heads/main",
@@ -150,6 +248,14 @@ test("imports an existing GitHub repository and refreshes it from signed push we
     assert.equal((await duplicate.json() as { duplicate?: boolean }).duplicate, true);
     const refreshed = await waitForInventory(baseUrl, token, imported.project.id, "b".repeat(40));
     assert.equal(refreshed.project.sync.revision, 2);
+    const independentRefreshed = await waitForInventory(
+      baseUrl,
+      independentToken,
+      independentImported.project.id,
+      "b".repeat(40),
+      independentWorkspace.id
+    );
+    assert.equal(independentRefreshed.project.sync.revision, 2);
 
     const archived = await fetch(
       `${baseUrl}/api/workspaces/ws_demo/projects/${imported.project.id}`,
@@ -174,7 +280,7 @@ test("imports an existing GitHub repository and refreshes it from signed push we
       `${baseUrl}/api/workspaces/ws_demo/projects/${legacy.project.id}/github/connect`,
       {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
         body: JSON.stringify({ installationId: "42", repositoryId: "99" })
       }
     );
@@ -197,9 +303,16 @@ test("imports an existing GitHub repository and refreshes it from signed push we
   }
 });
 
-async function waitForInventory(baseUrl: string, token: string, projectId: string, sha: string) {
+async function waitForInventory(
+  baseUrl: string,
+  token: string,
+  projectId: string,
+  sha: string,
+  workspaceId = "ws_demo"
+) {
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    const response = await fetch(`${baseUrl}/api/workspaces/ws_demo/projects/${projectId}/inventory`, {
+    const response = await fetch(
+      `${baseUrl}/api/workspaces/${workspaceId}/projects/${projectId}/inventory`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     assert.equal(response.status, 200);

@@ -5,7 +5,6 @@ import {
   consumeOAuthState,
   createEmailLoginCode,
   createOAuthState,
-  createSession,
   deleteSession,
   getInvitationByToken,
   signInForDevelopment,
@@ -55,12 +54,11 @@ export function registerAuthRoutes(app: Express): void {
     }
 
     try {
-      const account = await signInForDevelopment({
+      const { account, token } = await signInForDevelopment({
         email: String(req.body?.email ?? ""),
         inviteToken:
           typeof req.body?.inviteToken === "string" ? req.body.inviteToken : undefined
-      });
-      const token = await createSession(account.id);
+      }, true);
       res.set("Cache-Control", "no-store");
       res.json({ token, ...(await buildSessionPayload(account)) });
     } catch (error) {
@@ -95,13 +93,12 @@ export function registerAuthRoutes(app: Express): void {
     }
 
     try {
-      const account = await signInWithPassword({
+      const { account, token } = await signInWithPassword({
         email: String(req.body?.email ?? ""),
         password: String(req.body?.password ?? ""),
         inviteToken:
           typeof req.body?.inviteToken === "string" ? req.body.inviteToken : undefined
-      });
-      const token = await createSession(account.id);
+      }, true);
       res.json({ token, ...(await buildSessionPayload(account)) });
     } catch (error) {
       sendError(res, error, 401);
@@ -127,8 +124,7 @@ export function registerAuthRoutes(app: Express): void {
 
   app.post("/api/auth/email-code/verify", async (req, res) => {
     try {
-      const account = await verifyEmailLoginCodeRoute(req.body);
-      const token = await createSession(account.id);
+      const { account, token } = await verifyEmailLoginCodeRoute(req.body);
       res.json({ token, ...(await buildSessionPayload(account)) });
     } catch (error) {
       sendError(res, error, 401);
@@ -172,11 +168,10 @@ export function registerAuthRoutes(app: Express): void {
         code: String(req.query.code ?? ""),
         redirectUri: oauthRedirectUri(req, provider)
       });
-      const account = await signInWithOAuthProfile({
+      const { account, token } = await signInWithOAuthProfile({
         ...profile,
         inviteToken: oauthState.inviteToken
-      });
-      const token = await createSession(account.id);
+      }, true);
       res.type("html").send(authCallbackHtml({
         token,
         redirectPath: oauthState.redirectPath
@@ -252,7 +247,7 @@ async function verifyEmailLoginCodeRoute(body: unknown) {
       typeof (body as { inviteToken?: unknown })?.inviteToken === "string"
         ? (body as { inviteToken: string }).inviteToken
         : undefined
-  });
+  }, true);
 }
 
 function readProvider(value: string): AuthProvider | undefined {

@@ -35,21 +35,20 @@ test("uses any verified email when GitHub returns no verified primary email", ()
   assert.deepEqual(resolved, { email: "verified@example.com", emailVerified: true });
 });
 
-test("uses a deterministic unverified noreply address when GitHub email lookup is unavailable", () => {
-  const resolved = resolveGitHubEmail(
-    { id: 45992437, login: "User", email: "public@example.com" },
-    []
+test("rejects GitHub login when no verified email is available", () => {
+  assert.throws(
+    () => resolveGitHubEmail(
+      { id: 45992437, login: "User", email: "public@example.com" },
+      []
+    ),
+    /verified email/i
   );
-
-  assert.deepEqual(resolved, {
-    email: "45992437+user@users.noreply.github.com",
-    emailVerified: false
-  });
 });
 
-test("requires the stable GitHub account ID for a fallback address", () => {
-  assert.throws(
-    () => resolveGitHubEmail({ login: "user", email: null }, []),
-    /stable account ID/
+test("does not require a stable GitHub account ID when a verified email is available", () => {
+  const resolved = resolveGitHubEmail(
+    { login: "user", email: null },
+    [{ email: "owner@example.com", primary: true, verified: true }]
   );
+  assert.deepEqual(resolved, { email: "owner@example.com", emailVerified: true });
 });

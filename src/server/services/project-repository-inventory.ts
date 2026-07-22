@@ -57,7 +57,11 @@ export async function importGitHubRepository(input: {
   permissionMode: "read" | "write";
 }): Promise<{ project: HarhubProject; scan: ProjectScanJob }> {
   if (input.repository.archived) throw new Error("Archived repositories cannot be imported.");
-  if (await findProjectRepositoryConnection(input.installationId, input.repository.id)) {
+  if (await findProjectRepositoryConnection(
+    input.workspaceId,
+    input.installationId,
+    input.repository.id
+  )) {
     throw new Error("This repository is already imported as an active Project.");
   }
   const project = await createGitHubAppProject({
@@ -114,7 +118,11 @@ export async function connectExistingProjectGitHubRepository(input: {
   repository: GitHubRepositorySummary;
   permissionMode: "read" | "write";
 }): Promise<{ project: HarhubProject; scan: ProjectScanJob }> {
-  const existing = await findProjectRepositoryConnection(input.installationId, input.repository.id);
+  const existing = await findProjectRepositoryConnection(
+    input.workspaceId,
+    input.installationId,
+    input.repository.id
+  );
   if (existing && existing.projectId !== input.projectId) {
     throw new Error("This repository is already imported as another active Project.");
   }
