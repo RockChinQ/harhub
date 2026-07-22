@@ -112,6 +112,7 @@ jobs:
           STACK_ENV=$(jq -c '.Env // []' <<< "$STACK_JSON")
           for NAME in \
             HARHUB_DB_PASSWORD \
+            HARHUB_ENCRYPTION_KEY \
             MINIO_ACCESS_KEY \
             MINIO_SECRET_KEY \
             GITHUB_CLIENT_ID \
