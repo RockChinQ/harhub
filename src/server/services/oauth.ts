@@ -13,6 +13,7 @@ export interface OAuthProfile {
   provider: AuthProvider;
   providerAccountId: string;
   email: string;
+  emailVerified: boolean;
   name: string;
 }
 
@@ -43,7 +44,7 @@ export function buildOAuthAuthorizationUrl(input: {
   const url = new URL("https://github.com/login/oauth/authorize");
   url.searchParams.set("client_id", GITHUB_CLIENT_ID);
   url.searchParams.set("redirect_uri", input.redirectUri);
-  url.searchParams.set("scope", "read:user");
+  url.searchParams.set("scope", "read:user user:email");
   url.searchParams.set("state", input.state);
   return url.toString();
 }
@@ -107,6 +108,7 @@ async function exchangeGoogleCode(code: string, redirectUri: string): Promise<OA
     provider: "google",
     providerAccountId: profile.sub,
     email: profile.email,
+    emailVerified: profile.email_verified === true,
     name:
       typeof profile.name === "string" && profile.name.trim()
         ? profile.name
@@ -148,17 +150,23 @@ async function exchangeGitHubCode(code: string, redirectUri: string): Promise<OA
     throw new Error("GitHub OAuth profile fetch failed.");
   }
 
-  const email = resolveGitHubEmail(profile);
+  const emailsResponse = await fetch("https://api.github.com/user/emails", { headers });
+  const emails = await emailsResponse.json().catch(() => undefined);
+  const resolvedEmail = resolveGitHubEmail(
+    profile,
+    emailsResponse.ok && Array.isArray(emails) ? emails : []
+  );
 
   return {
     provider: "github",
     providerAccountId: String(profile.id),
-    email,
+    email: resolvedEmail.email,
+    emailVerified: resolvedEmail.emailVerified,
     name:
       typeof profile.name === "string" && profile.name.trim()
         ? profile.name
         : typeof profile.login === "string"
           ? profile.login
-          : email
+          : resolvedEmail.email
   };
 }

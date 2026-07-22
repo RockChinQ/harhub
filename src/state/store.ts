@@ -8,6 +8,7 @@ import {
   readDatabaseState,
   writeDatabaseState
 } from "./database.js";
+import type { DatabaseStateWriteOptions } from "./database.js";
 import type { AccountRecord, AppState } from "./types.js";
 import type { WorkspaceRecord } from "../shared/types.js";
 
@@ -40,9 +41,12 @@ export async function loadState(): Promise<AppState> {
   return normalized;
 }
 
-export async function saveState(state: AppState): Promise<void> {
+export async function saveState(
+  state: AppState,
+  options: DatabaseStateWriteOptions = {}
+): Promise<void> {
   if (isDatabaseStateEnabled()) {
-    await writeDatabaseState(state);
+    await writeDatabaseState(state, options);
     return;
   }
 
