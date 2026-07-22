@@ -6,11 +6,16 @@ import {
   Copy,
   ExternalLink,
   FileDiff,
+  FileJson2,
   FolderGit2,
+  Github,
   GitBranch,
+  GitPullRequest,
   Loader2,
   RefreshCw,
   RotateCcw,
+  Search,
+  ScanSearch,
   ShieldCheck,
   Sparkles,
   Upload
@@ -18,8 +23,14 @@ import {
 
 import type {
   HarhubProject,
+  GitHubInstallation,
+  GitHubIntegrationStatus,
+  GitHubRepositorySummary,
   ProjectBinding,
   ProjectBindingStatus,
+  ProjectChangeProposal,
+  ProjectInventoryArtifact,
+  ProjectInventoryResponse,
   ProjectListResponse,
   ProjectSkillDiffResponse,
   WorkspaceRecord
@@ -47,12 +58,21 @@ import {
 import { Input } from "../components/ui/input";
 import {
   archiveProject,
+  authorizeGitHubInstallation,
   connectProjectRepository,
-  getProject,
+  createProjectBootstrapProposal,
+  getGitHubIntegrationStatus,
+  getProjectInventory,
   getProjectSkillDiff,
+  importGitHubRepository,
+  listGitHubInstallations,
+  listGitHubRepositories,
   listProjects,
+  openProjectBootstrapProposal,
   publishProjectSkillFork,
-  rotateProjectSyncToken
+  rescanProjectRepository,
+  rotateProjectSyncToken,
+  updateProjectBindingPolicy
 } from "../lib/api";
 import { cn } from "../lib/utils";
 import {
@@ -75,6 +95,7 @@ export function ProjectsView({
 }) {
   const [projects, setProjects] = useState<ProjectListResponse>();
   const [project, setProject] = useState<HarhubProject>();
+  const [inventory, setInventory] = useState<ProjectInventoryResponse>();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [syncToken, setSyncToken] = useState<string>();
@@ -92,12 +113,32 @@ export function ProjectsView({
   const [isLoadingDiff, setIsLoadingDiff] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [githubStatus, setGithubStatus] = useState<GitHubIntegrationStatus>();
+  const [installations, setInstallations] = useState<GitHubInstallation[]>([]);
+  const [selectedInstallationId, setSelectedInstallationId] = useState("");
+  const [repositories, setRepositories] = useState<GitHubRepositorySummary[]>([]);
+  const [repositorySearch, setRepositorySearch] = useState("");
+  const [isLoadingGitHub, setIsLoadingGitHub] = useState(false);
+  const [importingRepositoryId, setImportingRepositoryId] = useState<string>();
+  const [isRescanning, setIsRescanning] = useState(false);
+  const [policyPath, setPolicyPath] = useState<string>();
+  const [proposal, setProposal] = useState<ProjectChangeProposal>();
+  const [proposalOpen, setProposalOpen] = useState(false);
+  const [isCreatingProposal, setIsCreatingProposal] = useState(false);
+  const [isOpeningProposal, setIsOpeningProposal] = useState(false);
 
   useEffect(() => {
     setSyncToken(undefined);
     setCopied(false);
     void refresh();
   }, [routedProjectId, token, workspace.id]);
+
+  useEffect(() => {
+    if (!routedProjectId || !inventory?.activeJob) return;
+    const timer = window.setInterval(() => void refreshInventory(), 1500);
+    return () => window.clearInterval(timer);
+  }, [inventory?.activeJob?.id, routedProjectId, token, workspace.id]);
 
   const bindingCounts = useMemo(
     () => countBindings(project?.bindings ?? []),
@@ -109,12 +150,13 @@ export function ProjectsView({
     setError(undefined);
     try {
       if (routedProjectId) {
-        const result = await getProject(token, workspace.id, routedProjectId);
-        setProject(result);
-        setRepository(result.repository
-          ? `${result.repository.owner}/${result.repository.name}`
+        const result = await getProjectInventory(token, workspace.id, routedProjectId);
+        setInventory(result);
+        setProject(result.project);
+        setRepository(result.project.repository
+          ? `${result.project.repository.owner}/${result.project.repository.name}`
           : "");
-        setDefaultBranch(result.repository?.defaultBranch ?? "main");
+        setDefaultBranch(result.project.repository?.defaultBranch ?? "main");
       } else {
         setProject(undefined);
         setProjects(await listProjects(token, workspace.id));
@@ -123,6 +165,140 @@ export function ProjectsView({
       setError(errorMessage(caught));
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function refreshInventory() {
+    if (!routedProjectId) return;
+    try {
+      const result = await getProjectInventory(token, workspace.id, routedProjectId);
+      setInventory(result);
+      setProject(result.project);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  }
+
+  async function openRepositoryImport() {
+    setImportOpen(true);
+    setIsLoadingGitHub(true);
+    setError(undefined);
+    try {
+      const [status, linked] = await Promise.all([
+        getGitHubIntegrationStatus(token, workspace.id),
+        listGitHubInstallations(token, workspace.id)
+      ]);
+      setGithubStatus(status);
+      setInstallations(linked.installations);
+      const installationId = linked.installations[0]?.id ?? "";
+      setSelectedInstallationId(installationId);
+      setRepositories(installationId
+        ? (await listGitHubRepositories(token, workspace.id, installationId)).repositories
+        : []);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setIsLoadingGitHub(false);
+    }
+  }
+
+  async function installGitHubApp() {
+    setIsLoadingGitHub(true);
+    try {
+      const result = await authorizeGitHubInstallation(token, workspace.id, "/projects");
+      window.location.assign(result.url);
+    } catch (caught) {
+      setError(errorMessage(caught));
+      setIsLoadingGitHub(false);
+    }
+  }
+
+  async function selectInstallation(installationId: string) {
+    setSelectedInstallationId(installationId);
+    setIsLoadingGitHub(true);
+    try {
+      setRepositories((await listGitHubRepositories(token, workspace.id, installationId)).repositories);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setIsLoadingGitHub(false);
+    }
+  }
+
+  async function importRepository(repositoryId: string) {
+    if (!selectedInstallationId) return;
+    setImportingRepositoryId(repositoryId);
+    try {
+      const result = await importGitHubRepository(token, workspace.id, {
+        installationId: selectedInstallationId,
+        repositoryId
+      });
+      setImportOpen(false);
+      onNavigateProject(result.project.id);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setImportingRepositoryId(undefined);
+    }
+  }
+
+  async function rescanRepository() {
+    if (!project) return;
+    setIsRescanning(true);
+    try {
+      await rescanProjectRepository(token, workspace.id, project.id);
+      await refreshInventory();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setIsRescanning(false);
+    }
+  }
+
+  async function changeArtifactPolicy(artifact: ProjectInventoryArtifact, ownership: "repository" | "library" | "ignored") {
+    if (!project) return;
+    setPolicyPath(artifact.path);
+    try {
+      await updateProjectBindingPolicy(token, workspace.id, project.id, {
+        artifactPath: artifact.path,
+        ownership,
+        ...(ownership === "library" && artifact.libraryAssetId
+          ? { libraryAssetId: artifact.libraryAssetId, ...(artifact.libraryVersion ? { pinnedVersion: artifact.libraryVersion } : {}) }
+          : {})
+      });
+      await refreshInventory();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setPolicyPath(undefined);
+    }
+  }
+
+  async function previewBootstrapProposal() {
+    if (!project) return;
+    setIsCreatingProposal(true);
+    try {
+      const created = await createProjectBootstrapProposal(token, workspace.id, project.id);
+      setProposal(created);
+      setProposalOpen(true);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setIsCreatingProposal(false);
+    }
+  }
+
+  async function openBootstrapPullRequest() {
+    if (!project || !proposal) return;
+    setIsOpeningProposal(true);
+    try {
+      const opened = await openProjectBootstrapProposal(token, workspace.id, project.id, proposal.id);
+      setProposal(opened);
+      await refreshInventory();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setIsOpeningProposal(false);
     }
   }
 
@@ -304,6 +480,114 @@ export function ProjectsView({
               </CardContent>
             </Card>
 
+            {inventory?.connection?.mode === "github-app" ? (
+              <Card className="shadow-sm">
+                <CardHeader className="border-b">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <ScanSearch className="h-4 w-4 text-blue-700" aria-hidden="true" />
+                      Repository inventory
+                    </CardTitle>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">GitHub App</Badge>
+                      <Badge variant="outline">{inventory.connection.permissionMode === "write" ? "Managed changes" : "Read only"}</Badge>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isRescanning || Boolean(inventory.activeJob) || project.status === "archived"}
+                        onClick={() => void rescanRepository()}
+                      >
+                        {isRescanning || inventory.activeJob
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <RefreshCw className="h-4 w-4" />}
+                        {inventory.activeJob ? "Scanning" : "Rescan"}
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="grid gap-3 border-b p-5 sm:grid-cols-3">
+                    <Metric label="Default branch" value={inventory.connection.defaultBranch} />
+                    <Metric
+                      label="Observed commit"
+                      value={inventory.latestSnapshot?.commitSha.slice(0, 10) ?? "Initial scan pending"}
+                    />
+                    <Metric
+                      label="Detected assets"
+                      value={String(inventory.latestSnapshot?.artifacts.length ?? 0)}
+                    />
+                  </div>
+                  {inventory.activeJob ? (
+                    <p className="border-b bg-blue-50 px-5 py-3 text-sm text-blue-900">
+                      Reading the latest repository state. You can leave this page; the scan continues on the server.
+                    </p>
+                  ) : null}
+                  {!inventory.activeJob && inventory.latestJob?.status === "failed" ? (
+                    <div className="border-b bg-red-50 px-5 py-3 text-sm text-red-900">
+                      <p className="font-medium">Repository scan failed</p>
+                      <p className="mt-1">{inventory.latestJob.failure?.message ?? "The repository could not be scanned."}</p>
+                    </div>
+                  ) : null}
+                  {inventory.latestSnapshot?.artifacts.length ? (
+                    <div className="divide-y">
+                      {inventory.latestSnapshot.artifacts.map((artifact) => (
+                        <div
+                          key={artifact.id}
+                          className="grid gap-3 px-5 py-4 lg:grid-cols-[110px_minmax(0,1fr)_160px_190px] lg:items-center"
+                        >
+                          <Badge variant="outline" className="w-fit uppercase">{artifact.kind}</Badge>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">{artifact.name}</p>
+                            <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{artifact.path}</p>
+                            {artifact.issues[0] ? (
+                              <p className="mt-1 text-xs text-destructive">{artifact.issues[0].message}</p>
+                            ) : null}
+                          </div>
+                          <InventoryRelationshipBadge relationship={artifact.relationship} />
+                          <select
+                            className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                            value={inventory.policies.find((policy) => policy.artifactPath === artifact.path)?.ownership ??
+                              (artifact.relationship === "ignored" ? "ignored" : artifact.relationship.startsWith("library-") ? "library" : "repository")}
+                            disabled={policyPath === artifact.path || artifact.relationship === "blocked"}
+                            onChange={(event) => void changeArtifactPolicy(
+                              artifact,
+                              event.target.value as "repository" | "library" | "ignored"
+                            )}
+                          >
+                            <option value="repository">Repository owned</option>
+                            {artifact.libraryAssetId ? <option value="library">Use Library baseline</option> : null}
+                            <option value="ignored">Ignore</option>
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="p-6 text-sm text-muted-foreground">
+                      {inventory.activeJob ? "The first inventory is being prepared." : "No supported harness assets were detected."}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/10 px-5 py-4">
+                    <p className="text-xs text-muted-foreground">
+                      Read-only tracking requires no workflow and no repository secret.
+                    </p>
+                    {inventory.connection.permissionMode === "write" && inventory.latestSnapshot ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isCreatingProposal}
+                        onClick={() => void previewBootstrapProposal()}
+                      >
+                        {isCreatingProposal ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileJson2 className="h-4 w-4" />}
+                        Preview managed config PR
+                      </Button>
+                    ) : null}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+
             <Card className="shadow-sm">
               <CardHeader className="border-b">
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -322,6 +606,11 @@ export function ProjectsView({
                       />
                     ))}
                   </div>
+                ) : inventory?.connection?.mode === "github-app" ? (
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    Harhub reads this repository through the workspace GitHub App installation.
+                    Push webhooks update the inventory automatically; no repository secret is used.
+                  </p>
                 ) : (
                   <p className="p-6 text-sm text-muted-foreground">
                     No bindings have been reported by this repository yet.
@@ -410,7 +699,7 @@ export function ProjectsView({
                   </div>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
-                  {project.repository ? (
+                  {project.repository && inventory?.connection?.mode !== "github-app" ? (
                     <Button
                       type="button"
                       variant="outline"
@@ -531,6 +820,38 @@ export function ProjectsView({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <Dialog open={proposalOpen} onOpenChange={setProposalOpen}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Managed repository configuration</DialogTitle>
+              <DialogDescription>
+                Review the exact file Harhub will place on a new branch. Nothing is written until you open the pull request.
+              </DialogDescription>
+            </DialogHeader>
+            {proposal?.files.map((file) => (
+              <div key={file.path} className="overflow-hidden rounded-lg border">
+                <div className="border-b bg-muted/30 px-4 py-2 font-mono text-xs font-medium">{file.path}</div>
+                <pre className="max-h-[48vh] overflow-auto whitespace-pre-wrap break-words bg-background p-4 text-xs leading-5">{file.content}</pre>
+              </div>
+            ))}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {proposal?.status === "open" && proposal.pullUrl ? (
+                <a href={proposal.pullUrl} target="_blank" rel="noreferrer" className="text-sm font-medium text-blue-700 hover:underline">
+                  Open pull request #{proposal.pullNumber}
+                </a>
+              ) : <span />}
+              <Button
+                type="button"
+                disabled={!proposal || proposal.status === "open" || isOpeningProposal}
+                onClick={() => void openBootstrapPullRequest()}
+              >
+                {isOpeningProposal ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitPullRequest className="h-4 w-4" />}
+                {proposal?.status === "open" ? "Pull request opened" : "Open pull request"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </section>
     );
   }
@@ -549,9 +870,13 @@ export function ProjectsView({
             <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} aria-hidden="true" />
             Refresh
           </Button>
-          <Button type="button" onClick={onOpenForge}>
+          <Button type="button" variant="outline" onClick={onOpenForge}>
             <Sparkles className="h-4 w-4" aria-hidden="true" />
             Forge a project
+          </Button>
+          <Button type="button" onClick={() => void openRepositoryImport()}>
+            <Github className="h-4 w-4" aria-hidden="true" />
+            Import repository
           </Button>
         </div>
       </div>
@@ -564,12 +889,16 @@ export function ProjectsView({
             <FolderGit2 className="h-8 w-8 text-blue-700" aria-hidden="true" />
             <h2 className="mt-4 text-lg font-semibold">No tracked Projects yet</h2>
             <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-              Complete a Forge session, then freeze the generated framework into a Project and
-              connect its GitHub repository.
+              Import an existing GitHub repository for a read-only harness inventory, or create a
+              new framework with Forge.
             </p>
-            <Button type="button" className="mt-5" onClick={onOpenForge}>
-              Open Forge
-            </Button>
+            <div className="mt-5 flex flex-wrap justify-center gap-2">
+              <Button type="button" onClick={() => void openRepositoryImport()}>
+                <Github className="h-4 w-4" />
+                Import repository
+              </Button>
+              <Button type="button" variant="outline" onClick={onOpenForge}>Open Forge</Button>
+            </div>
           </CardContent>
         </Card>
       ) : null}
@@ -606,6 +935,101 @@ export function ProjectsView({
           ))}
         </div>
       ) : null}
+
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="flex max-h-[86vh] max-w-3xl flex-col overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Import an existing repository</DialogTitle>
+            <DialogDescription>
+              Harhub scans only supported harness files. It does not clone or retain the rest of the codebase.
+            </DialogDescription>
+          </DialogHeader>
+          {isLoadingGitHub && !githubStatus ? (
+            <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading GitHub connections…
+            </div>
+          ) : null}
+          {githubStatus && !githubStatus.configured ? (
+            <div className="rounded-lg border bg-muted/20 p-5">
+              <p className="font-medium">GitHub App is not configured on this Harhub instance</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Configure the App ID, slug, OAuth credentials, private key, and webhook secret on the server first.
+              </p>
+            </div>
+          ) : null}
+          {githubStatus?.configured && installations.length === 0 ? (
+            <div className="rounded-lg border p-5">
+              <p className="font-medium">Connect the Harhub GitHub App</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Select only the repositories this workspace should be allowed to inventory.
+              </p>
+              <Button className="mt-4" disabled={isLoadingGitHub} onClick={() => void installGitHubApp()}>
+                {isLoadingGitHub ? <Loader2 className="h-4 w-4 animate-spin" /> : <Github className="h-4 w-4" />}
+                Install GitHub App
+              </Button>
+            </div>
+          ) : null}
+          {installations.length > 0 ? (
+            <div className="flex min-h-0 flex-1 flex-col gap-4">
+              <div className="flex flex-wrap gap-2">
+                {installations.map((installation) => (
+                  <Button
+                    key={installation.id}
+                    type="button"
+                    size="sm"
+                    variant={installation.id === selectedInstallationId ? "default" : "outline"}
+                    onClick={() => void selectInstallation(installation.id)}
+                  >
+                    {installation.accountLogin}
+                  </Button>
+                ))}
+                <Button type="button" size="sm" variant="ghost" onClick={() => void installGitHubApp()}>
+                  Add installation
+                </Button>
+              </div>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={repositorySearch}
+                  className="pl-9"
+                  placeholder="Search repositories"
+                  onChange={(event) => setRepositorySearch(event.target.value)}
+                />
+              </div>
+              <div className="min-h-0 flex-1 divide-y overflow-auto rounded-lg border">
+                {repositories
+                  .filter((candidate) => candidate.fullName.toLowerCase().includes(repositorySearch.trim().toLowerCase()))
+                  .map((candidate) => (
+                    <div key={candidate.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium">{candidate.fullName}</p>
+                          {candidate.private ? <Badge variant="outline">Private</Badge> : null}
+                          {candidate.archived ? <Badge variant="secondary">Archived</Badge> : null}
+                        </div>
+                        <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                          {candidate.description || `Default branch: ${candidate.defaultBranch}`}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={candidate.archived || Boolean(importingRepositoryId)}
+                        onClick={() => void importRepository(candidate.id)}
+                      >
+                        {importingRepositoryId === candidate.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                        Import
+                      </Button>
+                    </div>
+                  ))}
+                {!isLoadingGitHub && repositories.length === 0 ? (
+                  <p className="p-6 text-center text-sm text-muted-foreground">No accessible repositories.</p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
@@ -672,6 +1096,37 @@ function BindingStatusBadge({ status }: { status: ProjectBindingStatus }) {
         status === "added" && "border-blue-300 text-blue-800",
         status === "modified" && "border-amber-300 text-amber-800",
         status === "missing" && "border-red-300 text-red-700"
+      )}
+    >
+      {label}
+    </Badge>
+  );
+}
+
+function InventoryRelationshipBadge({
+  relationship
+}: {
+  relationship: ProjectInventoryArtifact["relationship"];
+}) {
+  const label = relationship === "library-synced"
+    ? "Library synced"
+    : relationship === "library-modified"
+      ? "Library changed"
+      : relationship === "repository-owned"
+        ? "Repository owned"
+        : relationship === "review-required"
+          ? "Review required"
+          : relationship === "blocked"
+            ? "Blocked"
+            : "Ignored";
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "w-fit",
+        relationship === "library-synced" && "border-emerald-300 text-emerald-800",
+        relationship === "library-modified" && "border-amber-300 text-amber-800",
+        relationship === "blocked" && "border-red-300 text-red-700"
       )}
     >
       {label}
