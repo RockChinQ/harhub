@@ -682,6 +682,81 @@ export interface ProjectInventoryResponse {
   policies: ProjectBindingPolicy[];
 }
 
+export interface GitHubIntegrationStatus {
+  configured: boolean;
+  appSlug?: string;
+  installUrl?: string;
+  webhookConfigured: boolean;
+  permissions: {
+    contents: "read" | "write";
+    pullRequests: "none" | "write";
+  };
+}
+
+export interface GitHubInstallation {
+  id: string;
+  workspaceId: string;
+  accountLogin: string;
+  accountType: "Organization" | "User";
+  repositorySelection: "all" | "selected";
+  permissions: Record<string, string>;
+  linkedByAccountId: string;
+  linkedAt: string;
+  suspendedAt?: string;
+}
+
+export interface GitHubRepositorySummary {
+  id: string;
+  nodeId: string;
+  owner: string;
+  name: string;
+  fullName: string;
+  url: string;
+  private: boolean;
+  archived: boolean;
+  defaultBranch: string;
+  description: string;
+  permissions: {
+    admin: boolean;
+    maintain: boolean;
+    push: boolean;
+    pull: boolean;
+  };
+}
+
+export type ProjectChangeProposalKind = "bootstrap" | "adopt-library";
+export type ProjectChangeProposalStatus =
+  | "preview"
+  | "creating"
+  | "open"
+  | "merged"
+  | "closed"
+  | "failed";
+
+export interface ProjectChangeProposalFile {
+  path: string;
+  status: "added" | "modified";
+  content: string;
+}
+
+export interface ProjectChangeProposal {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  kind: ProjectChangeProposalKind;
+  status: ProjectChangeProposalStatus;
+  baseSha: string;
+  branch: string;
+  files: ProjectChangeProposalFile[];
+  createdByAccountId: string;
+  createdAt: string;
+  updatedAt: string;
+  pullNumber?: number;
+  pullUrl?: string;
+  mergedAt?: string;
+  failure?: string;
+}
+
 export interface ProjectBinding {
   id: string;
   kind: ProjectBindingKind;

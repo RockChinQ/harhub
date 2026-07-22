@@ -8,6 +8,12 @@ import type {
   WorkspaceRecord,
   ForgeSessionDetail,
   HarhubProject,
+  GitHubInstallation,
+  ProjectBindingPolicy,
+  ProjectChangeProposal,
+  ProjectInventorySnapshot,
+  ProjectRepositoryConnection,
+  ProjectScanJob,
   ProjectSkillForkSummary,
   StoredObject,
   ValidationIssue,
@@ -75,8 +81,56 @@ export interface AppState {
   workspaceAiConfigurations: WorkspaceAiConfigurationRecord[];
   forgeSessions: ForgeSessionCacheRecord[];
   projects: ProjectStateRecord[];
+  /** Local fallback records; hosted Postgres stores these in normalized tables. */
+  githubInstallations: GitHubInstallation[];
+  projectRepositoryConnections: ProjectRepositoryConnectionRecord[];
+  projectScanJobs: ProjectScanJob[];
+  projectInventorySnapshots: ProjectInventorySnapshot[];
+  projectInventoryFiles: ProjectInventoryFileRecord[];
+  projectBindingPolicies: ProjectBindingPolicy[];
+  projectChangeProposals: ProjectChangeProposal[];
+  githubWebhookDeliveries: GitHubWebhookDeliveryRecord[];
+  githubInstallationAuthorizations: GitHubInstallationAuthorizationRecord[];
   /** Local fallback only; Postgres stores events in harhub_audit_events. */
   auditEvents: WorkspaceAuditEvent[];
+}
+
+export interface GitHubInstallationAuthorizationRecord {
+  state: string;
+  accountId: string;
+  workspaceId: string;
+  redirectPath: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface GitHubWebhookDeliveryRecord {
+  deliveryId: string;
+  event: string;
+  action?: string;
+  installationId?: string;
+  repositoryId?: string;
+  status: "received" | "processed" | "ignored" | "failed";
+  receivedAt: string;
+  processedAt?: string;
+  error?: string;
+}
+
+export interface ProjectRepositoryConnectionRecord extends ProjectRepositoryConnection {
+  workspaceId: string;
+  projectId: string;
+  repositoryId: string;
+  repositoryNodeId: string;
+  owner: string;
+  name: string;
+  defaultBranch: string;
+}
+
+export interface ProjectInventoryFileRecord {
+  snapshotId: string;
+  artifactId: string;
+  path: string;
+  contentBase64: string;
 }
 
 export interface AuthContext {

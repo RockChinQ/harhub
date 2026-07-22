@@ -83,6 +83,15 @@ function createSeedState(): AppState {
     workspaceAiConfigurations: [],
     forgeSessions: [],
     projects: [],
+    githubInstallations: [],
+    projectRepositoryConnections: [],
+    projectScanJobs: [],
+    projectInventorySnapshots: [],
+    projectInventoryFiles: [],
+    projectBindingPolicies: [],
+    projectChangeProposals: [],
+    githubWebhookDeliveries: [],
+    githubInstallationAuthorizations: [],
     auditEvents: []
   };
 }
@@ -101,6 +110,15 @@ function normalizeState(state: AppState): AppState {
   state.workspaceAiConfigurations ??= [];
   state.forgeSessions ??= [];
   state.projects ??= [];
+  state.githubInstallations ??= [];
+  state.projectRepositoryConnections ??= [];
+  state.projectScanJobs ??= [];
+  state.projectInventorySnapshots ??= [];
+  state.projectInventoryFiles ??= [];
+  state.projectBindingPolicies ??= [];
+  state.projectChangeProposals ??= [];
+  state.githubWebhookDeliveries ??= [];
+  state.githubInstallationAuthorizations ??= [];
   state.auditEvents ??= [];
 
   if (state.accounts.length === 0 || state.workspaces.length === 0) {
@@ -167,6 +185,15 @@ function needsStateMigration(state: AppState): boolean {
     !Array.isArray(state.workspaceAiConfigurations) ||
     !Array.isArray(state.forgeSessions) ||
     !Array.isArray(state.projects) ||
+    !Array.isArray(state.githubInstallations) ||
+    !Array.isArray(state.projectRepositoryConnections) ||
+    !Array.isArray(state.projectScanJobs) ||
+    !Array.isArray(state.projectInventorySnapshots) ||
+    !Array.isArray(state.projectInventoryFiles) ||
+    !Array.isArray(state.projectBindingPolicies) ||
+    !Array.isArray(state.projectChangeProposals) ||
+    !Array.isArray(state.githubWebhookDeliveries) ||
+    !Array.isArray(state.githubInstallationAuthorizations) ||
     !Array.isArray(state.auditEvents) ||
     hasLegacyForgeResponses(state) ||
     hasLegacyForgeSessionPersistence(state) ||

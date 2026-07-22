@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Pool, type PoolClient } from "pg";
+import { Pool, type PoolClient, type QueryResultRow } from "pg";
 
 import { normalizeAssetVersioning } from "../features/assets/index.js";
 import type {
@@ -91,7 +91,7 @@ export async function writeDatabaseState(state: AppState): Promise<void> {
       ["app"]
     );
     const previous = previousResult.rows[0]?.data;
-    const snapshot: AppState = { ...state, auditEvents: [] };
+    const snapshot = databaseStateSnapshot(state);
     await client.query(
       `insert into harhub_state (id, data, updated_at)
        values ($1, $2::jsonb, now())
@@ -188,6 +188,36 @@ export async function closeDatabaseConnection(): Promise<void> {
   pool = undefined;
   setupPromise = undefined;
   await current.end();
+}
+
+export async function queryDatabase<Row extends QueryResultRow>(
+  query: string,
+  values: unknown[] = []
+): Promise<Row[]> {
+  if (!isDatabaseStateEnabled()) return [];
+  await ensureDatabase();
+  return (await getPool().query<Row>(query, values)).rows;
+}
+
+export async function withDatabaseTransaction<T>(
+  operation: (client: PoolClient) => Promise<T>
+): Promise<T> {
+  if (!isDatabaseStateEnabled()) {
+    throw new Error("A Postgres-backed state backend is required for this transaction.");
+  }
+  await ensureDatabase();
+  const client = await getPool().connect();
+  try {
+    await client.query("begin");
+    const result = await operation(client);
+    await client.query("commit");
+    return result;
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function ensureDatabase(): Promise<void> {
@@ -761,6 +791,21 @@ function assetVersionKey(assetId: string, version: number): string {
 
 function timestampString(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function databaseStateSnapshot(state: AppState): AppState {
+  return {
+    ...state,
+    githubInstallations: [],
+    projectRepositoryConnections: [],
+    projectScanJobs: [],
+    projectInventorySnapshots: [],
+    projectInventoryFiles: [],
+    projectBindingPolicies: [],
+    projectChangeProposals: [],
+    githubWebhookDeliveries: [],
+    auditEvents: []
+  };
 }
 
 async function acquireTransactionLock(client: PoolClient, key: string): Promise<void> {

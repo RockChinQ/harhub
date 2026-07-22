@@ -8,6 +8,7 @@ export * from "./forge-sessions.js";
 export * from "./invitations.js";
 export * from "./paths.js";
 export * from "./projects.js";
+export * from "./repository-integrations.js";
 export * from "./store.js";
 export * from "./types.js";
 export * from "./workspaces.js";
