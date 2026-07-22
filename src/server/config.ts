@@ -17,6 +17,14 @@ export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? process.env.HARH
 export const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? process.env.HARHUB_GOOGLE_CLIENT_SECRET;
 export const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID ?? process.env.HARHUB_GITHUB_CLIENT_ID;
 export const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET ?? process.env.HARHUB_GITHUB_CLIENT_SECRET;
+export const GITHUB_APP_ID = process.env.HARHUB_GITHUB_APP_ID;
+export const GITHUB_APP_SLUG = process.env.HARHUB_GITHUB_APP_SLUG;
+export const GITHUB_APP_CLIENT_ID = process.env.HARHUB_GITHUB_APP_CLIENT_ID;
+export const GITHUB_APP_CLIENT_SECRET = process.env.HARHUB_GITHUB_APP_CLIENT_SECRET;
+export const GITHUB_APP_PRIVATE_KEY = process.env.HARHUB_GITHUB_APP_PRIVATE_KEY;
+export const GITHUB_APP_WEBHOOK_SECRET = process.env.HARHUB_GITHUB_WEBHOOK_SECRET;
+export const GITHUB_API_URL = process.env.HARHUB_GITHUB_API_URL ?? "https://api.github.com";
+export const GITHUB_WEB_URL = process.env.HARHUB_GITHUB_WEB_URL ?? "https://github.com";
 
 export function isDevelopmentLoginEnabled(
   env: { NODE_ENV?: string; HARHUB_DEV_LOGIN_ENABLED?: string }
