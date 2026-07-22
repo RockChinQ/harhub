@@ -82,7 +82,8 @@ function createSeedState(): AppState {
     sessions: [],
     workspaceAiConfigurations: [],
     forgeSessions: [],
-    projects: []
+    projects: [],
+    auditEvents: []
   };
 }
 
@@ -100,6 +101,7 @@ function normalizeState(state: AppState): AppState {
   state.workspaceAiConfigurations ??= [];
   state.forgeSessions ??= [];
   state.projects ??= [];
+  state.auditEvents ??= [];
 
   if (state.accounts.length === 0 || state.workspaces.length === 0) {
     return createSeedState();
@@ -165,6 +167,7 @@ function needsStateMigration(state: AppState): boolean {
     !Array.isArray(state.workspaceAiConfigurations) ||
     !Array.isArray(state.forgeSessions) ||
     !Array.isArray(state.projects) ||
+    !Array.isArray(state.auditEvents) ||
     hasLegacyForgeResponses(state) ||
     hasLegacyForgeSessionPersistence(state) ||
     hasLegacyWorkspacePaths(state);

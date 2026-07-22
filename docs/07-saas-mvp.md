@@ -29,11 +29,23 @@ harhub_state
 
 harhub_workspace_catalogs
   workspace_id
-  asset_catalog jsonb
+  asset_catalog jsonb (current summary only)
   updated_at
+
+harhub_asset_versions
+  workspace_id + asset_id + version (primary key)
+  source + created_at + checksum
+  validation summary + retained storage reference
+
+harhub_audit_events
+  workspace_id + event_type + entity_type + entity_id
+  actor_account_id + source + occurred_at
+  metadata jsonb + deduplication_key
 ```
 
-这些表保存 accounts、sessions、workspaces、memberships、invitations、device authorization、asset shares 和 workspace asset indexes。上传源 zip 不进数据库，也不会保留在对象存储中；每个导入后的 Skill 版本都以独立 S3 prefix 逐文件存储。每个 Skill 最多保留当前版本和最近四个旧版本，超出窗口的对象会在 catalog 成功更新后清理。
+`harhub_state` 继续作为兼容快照保存 accounts、sessions、workspaces、memberships、invitations、device authorization 和 asset shares。`harhub_workspace_catalogs` 只保存当前 workspace asset 摘要；版本历史写入 `harhub_asset_versions`，关键 Asset、Project、share 和 repository sync 变更写入 append-only `harhub_audit_events`。历史 JSONB catalog 会在启动时自动回填并瘦身。
+
+上传源 zip 不进数据库，也不会保留在对象存储中；每个导入后的 Skill 版本都以独立 S3 prefix 逐文件存储。每个 Skill 最多保留当前版本和最近四个旧版本，超出窗口的版本行和对象会在 catalog 成功更新后清理。查询 `GET /api/workspaces/:workspaceId/events` 支持 `limit`（1–200）与 ISO-8601 `before` cursor，并始终执行 workspace membership 校验。
 
 本地 JSON fallback 仍然可用：当没有设置 `HARHUB_DATABASE_URL` 时，运行态状态存储在 `.harhub/state.json`，workspace catalog 存储在 `.harhub/workspaces/<workspace-id>/` 下。这只用于 self-host demo 和本地开发，不是 hosted operation 的默认路径。
 
@@ -130,6 +142,7 @@ GET  /api/invitations/:token
 GET  /api/workspaces
 POST /api/workspaces
 PATCH /api/workspaces/:workspaceId
+GET  /api/workspaces/:workspaceId/events?limit=50&before=<timestamp>
 GET  /api/workspaces/:workspaceId/members
 POST /api/workspaces/:workspaceId/members
 PATCH /api/workspaces/:workspaceId/members/:membershipId

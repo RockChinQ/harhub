@@ -4,6 +4,7 @@ import multer from "multer";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { MAX_UPLOAD_BYTES } from "./config.js";
+import { registerAuditEventRoutes } from "./routes/audit-events.js";
 import { registerAssetRoutes } from "./routes/assets.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerHealthRoutes } from "./routes/health.js";
@@ -34,6 +35,7 @@ export function createServerApp() {
   registerOAuthDeviceRoutes(app);
   registerShareRoutes(app);
   registerWorkspaceRoutes(app);
+  registerAuditEventRoutes(app);
   registerProjectRoutes(app, upload);
   registerForgeRoutes(app);
   registerAssetRoutes(app, upload);

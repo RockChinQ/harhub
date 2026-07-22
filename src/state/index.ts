@@ -1,4 +1,5 @@
 export * from "./accounts.js";
+export * from "./audit-events.js";
 export * from "./asset-shares.js";
 export * from "./catalog-store.js";
 export * from "./database.js";

@@ -204,6 +204,41 @@ export interface AssetVersionRecord {
   storage?: StoredObject;
 }
 
+export type WorkspaceAuditEventType =
+  | "asset.deleted"
+  | "asset.version.created"
+  | "asset.version.pruned"
+  | "asset.version.restored"
+  | "project.archived"
+  | "project.created"
+  | "project.frozen"
+  | "project.repository.connected"
+  | "project.repository.synced"
+  | "project.skill.published"
+  | "project.sync_token.rotated"
+  | "share.created"
+  | "share.revoked"
+  | "workspace.created";
+
+export type WorkspaceAuditEntityType = "asset" | "project" | "share" | "workspace";
+
+export interface WorkspaceAuditEvent {
+  id: string;
+  workspaceId: string;
+  eventType: WorkspaceAuditEventType;
+  entityType: WorkspaceAuditEntityType;
+  entityId: string;
+  actorAccountId?: string;
+  source: "api" | "migration" | "project-sync" | "system";
+  occurredAt: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface WorkspaceAuditEventListResponse {
+  events: WorkspaceAuditEvent[];
+  nextBefore?: string;
+}
+
 export interface AssetShareRecord {
   token: string;
   workspaceId: string;
