@@ -25,6 +25,7 @@ export default defineConfig({
           { text: "Getting Started", link: "/guide/getting-started" },
           { text: "Agent Skills", link: "/guide/agent-skills" },
           { text: "CLI", link: "/guide/cli" },
+          { text: "GitHub Integration", link: "/guide/github-integration" },
           { text: "Deployment", link: "/guide/deployment" }
         ]
       },

@@ -148,6 +148,12 @@ GITHUB_CLIENT_ID=...
 GITHUB_CLIENT_SECRET=...
 ```
 
+GitHub OAuth above is only for account sign-in. To import and continuously
+observe existing repositories, configure the separate GitHub App described in
+[GitHub Integration](./github-integration). Its credentials use the
+`HARHUB_GITHUB_APP_*` variables and its webhook secret uses
+`HARHUB_GITHUB_WEBHOOK_SECRET`.
+
 Password sign-in defaults to enabled. When enabled, submitting a new email to
 `POST /api/auth/login` creates the account and its initial workspace. Set
 `HARHUB_PASSWORD_LOGIN_ENABLED=false` for deployments that should use only
