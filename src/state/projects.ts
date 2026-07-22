@@ -23,7 +23,7 @@ import type {
   ValidationIssue
 } from "../shared/types.js";
 import { serializeStateAccess } from "./access.js";
-import { requireWorkspaceMembership } from "./records.js";
+import { requireWorkspaceAdmin, requireWorkspaceMembership } from "./records.js";
 import { loadState, saveState } from "./store.js";
 import type {
   AppState,
@@ -72,7 +72,7 @@ export function createProject(input: {
 }): Promise<ProjectTokenResponse> {
   return serializeStateAccess(async () => {
     const state = await loadState();
-    requireWorkspaceMembership(state, input.accountId, input.workspaceId);
+    requireWorkspaceAdmin(state, input.accountId, input.workspaceId);
     assertProjectCapacity(state, input.workspaceId);
     const created = createProjectRecord(state, input);
     state.projects.push(created.project);
@@ -95,7 +95,7 @@ export function freezeForgeSessionAsProject(input: {
 }): Promise<ProjectTokenResponse> {
   return serializeStateAccess(async () => {
     const state = await loadState();
-    requireWorkspaceMembership(state, input.accountId, input.workspaceId);
+    requireWorkspaceAdmin(state, input.accountId, input.workspaceId);
     const session = findForgeSession(state, input.accountId, input.workspaceId, input.sessionId);
     if (session.status !== "complete" || !session.template) {
       throw new Error("Only a completed Forge session can be frozen as a Project.");
@@ -149,7 +149,7 @@ export function connectProjectRepository(
 ): Promise<ProjectTokenResponse> {
   return serializeStateAccess(async () => {
     const state = await loadState();
-    requireWorkspaceMembership(state, accountId, workspaceId);
+    requireWorkspaceAdmin(state, accountId, workspaceId);
     const project = findProject(state, workspaceId, projectId);
     if (project.status !== "active") {
       throw new Error("Archived Projects cannot connect repositories.");
@@ -185,7 +185,7 @@ export function rotateProjectSyncToken(
 ): Promise<ProjectTokenResponse> {
   return serializeStateAccess(async () => {
     const state = await loadState();
-    requireWorkspaceMembership(state, accountId, workspaceId);
+    requireWorkspaceAdmin(state, accountId, workspaceId);
     const project = findProject(state, workspaceId, projectId);
     if (project.status !== "active") throw new Error("Archived Projects cannot rotate tokens.");
     if (!project.repository) throw new Error("Connect a GitHub repository before rotating tokens.");
@@ -205,7 +205,7 @@ export function archiveProject(
 ): Promise<HarhubProject> {
   return serializeStateAccess(async () => {
     const state = await loadState();
-    requireWorkspaceMembership(state, accountId, workspaceId);
+    requireWorkspaceAdmin(state, accountId, workspaceId);
     const project = findProject(state, workspaceId, projectId);
     if (project.status !== "archived") {
       const now = new Date().toISOString();
@@ -404,7 +404,7 @@ export function recordProjectSkillPublished(input: {
 }): Promise<HarhubProject> {
   return serializeStateAccess(async () => {
     const state = await loadState();
-    requireWorkspaceMembership(state, input.accountId, input.workspaceId);
+    requireWorkspaceAdmin(state, input.accountId, input.workspaceId);
     const project = findProject(state, input.workspaceId, input.projectId);
     if (project.status !== "active") throw new Error("Archived Projects cannot publish Skills.");
     const binding = project.bindings.find((item) => item.id === input.bindingId);

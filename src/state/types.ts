@@ -10,7 +10,8 @@ import type {
   HarhubProject,
   ProjectSkillForkSummary,
   StoredObject,
-  ValidationIssue
+  ValidationIssue,
+  WorkspaceAuditEvent
 } from "../shared/types.js";
 
 export interface AccountRecord extends AccountProfile {
@@ -74,6 +75,8 @@ export interface AppState {
   workspaceAiConfigurations: WorkspaceAiConfigurationRecord[];
   forgeSessions: ForgeSessionCacheRecord[];
   projects: ProjectStateRecord[];
+  /** Local fallback only; Postgres stores events in harhub_audit_events. */
+  auditEvents: WorkspaceAuditEvent[];
 }
 
 export interface AuthContext {

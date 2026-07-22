@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { filterAssets, findAsset } from "../../features/assets/index.js";
-import { requireWorkspaceAccess } from "../auth.js";
+import { requireWorkspaceAccess, requireWorkspaceAdminAccess } from "../auth.js";
 import { deleteAsset } from "../services/asset-mutations.js";
 import { assetListPayload } from "../services/asset-responses.js";
 import {
@@ -37,7 +37,7 @@ export function registerSkillRoutes(app: Express): void {
   });
 
   app.post("/api/workspaces/:workspaceId/skills/validate", async (req, res) => {
-    const context = await requireWorkspaceAccess(req, res);
+    const context = await requireWorkspaceAdminAccess(req, res);
     if (!context) return;
 
     try {
@@ -49,7 +49,7 @@ export function registerSkillRoutes(app: Express): void {
   });
 
   app.post("/api/workspaces/:workspaceId/skills/:query/validate", async (req, res) => {
-    const context = await requireWorkspaceAccess(req, res);
+    const context = await requireWorkspaceAdminAccess(req, res);
     if (!context) return;
 
     try {
@@ -61,7 +61,7 @@ export function registerSkillRoutes(app: Express): void {
   });
 
   app.delete("/api/workspaces/:workspaceId/skills/:query", async (req, res) => {
-    const context = await requireWorkspaceAccess(req, res);
+    const context = await requireWorkspaceAdminAccess(req, res);
     if (!context) return;
     await deleteAsset(req, res, context);
   });

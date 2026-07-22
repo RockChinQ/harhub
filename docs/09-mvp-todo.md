@@ -26,7 +26,7 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 - **CLI foundation**：local scan、validate、list、show、create、asset scan、asset validate、asset create、interactive TUI upload、local Skill directory packaging 和 API-backed zip upload。
 - **Distribution foundation**：`upload --share`、share/unshare、无需登录的 `/s/:token`、标准化 zip download、Agent Skills discovery、`harhub install` 和 `npx skills add` 已形成基础协作路径。
 - **Open-source release path**：GitHub Release 触发 npm publish workflow，使用 `NPM_TOKEN` 发布；`0.1.0-beta.3` 是当前 npm beta 版本。
-- **Cloud-native persistence**：`HARHUB_DATABASE_URL` 存在时，accounts、sessions、workspace metadata、memberships 和 workspace asset indexes 存入 Postgres-compatible database；每个 imported Skill 的文件存入独立 S3-compatible prefix，源 zip 不保留。本地 `.harhub` JSON 只作为 fallback。
+- **Cloud-native persistence**：`HARHUB_DATABASE_URL` 存在时，accounts、sessions、workspace metadata、memberships 和 workspace asset summaries 存入 Postgres-compatible database；Asset 版本与 workspace 审计事件拥有独立可查询 projection tables。每个 imported Skill 的文件存入独立 S3-compatible prefix，源 zip 不保留。本地 `.harhub` JSON 只作为 fallback。
 - **Deployment surface**：production build 由单一 Express process 提供 Web、API 和 docs；仓库包含 multi-stage Dockerfile、Docker image workflow 和 VitePress 文档站。
 - **Cloud catalog boundary**：服务端已经移除 local path scan/create/update。Local directory discovery 只在 CLI 中执行，hosted workspace catalog 只管理 uploaded immutable zip packages。
 
@@ -42,7 +42,7 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 - **Quota 尚未建模**：上传大小有 process-level cap，但没有 per-user、per-workspace、per-asset、daily upload 或 total storage quota。
 - **Zip resource limits 仍不完整**：上传已经执行官方 Skill 字段校验和路径安全检查，但还没有 zip-entry count 与 uncompressed-size limits，仍需防御 zip bomb 和超大展开内容。
 - **没有 activation/distribution event**：产品已有 public share、verified download、Harhub install 和通用 Agent Skills CLI install，但还没有 usage event 来证明实际复用。
-- **SaaS persistence 仍需产品化**：Postgres backend 已可用，但还缺 explicit migration runner、normalized reporting schema、backup/export policy 和 production readiness checks。
+- **SaaS persistence 仍需产品化**：Postgres backend 已有 Asset version 与 audit event projections，但还缺 explicit migration runner、其余 domain reporting projections、backup/export policy 和 production readiness checks。
 - **没有 operations dashboard**：缺少 signups、activated workspaces、asset counts、storage usage、failed uploads、quota hits 或 over-limit users 的 admin view。
 - **Role enforcement 不完整**：很多 asset actions 只要求 workspace access；hosted SaaS 应按角色显式限制 mutation。
 - **没有 hosted onboarding funnel**：signup 还没有引导用户完成上传或导入 3 个有效 Skills 并安装 1 个的激活路径。

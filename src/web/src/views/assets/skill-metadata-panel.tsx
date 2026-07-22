@@ -1,10 +1,12 @@
 import {
   Check,
   Copy,
+  Download,
   ExternalLink,
   History,
   Link2Off,
   Loader2,
+  RotateCcw,
   Share2,
   ShieldCheck,
   Trash2
@@ -46,7 +48,9 @@ import { Input } from "../../components/ui/input";
 import {
   createWorkspaceAssetShare,
   deleteWorkspaceAsset,
+  downloadWorkspaceAssetVersion,
   getWorkspaceAssetShare,
+  rollbackWorkspaceAssetVersion,
   revokeWorkspaceAssetShare,
   validateWorkspaceAsset
 } from "../../lib/api";
@@ -81,6 +85,8 @@ export function SkillOverviewPanel({
   const [shareMessage, setShareMessage] = useState<string | undefined>();
   const [validationDialogOpen, setValidationDialogOpen] = useState(false);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [versionAction, setVersionAction] = useState<string | undefined>();
+  const [versionMessage, setVersionMessage] = useState<string | undefined>();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -92,6 +98,8 @@ export function SkillOverviewPanel({
     setShareMessage(undefined);
     setValidationDialogOpen(false);
     setHistoryDialogOpen(false);
+    setVersionAction(undefined);
+    setVersionMessage(undefined);
     if (!asset) return;
 
     let active = true;
@@ -214,6 +222,52 @@ export function SkillOverviewPanel({
     }
   }
 
+  async function downloadVersion(entry: AssetVersionRecord) {
+    const action = `download:${entry.version}`;
+    setVersionAction(action);
+    setVersionMessage(undefined);
+    try {
+      const download = await downloadWorkspaceAssetVersion(
+        token,
+        workspace.id,
+        selectedAsset.id,
+        entry.version
+      );
+      const url = URL.createObjectURL(download.blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = download.fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (caught) {
+      setVersionMessage(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setVersionAction(undefined);
+    }
+  }
+
+  async function rollbackVersion(entry: AssetVersionRecord) {
+    const action = `rollback:${entry.version}`;
+    setVersionAction(action);
+    setVersionMessage(undefined);
+    try {
+      await rollbackWorkspaceAssetVersion(
+        token,
+        workspace.id,
+        selectedAsset.id,
+        entry.version
+      );
+      setVersionMessage(`Restored v${entry.version} as a new current version.`);
+      await onChanged();
+    } catch (caught) {
+      setVersionMessage(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setVersionAction(undefined);
+    }
+  }
+
   return (
     <div
       className={cn(
@@ -254,7 +308,7 @@ export function SkillOverviewPanel({
                   <span className="min-w-0">
                     <span className="block text-sm font-medium">Version history</span>
                     <span className="block truncate text-[11px] font-normal text-muted-foreground">
-                      v{currentVersion} · {versionHistory.length || 1} update record(s)
+                      v{currentVersion} · {versionHistory.length || 1} retained version(s)
                     </span>
                   </span>
                 </Button>
@@ -263,12 +317,20 @@ export function SkillOverviewPanel({
                 <DialogHeader>
                   <DialogTitle>Version history</DialogTitle>
                   <DialogDescription>
-                    Content changes create a new Skill version. Re-uploading identical content does not.
+                    The current package and four previous versions are retained. A rollback creates
+                    a new version instead of rewriting history.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
                   {versionHistory.length > 0 ? versionHistory.map((entry) => (
-                    <SkillVersionEntry key={entry.version} entry={entry} />
+                    <SkillVersionEntry
+                      key={entry.version}
+                      entry={entry}
+                      current={entry.version === currentVersion}
+                      busyAction={versionAction}
+                      onDownload={() => void downloadVersion(entry)}
+                      onRollback={() => void rollbackVersion(entry)}
+                    />
                   )) : (
                     <div className="rounded-md border p-4 text-sm text-muted-foreground">
                       This Skill is currently at v{currentVersion}. Its detailed history will be
@@ -276,6 +338,9 @@ export function SkillOverviewPanel({
                     </div>
                   )}
                 </div>
+                {versionMessage ? (
+                  <p className="text-sm text-muted-foreground">{versionMessage}</p>
+                ) : null}
                 <DialogFooter>
                   <DialogClose asChild>
                     <Button type="button" variant="outline">Close</Button>
@@ -498,13 +563,29 @@ export function SkillOverviewPanel({
   );
 }
 
-function SkillVersionEntry({ entry }: { entry: AssetVersionRecord }) {
+function SkillVersionEntry({
+  entry,
+  current,
+  busyAction,
+  onDownload,
+  onRollback
+}: {
+  entry: AssetVersionRecord;
+  current: boolean;
+  busyAction?: string;
+  onDownload: () => void;
+  onRollback: () => void;
+}) {
+  const available = Boolean(entry.storage);
+  const downloading = busyAction === `download:${entry.version}`;
+  const rollingBack = busyAction === `rollback:${entry.version}`;
   return (
     <div className="rounded-md border p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Badge variant="outline">v{entry.version}</Badge>
+            {current ? <Badge variant="secondary">Current</Badge> : null}
             <span className="text-sm font-medium">{entry.summary}</span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -523,6 +604,64 @@ function SkillVersionEntry({ entry }: { entry: AssetVersionRecord }) {
           ))}
         </ul>
       ) : null}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {available ? (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={Boolean(busyAction)}
+              onClick={onDownload}
+            >
+              {downloading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+              ) : (
+                <Download className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
+              Download
+            </Button>
+            {!current ? (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={Boolean(busyAction)}
+                  >
+                    {rollingBack ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                    Restore
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Restore Skill v{entry.version}?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      The retained package will become a new current version. Existing history is
+                      preserved until it exceeds the five-version retention limit.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={onRollback}>
+                      Restore as new version
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ) : null}
+          </>
+        ) : (
+          <span className="text-xs text-muted-foreground">
+            Package unavailable; this record predates retained version storage.
+          </span>
+        )}
+      </div>
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t pt-3 text-xs text-muted-foreground">
         <span>{entry.validation.errors} errors</span>
         <span>{entry.validation.warnings} warnings</span>
@@ -537,6 +676,7 @@ function SkillVersionEntry({ entry }: { entry: AssetVersionRecord }) {
 function versionSourceLabel(source: AssetVersionRecord["source"]): string {
   if (source === "project-sync") return "Project sync";
   if (source === "migration") return "Existing Skill";
+  if (source === "rollback") return "Version restore";
   if (source === "scan") return "Local scan";
   return "Package upload";
 }

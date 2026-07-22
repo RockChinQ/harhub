@@ -1,6 +1,6 @@
 import type { Express } from "express";
 
-import { requireWorkspaceAccess } from "../auth.js";
+import { requireWorkspaceAccess, requireWorkspaceAdminAccess } from "../auth.js";
 import {
   buildAgentSkillsDiscoveryIndex,
   getWorkspaceAssetShare,
@@ -106,7 +106,7 @@ export function registerShareRoutes(app: Express): void {
   });
 
   app.post("/api/workspaces/:workspaceId/assets/:query/share", async (req, res) => {
-    const context = await requireWorkspaceAccess(req, res);
+    const context = await requireWorkspaceAdminAccess(req, res);
     if (!context) return;
 
     try {
@@ -117,7 +117,7 @@ export function registerShareRoutes(app: Express): void {
   });
 
   app.delete("/api/workspaces/:workspaceId/assets/:query/share", async (req, res) => {
-    const context = await requireWorkspaceAccess(req, res);
+    const context = await requireWorkspaceAdminAccess(req, res);
     if (!context) return;
 
     try {

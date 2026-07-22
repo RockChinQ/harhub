@@ -12,9 +12,10 @@ export function createImportedSkillAsset(input: {
   storage: StoredObject;
   rejectInvalid?: boolean;
   previous?: AssetRecord;
-  versionSource?: "upload" | "project-sync";
+  versionSource?: "upload" | "project-sync" | "rollback";
   createdByAccountId?: string;
   versionSummary?: string;
+  versionCreatedAt?: string;
 }): AssetRecord {
   if (input.skill.validation.errors > 0 && input.rejectInvalid !== false) {
     throw new Error(importValidationError(input.skill.validationIssues));
@@ -46,7 +47,8 @@ export function createImportedSkillAsset(input: {
     ...(input.createdByAccountId
       ? { createdByAccountId: input.createdByAccountId }
       : {}),
-    ...(input.versionSummary ? { summary: input.versionSummary } : {})
+    ...(input.versionSummary ? { summary: input.versionSummary } : {}),
+    ...(input.versionCreatedAt ? { createdAt: input.versionCreatedAt } : {})
   });
 }
 

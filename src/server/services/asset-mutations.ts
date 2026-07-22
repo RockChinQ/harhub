@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import {
+  assetStorageObjects,
   findAsset,
   removeCatalogAsset
 } from "../../features/assets/index.js";
@@ -8,6 +9,7 @@ import {
   writeWorkspaceAssetCatalog
 } from "../../state/index.js";
 import { deleteStoredObject } from "../../storage/index.js";
+import { assertWorkspaceAdminContext } from "../authorization.js";
 import { sendError, unique } from "../utils/http.js";
 import { assetListPayload } from "./asset-responses.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
@@ -19,6 +21,7 @@ export async function deleteAsset(
   context: WorkspaceContext
 ): Promise<void> {
   try {
+    assertWorkspaceAdminContext(context);
     const catalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
     const asset = findAsset(catalog, req.params.query);
     if (!asset) {
@@ -26,8 +29,9 @@ export async function deleteAsset(
       return;
     }
 
-    if (asset.storage) {
-      await deleteStoredObject(asset.storage);
+    const storageObjects = assetStorageObjects(asset);
+    if (storageObjects.length > 0) {
+      await Promise.all(storageObjects.map(deleteStoredObject));
       const nextCatalog = removeCatalogAsset(catalog, asset.id);
       await writeWorkspaceAssetCatalog(context.workspace.id, nextCatalog);
       await removeAssetShares(context.workspace.id, [asset.id]);
@@ -48,6 +52,7 @@ export async function deleteWorkspaceAssetBatch(
   context: WorkspaceContext,
   queries: string[]
 ) {
+  assertWorkspaceAdminContext(context);
   let catalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
   const succeeded: string[] = [];
   const failed: Array<{ id: string; error: string }> = [];
@@ -59,13 +64,14 @@ export async function deleteWorkspaceAssetBatch(
       continue;
     }
 
-    if (!asset.storage) {
+    const storageObjects = assetStorageObjects(asset);
+    if (storageObjects.length === 0) {
       failed.push({ id: query, error: "Only uploaded skill packages can be bulk deleted." });
       continue;
     }
 
     try {
-      await deleteStoredObject(asset.storage);
+      await Promise.all(storageObjects.map(deleteStoredObject));
       catalog = removeCatalogAsset(catalog, asset.id);
       succeeded.push(asset.id);
     } catch (error) {

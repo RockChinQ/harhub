@@ -246,7 +246,8 @@ the configured hosted or self-managed workspace. During import, Harhub stores
 each Skill as an independent S3 file prefix and does not retain the source zip.
 Preview reads those objects directly; download and discovery generate a standard
 root-level Skill zip on demand. Uploaded Skills are immutable; edit the local
-Skill and upload it again instead of patching it in place.
+Skill and upload it again instead of patching it in place. Harhub retains the
+current package and four previous versions for authenticated download or restore.
 
 ## Configuration
 
@@ -279,3 +280,7 @@ export HARHUB_PASSWORD_LOGIN_ENABLED=false
 Detailed documentation lives in [`docs/`](./docs/).
 
 For Skill package details, see [`docs/06-skill-standard.md`](./docs/06-skill-standard.md).
+
+## License
+
+Harhub is open source under the [Apache License 2.0](./LICENSE).

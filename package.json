@@ -1,6 +1,7 @@
 {
   "name": "harhub",
   "version": "0.1.0-beta.3",
+  "license": "Apache-2.0",
   "description": "Team AI harness management for skills, MCP, rules, and agent instructions.",
   "type": "module",
   "repository": {

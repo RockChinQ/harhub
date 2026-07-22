@@ -8,7 +8,7 @@ export type AssetKind = "skill";
 
 export type AssetHealth = "valid" | "warning" | "error" | "unknown";
 
-export type AssetVersionSource = "upload" | "project-sync" | "migration" | "scan";
+export type AssetVersionSource = "upload" | "project-sync" | "migration" | "rollback" | "scan";
 
 export type StorageProvider = "s3";
 export const SKILL_FILES_CHECKSUM_ALGORITHM = "skill-files-v2" as const;
@@ -200,6 +200,43 @@ export interface AssetVersionRecord {
   description: string;
   health: AssetHealth;
   validation: AssetRecord["validation"];
+  /** Retained package snapshot used for version download and rollback. */
+  storage?: StoredObject;
+}
+
+export type WorkspaceAuditEventType =
+  | "asset.deleted"
+  | "asset.version.created"
+  | "asset.version.pruned"
+  | "asset.version.restored"
+  | "project.archived"
+  | "project.created"
+  | "project.frozen"
+  | "project.repository.connected"
+  | "project.repository.synced"
+  | "project.skill.published"
+  | "project.sync_token.rotated"
+  | "share.created"
+  | "share.revoked"
+  | "workspace.created";
+
+export type WorkspaceAuditEntityType = "asset" | "project" | "share" | "workspace";
+
+export interface WorkspaceAuditEvent {
+  id: string;
+  workspaceId: string;
+  eventType: WorkspaceAuditEventType;
+  entityType: WorkspaceAuditEntityType;
+  entityId: string;
+  actorAccountId?: string;
+  source: "api" | "migration" | "project-sync" | "system";
+  occurredAt: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface WorkspaceAuditEventListResponse {
+  events: WorkspaceAuditEvent[];
+  nextBefore?: string;
 }
 
 export interface AssetShareRecord {

@@ -15,8 +15,13 @@ permissions:
   contents: read
 
 jobs:
+  quality:
+    name: Verify source
+    uses: ./.github/workflows/ci.yml
+
   build:
     name: Build and push image
+    needs: quality
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
