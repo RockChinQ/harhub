@@ -209,12 +209,14 @@ export async function upsertGitHubInstallation(
          installation_id, workspace_id, account_login, account_type,
          repository_selection, permissions, linked_by_account_id, linked_at, suspended_at
        ) values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
-       on conflict (workspace_id, installation_id) do update set
+       on conflict on constraint harhub_github_installations_pkey do update set
+         workspace_id = excluded.workspace_id,
          account_login = excluded.account_login,
          account_type = excluded.account_type,
          repository_selection = excluded.repository_selection,
          permissions = excluded.permissions,
          linked_by_account_id = excluded.linked_by_account_id,
+         linked_at = excluded.linked_at,
          suspended_at = excluded.suspended_at`,
       [
         installation.id,
