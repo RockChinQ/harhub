@@ -10,7 +10,7 @@ import JSZip from "jszip";
 import { parseArgs } from "../src/cli/args.js";
 import { runAssetsList, runAssetsShow } from "../src/cli/commands/assets.js";
 import { runDownload } from "../src/cli/commands/download.js";
-import { runEdit } from "../src/cli/commands/skills.js";
+import { runEdit, runList, runShow } from "../src/cli/commands/skills.js";
 
 const asset = {
   id: "asset:skill:demo-skill",
@@ -91,6 +91,47 @@ test("lists and shows remote assets without reading local catalogs", async () =>
   });
 });
 
+test("lists and shows remote Skills through the canonical assets API", async () => {
+  const requests: string[] = [];
+  await withServer((request, response) => {
+    requests.push(request.url!);
+    response.setHeader("Content-Type", "application/json");
+    if (request.url === "/api/workspaces/ws_demo/assets?kind=skill") {
+      response.end(JSON.stringify({ assets: [asset], skills: [], issues: [] }));
+      return;
+    }
+    if (request.url === "/api/workspaces/ws_demo/assets/demo-skill") {
+      response.end(JSON.stringify(asset));
+      return;
+    }
+    response.statusCode = 404;
+    response.end(JSON.stringify({ error: "not found" }));
+  }, async (baseUrl) => {
+    const listed = await captureLog(() => runList(remoteArgs(baseUrl, ["--json"])));
+    assert.equal(listed.code, 0);
+    assert.equal(JSON.parse(listed.output)[0].name, "demo-skill");
+
+    const shown = await captureLog(() => runShow(remoteArgs(baseUrl, ["demo-skill", "--json"])));
+    assert.equal(shown.code, 0);
+    assert.equal(JSON.parse(shown.output).version, 2);
+  });
+  assert.deepEqual(requests, [
+    "/api/workspaces/ws_demo/assets?kind=skill",
+    "/api/workspaces/ws_demo/assets/demo-skill"
+  ]);
+});
+
+test("supports raw-array remote Skill list responses", async () => {
+  await withServer((_request, response) => {
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify([asset]));
+  }, async (baseUrl) => {
+    const result = await captureLog(() => runList(remoteArgs(baseUrl)));
+    assert.equal(result.code, 0);
+    assert.match(result.output, /Demo Skill/);
+  });
+});
+
 test("downloads the current remote asset version with the standalone command", async () => {
   const directory = mkdtempSync(path.join(tmpdir(), "harhub-download-"));
   try {
@@ -121,7 +162,7 @@ test("edits a remote Skill file and uploads it as a new version", async () => {
   let uploadedSkill = "";
 
   await withServer(async (request, response) => {
-    if (request.method === "GET" && request.url === "/api/workspaces/ws_demo/skills/demo-skill") {
+    if (request.method === "GET" && request.url === "/api/workspaces/ws_demo/assets/demo-skill") {
       response.setHeader("Content-Type", "application/json");
       response.end(JSON.stringify(asset));
       return;
@@ -153,6 +194,36 @@ test("edits a remote Skill file and uploads it as a new version", async () => {
     assert.match(uploadedSkill, /New body/);
     assert.equal(JSON.parse(result.output).asset.version, 3);
   });
+});
+
+test("refuses to turn a remote Skill edit into a different asset", async () => {
+  const original = await new JSZip()
+    .file("SKILL.md", "---\nname: demo-skill\ndescription: Old description\n---\n")
+    .generateAsync({ type: "nodebuffer" });
+  let uploaded = false;
+
+  await withServer(async (request, response) => {
+    if (request.method === "GET" && request.url === "/api/workspaces/ws_demo/assets/demo-skill") {
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify(asset));
+      return;
+    }
+    if (request.method === "GET" && request.url === "/api/workspaces/ws_demo/assets/demo-skill/versions/2/download") {
+      response.end(original);
+      return;
+    }
+    if (request.method === "POST") uploaded = true;
+    response.statusCode = 500;
+    response.end();
+  }, async (baseUrl) => {
+    const result = await captureLog(() => runEdit(remoteArgs(baseUrl, [
+      "demo-skill",
+      "--content",
+      "---\nname: another-skill\ndescription: Changed name\n---\n"
+    ])));
+    assert.equal(result.code, 1);
+  });
+  assert.equal(uploaded, false);
 });
 
 async function multipartFile(request: IncomingMessage): Promise<Buffer> {

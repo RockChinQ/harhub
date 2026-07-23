@@ -90,13 +90,14 @@ export function runValidate(parsed: ParsedArgs): number {
 export async function runList(parsed: ParsedArgs): Promise<number> {
   if (isRemote(parsed)) {
     try {
-      const payload = await requestWorkspaceJson<{ skills: AssetRecord[] }>(parsed, "/skills");
+      const payload = await requestWorkspaceJson<unknown>(parsed, "/assets?kind=skill");
+      const skills = normalizeRemoteSkills(payload);
       if (hasBooleanOption(parsed, "json")) {
-        console.log(JSON.stringify(payload.skills, null, 2));
-      } else if (payload.skills.length === 0) {
+        console.log(JSON.stringify(skills, null, 2));
+      } else if (skills.length === 0) {
         console.log("No remote skills matched.");
       } else {
-        printAssetTable(payload.skills);
+        printAssetTable(skills);
       }
       return 0;
     } catch (error) {
@@ -130,7 +131,7 @@ export async function runShow(parsed: ParsedArgs): Promise<number> {
 
   if (isRemote(parsed)) {
     try {
-      const skill = await requestWorkspaceJson<AssetRecord>(parsed, `/skills/${encodeURIComponent(query)}`);
+      const skill = await requestWorkspaceJson<AssetRecord>(parsed, `/assets/${encodeURIComponent(query)}`);
       if (hasBooleanOption(parsed, "json")) {
         console.log(JSON.stringify(skill, null, 2));
       } else {
@@ -352,7 +353,7 @@ export async function runEdit(parsed: ParsedArgs): Promise<number> {
       throw new Error("Use either --content or --content-file, not both.");
     }
 
-    const asset = await requestWorkspaceJson<AssetRecord>(parsed, `/skills/${encodeURIComponent(query)}`);
+    const asset = await requestWorkspaceJson<AssetRecord>(parsed, `/assets/${encodeURIComponent(query)}`);
     const version = asset.version;
     if (typeof version !== "number" || !Number.isSafeInteger(version) || version < 1) {
       throw new Error("The remote Skill does not have a downloadable version.");
@@ -391,6 +392,9 @@ export async function runEdit(parsed: ParsedArgs): Promise<number> {
     if (errors.length > 0) {
       throw new Error(`Edited Skill is invalid: ${errors.map((issue) => issue.message).join("; ")}`);
     }
+    if (candidate.name !== asset.name) {
+      throw new Error(`Editing a remote Skill cannot change its name from ${asset.name} to ${candidate.name}.`);
+    }
 
     const context = resolveRemoteContext(parsed);
     const response = await uploadSkillZip({
@@ -410,6 +414,16 @@ export async function runEdit(parsed: ParsedArgs): Promise<number> {
     console.error(error instanceof Error ? error.message : String(error));
     return 1;
   }
+}
+
+function normalizeRemoteSkills(value: unknown): AssetRecord[] {
+  if (Array.isArray(value)) return value as AssetRecord[];
+  if (value && typeof value === "object") {
+    const payload = value as { assets?: unknown; skills?: unknown };
+    if (Array.isArray(payload.assets)) return payload.assets as AssetRecord[];
+    if (Array.isArray(payload.skills)) return payload.skills as AssetRecord[];
+  }
+  throw new Error("Harhub returned an unexpected remote Skill list response.");
 }
 
 function safeSkillFilePath(value: string): string {
