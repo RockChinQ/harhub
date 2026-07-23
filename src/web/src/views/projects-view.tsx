@@ -946,7 +946,9 @@ export function ProjectsView({
                           binding={binding}
                           onReview={() => void openSkillDiff(binding)}
                           onRemove={() => confirmRemoveSkill(binding)}
-                          removeDisabledReason={projectSkillMutationDisabledReason}
+                          removeDisabledReason={binding.path === "."
+                            ? "Repository-root Skills cannot be removed through Harhub."
+                            : projectSkillMutationDisabledReason}
                         />
                       ))}
                     </div>

@@ -9,21 +9,54 @@ import type {
   SkillValidationSeverity
 } from "../../shared/types.js";
 
-export const REPOSITORY_DETECTOR_VERSION = "repository-harness-v1";
+export const REPOSITORY_DETECTOR_VERSION = "repository-harness-v2";
 const MAX_CANDIDATE_BYTES = 1024 * 1024;
+export const REPOSITORY_SKILL_EXCLUDED_DIRECTORIES = [
+  ".cache",
+  ".git",
+  ".harhub",
+  ".hg",
+  ".next",
+  ".nox",
+  ".nuxt",
+  ".output",
+  ".svn",
+  ".tox",
+  ".venv",
+  "__pycache__",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+  "out",
+  "site-packages",
+  "target",
+  "venv"
+] as const;
+const EXCLUDED_REPOSITORY_PATH_SEGMENTS: ReadonlySet<string> = new Set(
+  REPOSITORY_SKILL_EXCLUDED_DIRECTORIES
+);
 
 export interface RepositorySourceFile {
   path: string;
   content: Buffer;
 }
 
+export interface RepositorySkillPackage {
+  rootPath: string;
+  skillPath: string;
+  files: SkillPackageFile[];
+}
+
 export function detectRepositoryInventory(
   inputFiles: RepositorySourceFile[]
 ): ProjectInventoryArtifact[] {
-  const files = normalizeFiles(inputFiles);
-  const skillRoots = skillRootPaths(files);
+  const files = normalizeFiles(inputFiles)
+    .filter((file) => !isRepositoryInventoryPathExcluded(file.path));
+  const skillPackages = discoverRepositorySkillPackages(files);
+  const skillRoots = skillPackages.map((candidate) => candidate.rootPath);
   const artifacts = [
-    ...detectSkills(files, skillRoots),
+    ...detectSkills(skillPackages),
     ...files.flatMap((file) => detectSingleFile(file, skillRoots))
   ];
   return artifacts.sort((left, right) =>
@@ -34,25 +67,64 @@ export function detectRepositoryInventory(
 export function isRepositoryInventoryCandidate(pathValue: string): boolean {
   const candidate = normalizePath(pathValue);
   if (!candidate) return false;
-  if (candidate.endsWith("/SKILL.md") && isSkillPath(candidate)) return true;
+  if (repositorySkillRoot(candidate) !== undefined) return true;
   if (isInstructionPath(candidate)) return true;
   if (ruleFormat(candidate)) return true;
   return Boolean(mcpFormat(candidate));
 }
 
-function detectSkills(
-  files: RepositorySourceFile[],
-  roots: string[]
-): ProjectInventoryArtifact[] {
-  return roots.map((root) => {
-    const nestedRoots = roots.filter((candidate) => candidate !== root && candidate.startsWith(`${root}/`));
-    const skillFiles: SkillPackageFile[] = files
-      .filter((file) => file.path === `${root}/SKILL.md` || file.path.startsWith(`${root}/`))
-      .filter((file) => !nestedRoots.some((nested) => file.path.startsWith(`${nested}/`)))
+/**
+ * Find standards-compliant Skill directory boundaries anywhere in a repository.
+ * Nested Skills are returned separately and never become files of their parent.
+ */
+export function discoverRepositorySkillPackages(
+  inputFiles: RepositorySourceFile[]
+): RepositorySkillPackage[] {
+  const files = normalizeFiles(inputFiles)
+    .filter((file) => !isRepositoryInventoryPathExcluded(file.path));
+  const roots = skillRootPaths(files);
+  return roots.map((rootPath) => {
+    const nestedRoots = roots.filter((candidate) =>
+      candidate !== rootPath && isRepositoryPathWithinRoot(candidate, rootPath)
+    );
+    const skillFiles = files
+      .filter((file) => isRepositoryPathWithinRoot(file.path, rootPath))
+      .filter((file) => !nestedRoots.some((nested) => isRepositoryPathWithinRoot(file.path, nested)))
       .map((file) => ({
-        path: path.posix.relative(root, file.path),
+        path: relativeRepositorySkillPath(file.path, rootPath),
         content: file.content
       }));
+    return {
+      rootPath,
+      skillPath: rootPath === "." ? "SKILL.md" : `${rootPath}/SKILL.md`,
+      files: skillFiles
+    };
+  });
+}
+
+export function repositorySkillRoot(pathValue: string): string | undefined {
+  const candidate = normalizePath(pathValue);
+  if (!candidate || path.posix.basename(candidate) !== "SKILL.md") return undefined;
+  if (isRepositoryInventoryPathExcluded(candidate)) return undefined;
+  return path.posix.dirname(candidate);
+}
+
+export function isRepositoryInventoryPathExcluded(pathValue: string): boolean {
+  const candidate = normalizePath(pathValue);
+  if (!candidate) return true;
+  return candidate.split("/").some((segment) => EXCLUDED_REPOSITORY_PATH_SEGMENTS.has(segment));
+}
+
+export function isRepositoryPathWithinRoot(pathValue: string, rootPath: string): boolean {
+  return rootPath === "." || pathValue.startsWith(`${rootPath}/`);
+}
+
+export function repositorySkillSourcePath(rootPath: string, packagePath: string): string {
+  return rootPath === "." ? packagePath : `${rootPath}/${packagePath}`;
+}
+
+function detectSkills(packages: RepositorySkillPackage[]): ProjectInventoryArtifact[] {
+  return packages.map(({ rootPath: root, files: skillFiles }) => {
     const oversize = skillFiles.find((file) => file.content.byteLength > MAX_CANDIDATE_BYTES);
     if (oversize) {
       return invalidArtifact({
@@ -106,7 +178,7 @@ function detectSingleFile(
   file: RepositorySourceFile,
   skillRoots: string[]
 ): ProjectInventoryArtifact[] {
-  if (skillRoots.some((root) => file.path === `${root}/SKILL.md` || file.path.startsWith(`${root}/`))) {
+  if (skillRoots.some((root) => isRepositoryPathWithinRoot(file.path, root))) {
     return [];
   }
   const instruction = instructionFormat(file.path);
@@ -210,13 +282,14 @@ function normalizePath(value: string): string {
 }
 
 function skillRootPaths(files: RepositorySourceFile[]): string[] {
-  return files
-    .filter((file) => file.path.endsWith("/SKILL.md") && isSkillPath(file.path))
-    .map((file) => path.posix.dirname(file.path));
+  return files.flatMap((file) => {
+    const root = repositorySkillRoot(file.path);
+    return root === undefined ? [] : [root];
+  });
 }
 
-function isSkillPath(value: string): boolean {
-  return /^(?:\.harness\/skills|\.agents\/skills|\.claude\/skills)\/.+\/SKILL\.md$/.test(value);
+function relativeRepositorySkillPath(filePath: string, rootPath: string): string {
+  return rootPath === "." ? filePath : path.posix.relative(rootPath, filePath);
 }
 
 function isInstructionPath(value: string): boolean {

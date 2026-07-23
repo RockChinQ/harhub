@@ -1,6 +1,12 @@
 import { createSign } from "node:crypto";
 
-import { isRepositoryInventoryCandidate, type RepositorySourceFile } from "../../features/repository-inventory/index.js";
+import {
+  isRepositoryInventoryCandidate,
+  isRepositoryInventoryPathExcluded,
+  isRepositoryPathWithinRoot,
+  repositorySkillRoot,
+  type RepositorySourceFile
+} from "../../features/repository-inventory/index.js";
 import type {
   GitHubInstallation,
   GitHubIntegrationStatus,
@@ -205,13 +211,18 @@ export async function readRepositoryInventorySource(input: {
     { auth: `Bearer ${token}` }
   );
   const entries = await repositoryTree(input, commit.commit.tree.sha, token);
-  const skillRoots = entries
-    .filter((entry) => entry.type === "blob" && entry.path.endsWith("/SKILL.md") && isRepositoryInventoryCandidate(entry.path))
-    .map((entry) => entry.path.slice(0, -"/SKILL.md".length));
-  const selected = entries.filter((entry) => entry.type === "blob" && (
-    isRepositoryInventoryCandidate(entry.path) ||
-    skillRoots.some((root) => entry.path.startsWith(`${root}/`))
-  ));
+  const skillRoots = entries.flatMap((entry) => {
+    if (entry.type !== "blob") return [];
+    const root = repositorySkillRoot(entry.path);
+    return root === undefined ? [] : [root];
+  });
+  const selected = entries.filter((entry) =>
+    entry.type === "blob" &&
+    !isRepositoryInventoryPathExcluded(entry.path) && (
+      isRepositoryInventoryCandidate(entry.path) ||
+      skillRoots.some((root) => isRepositoryPathWithinRoot(entry.path, root))
+    )
+  );
   if (selected.length > MAX_INVENTORY_FILES) {
     throw new GitHubAppError(
       "inventory_too_large",

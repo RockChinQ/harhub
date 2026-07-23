@@ -7,6 +7,10 @@ import {
   upsertAsset
 } from "../../features/assets/index.js";
 import {
+  discoverRepositorySkillPackages,
+  isRepositoryPathWithinRoot
+} from "../../features/repository-inventory/index.js";
+import {
   canonicalSkillFilesChecksumForStorage,
   discoverSkillsInArchive,
   analyzeStoredSkillFiles,
@@ -62,16 +66,10 @@ export async function syncProjectRepositoryFiles(input: {
     input.projectId,
     input.repository
   );
-  const candidates = input.files
-    .filter((file) => file.path.endsWith("/SKILL.md"))
+  const candidates = discoverRepositorySkillPackages(input.files)
     .map((metadata) => {
-      const rootPath = metadata.path.slice(0, -"/SKILL.md".length);
-      const skill = analyzeStoredSkillFiles(
-        input.files
-          .filter((file) => file.path.startsWith(`${rootPath}/`))
-          .map((file) => ({ path: file.path.slice(rootPath.length + 1), content: file.content }))
-      );
-      return { ...skill, rootPath, skillPath: metadata.path };
+      const skill = analyzeStoredSkillFiles(metadata.files);
+      return { ...skill, rootPath: metadata.rootPath, skillPath: metadata.skillPath };
     });
   const request: ProjectSyncRequest = {
     schemaVersion: 1,
@@ -87,7 +85,9 @@ export async function syncProjectRepositoryFiles(input: {
         digestAlgorithm: SKILL_FILES_CHECKSUM_ALGORITHM
       })),
       ...input.files
-        .filter((file) => !candidates.some((candidate) => file.path.startsWith(`${candidate.rootPath}/`)))
+        .filter((file) => !candidates.some((candidate) =>
+          isRepositoryPathWithinRoot(file.path, candidate.rootPath)
+        ))
         .map((file) => ({
           kind: bindingKindForRepositoryPath(file.path),
           name: repositoryBindingName(file.path),

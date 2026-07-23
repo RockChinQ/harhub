@@ -77,6 +77,13 @@ From **Projects**, choose **Import repository**:
 4. Review each detected Skill, MCP configuration, Rule, or agent instruction.
 5. Keep it repository-owned, bind a matched Skill to the Library, or ignore it.
 
+Skill discovery is directory-agnostic: every exact `SKILL.md` is treated as a
+Skill package root, including a repository-root Skill, conventional tool folders
+such as `.agents/skills` or `.claude/skills`, and arbitrary monorepo paths.
+Nested Skill roots remain separate packages. Dependency, cache, VCS, and generated
+output directories such as `node_modules`, `.venv`, `dist`, `build`, and `target`
+are excluded from discovery and package contents.
+
 Repository Skills are stored as Project-local forks. A changed fork can be
 reviewed file by file and only reaches the workspace Library after an explicit
 **Sync to Library** confirmation.

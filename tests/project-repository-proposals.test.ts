@@ -90,6 +90,26 @@ test("Skill removal proposals delete only files captured under the latest invent
   }), /outside its Skill root/);
 });
 
+test("repository-root Skills cannot create a destructive removal proposal", () => {
+  const base = proposalBase();
+  const binding: ProjectBinding = {
+    id: "binding-root",
+    kind: "skill",
+    name: "Repository Skill",
+    path: ".",
+    source: "repository",
+    status: "synced"
+  };
+  base.project.bindings = [binding];
+  base.snapshot.artifacts = [inventorySkill(binding.path, binding.id)];
+
+  assert.throws(() => createRemoveSkillProposal({
+    ...base,
+    binding,
+    filePaths: ["SKILL.md", "src/index.ts"]
+  }), /repository-root Skill cannot be removed/i);
+});
+
 function proposalBase() {
   return {
     project: {

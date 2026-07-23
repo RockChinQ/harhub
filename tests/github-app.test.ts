@@ -75,8 +75,10 @@ test("GitHub App signs requests and reads only repository harness files", async 
           sha: "tree-sha",
           truncated: false,
           tree: [
-            treeEntry(".agents/skills/research/SKILL.md", "skill-meta", 58),
-            treeEntry(".agents/skills/research/references/checklist.md", "skill-ref", 10),
+            treeEntry("skills/research/SKILL.md", "skill-meta", 58),
+            treeEntry("skills/research/references/checklist.md", "skill-ref", 10),
+            treeEntry("node_modules/dependency/SKILL.md", "dependency-skill", 58),
+            treeEntry("dist/generated/SKILL.md", "generated-skill", 58),
             treeEntry("AGENTS.md", "agents", 20),
             treeEntry("src/index.ts", "source", 100)
           ]
@@ -129,10 +131,12 @@ test("GitHub App signs requests and reads only repository harness files", async 
     });
     assert.equal(inventory.commitSha, "commit-sha");
     assert.deepEqual(inventory.files.map((file) => file.path), [
-      ".agents/skills/research/SKILL.md",
-      ".agents/skills/research/references/checklist.md",
+      "skills/research/SKILL.md",
+      "skills/research/references/checklist.md",
       "AGENTS.md"
     ]);
+    assert.equal(requests.some((request) => request.url.includes("dependency-skill")), false);
+    assert.equal(requests.some((request) => request.url.includes("generated-skill")), false);
     assert.equal(requests.some((request) => request.url.includes("src/index.ts")), false);
     assert.ok(requests.some((request) => request.authorization?.startsWith("Bearer eyJ")));
     assert.ok(requests.some((request) => request.authorization === "Bearer installation-token"));

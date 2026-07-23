@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { REPOSITORY_SKILL_EXCLUDED_DIRECTORIES } from "../repository-inventory/index.js";
 import type {
   HarnessTemplateAssetSelection,
   HarnessTemplateFile,
@@ -89,13 +90,6 @@ function projectSyncWorkflow(): string {
 
 on:
   push:
-    paths:
-      - '.harness/skills/**'
-      - '.harness/mcp/**'
-      - '.harness/rules/**'
-      - '.harhub/project.json'
-      - '.harhub/scripts/collect-bindings.mjs'
-      - '.github/workflows/harhub-sync.yml'
   workflow_dispatch:
 
 permissions:
@@ -121,6 +115,7 @@ jobs:
           HARHUB_COMMIT_SHA: \${{ github.sha }}
           HARHUB_REF: \${{ github.ref_name }}
           HARHUB_RUN_ID: \${{ github.run_id }}
+          HARHUB_SKILL_FILES: \${{ runner.temp }}/harhub-skill-files.txt
         run: node .harhub/scripts/collect-bindings.mjs > "\$RUNNER_TEMP/harhub-sync.json"
 
       - name: Sync Project with Harhub
@@ -138,8 +133,8 @@ jobs:
             exit 1
           fi
           SKILL_ARCHIVE_ARGS=()
-          if [ -d ".harness/skills" ] && find .harness/skills -type f -name SKILL.md -print -quit | grep -q .; then
-            zip -q -r "\$RUNNER_TEMP/harhub-skills.zip" .harness/skills
+          if [ -s "\$RUNNER_TEMP/harhub-skill-files.txt" ]; then
+            zip -q "\$RUNNER_TEMP/harhub-skills.zip" -@ < "\$RUNNER_TEMP/harhub-skill-files.txt"
             SKILL_ARCHIVE_ARGS=(-F "skills=@\$RUNNER_TEMP/harhub-skills.zip;type=application/zip")
           fi
           curl --fail-with-body --silent --show-error \\
@@ -158,6 +153,7 @@ import path from 'node:path';
 
 const root = process.cwd();
 const configPath = path.join(root, '.harhub/project.json');
+const excludedDirectories = new Set(${JSON.stringify(REPOSITORY_SKILL_EXCLUDED_DIRECTORIES)});
 const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
 if (!config.projectId || !config.syncUrl) {
   throw new Error('Freeze this Forge session as a Harhub Project before syncing.');
@@ -168,21 +164,21 @@ const configured = new Map(
 );
 const files = await walk(root);
 const bindings = [];
-const skillFilesFound = files.filter(
-  (file) => file.endsWith('/SKILL.md') && file.startsWith('.harness/skills/')
-);
+const skillArchiveFiles = new Set();
+const skillFilesFound = files.filter((file) => path.posix.basename(file) === 'SKILL.md');
 const skillRoots = skillFilesFound.map((file) => path.posix.dirname(file));
 
 for (const skillFile of skillFilesFound) {
   const skillRoot = path.posix.dirname(skillFile);
   const skillFiles = files.filter((file) =>
-    (file === skillFile || file.startsWith(skillRoot + '/')) &&
+    isPathWithinRoot(file, skillRoot) &&
     !skillRoots.some((otherRoot) =>
       otherRoot !== skillRoot &&
-      otherRoot.startsWith(skillRoot + '/') &&
-      (file === otherRoot + '/SKILL.md' || file.startsWith(otherRoot + '/'))
+      isPathWithinRoot(otherRoot, skillRoot) &&
+      isPathWithinRoot(file, otherRoot)
     )
   );
+  for (const file of skillFiles) skillArchiveFiles.add(file);
   const known = configured.get('skill\\0' + skillRoot);
   bindings.push({
     kind: 'skill',
@@ -193,14 +189,27 @@ for (const skillFile of skillFilesFound) {
   });
 }
 
-for (const file of files.filter((item) => item.startsWith('.harness/mcp/'))) {
+for (const file of files.filter((item) =>
+  item.startsWith('.harness/mcp/') &&
+  !skillRoots.some((skillRoot) => isPathWithinRoot(item, skillRoot))
+)) {
   bindings.push(await fileBinding('mcp', file));
 }
-for (const file of files.filter((item) => item.startsWith('.harness/rules/'))) {
+for (const file of files.filter((item) =>
+  item.startsWith('.harness/rules/') &&
+  !skillRoots.some((skillRoot) => isPathWithinRoot(item, skillRoot))
+)) {
   bindings.push(await fileBinding('rule', file));
 }
 
 bindings.sort((left, right) => (left.kind + left.path).localeCompare(right.kind + right.path));
+if (process.env.HARHUB_SKILL_FILES) {
+  const skillFileList = Array.from(skillArchiveFiles).sort(comparePaths);
+  await fs.writeFile(
+    process.env.HARHUB_SKILL_FILES,
+    skillFileList.length > 0 ? skillFileList.join('\\n') + '\\n' : ''
+  );
+}
 process.stdout.write(JSON.stringify({
   schemaVersion: 1,
   repository: process.env.HARHUB_REPOSITORY ?? '',
@@ -219,6 +228,10 @@ async function fileBinding(kind, file) {
     path: file,
     digest: sha256(content)
   };
+}
+
+function isPathWithinRoot(filePath, rootPath) {
+  return rootPath === '.' || filePath.startsWith(rootPath + '/');
 }
 
 async function directoryDigest(skillRoot, skillFiles) {
@@ -248,7 +261,7 @@ async function skillName(skillFile, fallback) {
 async function walk(directory) {
   const result = [];
   for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
-    if (entry.name === '.git' || entry.name === 'node_modules') continue;
+    if (entry.isDirectory() && excludedDirectories.has(entry.name)) continue;
     const absolute = path.join(directory, entry.name);
     if (entry.isSymbolicLink()) continue;
     if (entry.isDirectory()) result.push(...await walk(absolute));
