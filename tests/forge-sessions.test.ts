@@ -60,6 +60,10 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
         mode: "llm",
         sessionTitle: "Release Readiness",
         ready: false,
+        discovery: {
+          briefDetail: "partial",
+          unknownEssentialAreas: ["constraints-boundaries", "delivery-risks"]
+        },
         appliedLenses: ["delivery-reality"],
         questions: [{
           question: "What should it do?",
@@ -80,6 +84,10 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
     assert.equal(restoredQuestion.answerCount, 1);
     assert.equal(restoredQuestion.followUp?.questions?.[0]?.question, "What should it do?");
     assert.deepEqual(restoredQuestion.followUp?.appliedLenses, ["delivery-reality"]);
+    assert.deepEqual(restoredQuestion.followUp?.discovery, {
+      briefDetail: "partial",
+      unknownEssentialAreas: ["constraints-boundaries", "delivery-risks"]
+    });
     assert.deepEqual(
       {
         lens: restoredQuestion.followUp?.questions?.[0]?.lens,

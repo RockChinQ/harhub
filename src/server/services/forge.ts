@@ -7,6 +7,7 @@ import type {
   ForgeAiFailureCode,
   ForgeAiOperation,
   ForgeAiOperationFailure,
+  HarnessDiscoveryAssessment,
   HarnessFollowUpComponent,
   HarnessFollowUpQuestion,
   HarnessFollowUpRequest,
@@ -24,7 +25,9 @@ import {
 import { addProjectIntegrationFiles } from "../../features/projects/framework.js";
 import { loadStoredSkill } from "./skill-packages.js";
 import {
+  forgeDiscoveryAreaPrompt,
   forgeDiscoveryLensPrompt,
+  isForgeDiscoveryAreaId,
   isForgeDiscoveryLensId
 } from "./forge-discovery-lenses.js";
 
@@ -265,22 +268,30 @@ export async function createHarnessFollowUp(
         `The first ${MIN_FORGE_INTERVIEW_ANSWERS} answered follow-ups are required. Before then, always set ready to false and ask another question.`,
         "Required questions must be essential rather than generic setup questions.",
         "Rank unresolved information by its expected impact on the framework, asset selection, core workflow, constraints, and delivery risk. Put the highest-impact unresolved questions first.",
-        `Once at least ${MIN_FORGE_INTERVIEW_ANSWERS} essential answers are recorded, set ready to true as soon as the available context is sufficient. There is no target number beyond that minimum.`,
+        `Once at least ${MIN_FORGE_INTERVIEW_ANSWERS} essential answers are recorded, set ready to true only when every project-essential discovery area is known or explicitly not applicable. There is no target number beyond that minimum.`,
         "When more context would materially change the result, set ready to false and return a questions array containing all and only the useful follow-ups that should be answered next, in the same language as the user's requirement.",
         "Before writing questions, select the smallest useful set of discovery lenses for the unresolved risks. Usually one lens is enough; combine lenses only when they expose independent, material gaps. Use core when no specialized lens fits, and do not force a framework onto a clear implementation request.",
         "Treat each lens as a reasoning aid, not a checklist. Never ask the user to complete an entire canvas, map, interview script, scoring exercise, press release, or framework.",
         "The user is the project proposer, not a proxy research participant. Ask for known facts, decisions, constraints, or evidence; never present assumptions as user research. Unknown is an acceptable answer and should remain explicit in the generated framework.",
         `Discovery lens catalog: ${forgeDiscoveryLensPrompt()}`,
+        `Discovery coverage areas: ${forgeDiscoveryAreaPrompt()}`,
+        "Return a compact discovery object on every response with briefDetail and unknownEssentialAreas. briefDetail is sparse when the initial requirement mainly names an idea, product category, or broad goal; partial when several important decisions are explicit but material gaps remain; and detailed when most essential decisions are supported by concrete information.",
+        "unknownEssentialAreas contains exact ids from the discovery coverage areas whose answers could still materially change the framework. Do not omit a foundational area merely to finish the interview, but do not classify every unknown area as essential by default.",
+        "Less initial evidence requires more discovery, not less. A sparse brief normally leaves several essential areas unknown. Ask multiple independent, high-impact, component-friendly questions in the current batch so the user can establish the foundation efficiently. Do not serialize clearly independent gaps one at a time merely because one answer could slightly refine another.",
+        "A detailed brief should produce fewer follow-ups because explicit information already closes gaps. Let the content, not raw length or a question quota, determine briefDetail and coverage.",
+        "Discovery should establish a coherent starter framework, not exhaustively specify the product. Once a batch establishes the audience, intended outcome, must-work workflow, release boundary, and any truly binding constraints, prefer ready over decomposing the chosen workflow into feature-by-feature decisions.",
+        "An undecided implementation choice is not automatically an essential gap. For greenfield or exploratory work, record optional technology, detailed permissions, data mapping, migration rules, and edge-case behavior as open decisions in the generated framework unless the user has said they are binding or they would invalidate the core approach.",
+        "Do not repeat an area that an answer has materially resolved. Ask another round only when a remaining unknown could change the framework structure, asset selection, or viability, not merely make the generated brief more detailed.",
         "Derive the question count from the requirement's actual unresolved information. There is no preferred or fixed batch size: do not default to 2, 3, or 4 questions.",
-        "Ask one question when its answer should determine what to ask next. Ask multiple questions together only when the gaps are independent, equally important, and quick to answer without depending on another answer. Always return the smallest useful batch and never create a large questionnaire.",
+        "Ask one question only when its answer genuinely gates what can be asked next. Ask multiple questions together when the gaps are independent, important, and quick to answer without depending on another answer. Always return the smallest useful batch that still reflects the amount of missing essential context, and never create a large questionnaire.",
         "Minimize user effort. Prefer single-select and multi-select components whenever a small set of concrete options can capture the likely answers, and allow a custom answer when the options may not be exhaustive.",
         "Use a text component only when presets would be misleading. Each text question must ask for one bounded fact that can be answered with a phrase, one sentence, or a short list. Never ask for an essay, a full requirement restatement, or generic elaboration such as 'describe the project in detail'. Avoid multiple text questions in the same batch unless they are unavoidable.",
         "Clarify target users, must-work workflow, constraints, success criteria, or technical context.",
         "Do not repeat answered questions, ask for information that is already explicit, or continue merely to reach a question quota.",
-        "Return only JSON with sessionTitle, ready and, when ready is false, appliedLenses and questions.",
+        "Return only JSON with sessionTitle, ready, discovery and, when ready is false, appliedLenses and questions. discovery has the compact shape {\"briefDetail\":\"sparse|partial|detailed\",\"unknownEssentialAreas\":[\"exact-area-id\"]}.",
         "Each appliedLenses item must be an exact id from the discovery lens catalog or core. Keep it unique and include only lenses actually used this round.",
         "Each questions item contains question, component, lens, gap, and intent. lens is an applied lens id, gap is a concise unresolved fact or decision, and intent explains in one short sentence why the answer materially affects the framework.",
-        "When ready is true, omit appliedLenses and questions.",
+        "When ready is true, unknownEssentialAreas must be empty; omit appliedLenses and questions.",
         "Each component.type is single-select, multi-select, or text.",
         "Use single-select for one mutually exclusive answer, multi-select when several choices may apply, and text only for concise project-specific information that choices cannot represent accurately.",
         "Choice components contain 3 to 6 options with short label and optional description, plus allowCustom.",
@@ -294,7 +305,15 @@ export async function createHarnessFollowUp(
       onDelta: (delta) => context.onDelta?.(attempt, delta)
     });
     const sessionTitle = readSemanticSessionTitle(payload.sessionTitle);
-    const ready = input.answers.length >= MIN_FORGE_INTERVIEW_ANSWERS && payload.ready === true;
+    const discovery = readDiscoveryAssessment(payload.discovery);
+    if (
+      payload.ready === true &&
+      (!discovery || discovery.unknownEssentialAreas.length > 0)
+    ) {
+      throw new Error("AI follow-up marked the project ready with unresolved essential coverage");
+    }
+    const ready = input.answers.length >= MIN_FORGE_INTERVIEW_ANSWERS &&
+      payload.ready === true;
     const questions = ready
       ? []
       : readFollowUpQuestions(payload.questions);
@@ -315,6 +334,7 @@ export async function createHarnessFollowUp(
       mode: "llm",
       sessionTitle,
       ready,
+      ...(discovery ? { discovery } : {}),
       ...(ready
         ? {}
         : {
@@ -1230,6 +1250,20 @@ function readAppliedDiscoveryLenses(
     : [];
   const inferred = questions.flatMap((question) => question.lens ? [question.lens] : []);
   return Array.from(new Set([...declared, ...inferred])).slice(0, MAX_LIST_ITEMS);
+}
+
+function readDiscoveryAssessment(value: unknown): HarnessDiscoveryAssessment | undefined {
+  if (!isRecord(value)) return undefined;
+  const briefDetail = value.briefDetail;
+  if (briefDetail !== "sparse" && briefDetail !== "partial" && briefDetail !== "detailed") {
+    return undefined;
+  }
+  if (!Array.isArray(value.unknownEssentialAreas)) return undefined;
+  const unknownEssentialAreas = Array.from(new Set(value.unknownEssentialAreas.flatMap((item) => {
+    const area = readString(item);
+    return area && isForgeDiscoveryAreaId(area) ? [area] : [];
+  })));
+  return { briefDetail, unknownEssentialAreas };
 }
 
 function readRequiredAiString(value: unknown, label: string): string {

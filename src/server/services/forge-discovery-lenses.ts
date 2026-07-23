@@ -16,6 +16,17 @@ export const FORGE_DISCOVERY_LENS_IDS = [
 
 export type ForgeDiscoveryLensId = typeof FORGE_DISCOVERY_LENS_IDS[number];
 
+export const FORGE_DISCOVERY_AREA_IDS = [
+  "audience-context",
+  "outcome-evidence",
+  "primary-workflow",
+  "scope-priorities",
+  "constraints-boundaries",
+  "delivery-risks"
+] as const;
+
+export type ForgeDiscoveryAreaId = typeof FORGE_DISCOVERY_AREA_IDS[number];
+
 interface ForgeDiscoveryLens {
   id: Exclude<ForgeDiscoveryLensId, "core">;
   useWhen: string;
@@ -167,11 +178,45 @@ const FORGE_DISCOVERY_LENSES: ForgeDiscoveryLens[] = [
 ];
 
 const FORGE_DISCOVERY_LENS_ID_SET = new Set<string>(FORGE_DISCOVERY_LENS_IDS);
+const FORGE_DISCOVERY_AREA_ID_SET = new Set<string>(FORGE_DISCOVERY_AREA_IDS);
 
 export function isForgeDiscoveryLensId(value: string): value is ForgeDiscoveryLensId {
   return FORGE_DISCOVERY_LENS_ID_SET.has(value);
 }
 
+export function isForgeDiscoveryAreaId(value: string): value is ForgeDiscoveryAreaId {
+  return FORGE_DISCOVERY_AREA_ID_SET.has(value);
+}
+
 export function forgeDiscoveryLensPrompt(): string {
   return JSON.stringify(FORGE_DISCOVERY_LENSES);
+}
+
+export function forgeDiscoveryAreaPrompt(): string {
+  return JSON.stringify([
+    {
+      id: "audience-context",
+      inspect: "Who has the problem, in which situation, and what they do today."
+    },
+    {
+      id: "outcome-evidence",
+      inspect: "The user or business outcome and the evidence that would demonstrate useful success."
+    },
+    {
+      id: "primary-workflow",
+      inspect: "The must-work path, important actors, inputs, outputs, and handoffs."
+    },
+    {
+      id: "scope-priorities",
+      inspect: "The first-release boundary, must-haves, exclusions, and priority tradeoffs."
+    },
+    {
+      id: "constraints-boundaries",
+      inspect: "Technical, data, integration, permission, policy, budget, or time constraints."
+    },
+    {
+      id: "delivery-risks",
+      inspect: "The assumptions, failure modes, rollout, verification, and operating realities that could change the framework."
+    }
+  ]);
 }

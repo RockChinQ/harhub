@@ -399,6 +399,14 @@ export interface HarnessFollowUpQuestion {
   intent?: string;
 }
 
+export type HarnessDiscoveryBriefDetail = "sparse" | "partial" | "detailed";
+
+export interface HarnessDiscoveryAssessment {
+  briefDetail: HarnessDiscoveryBriefDetail;
+  /** Exact coverage-area ids that still materially affect the framework. */
+  unknownEssentialAreas: string[];
+}
+
 export interface HarnessFollowUpRequest {
   requirement: string;
   answers: HarnessInterviewAnswer[];
@@ -412,6 +420,8 @@ export interface HarnessFollowUpResponse {
   ready: boolean;
   /** Compact discovery methods selected for this round. */
   appliedLenses?: string[];
+  /** Compact coverage trace used to prevent premature readiness. */
+  discovery?: HarnessDiscoveryAssessment;
   questions?: HarnessFollowUpQuestion[];
   /** Legacy single-question fields retained for persisted sessions created before question batches. */
   question?: string;
