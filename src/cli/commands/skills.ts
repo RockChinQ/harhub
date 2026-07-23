@@ -1,5 +1,9 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import JSZip from "jszip";
+import type { AssetRecord } from "../../shared/types.js";
 import {
   createAssetCatalog,
   writeAssetCatalog
@@ -8,6 +12,7 @@ import {
   createCatalog,
   createSkillSkeleton,
   deleteSkill,
+  discoverSkillsInArchive,
   filterCatalog,
   findSkill,
   packageSkillDirectory,
@@ -25,12 +30,14 @@ import {
   uploadSkillZip
 } from "../api.js";
 import {
+  hasBooleanOption,
   optionString,
   resolveAssetCatalogPath,
   resolveCatalogPath
 } from "../args.js";
 import {
   hasErrors,
+  printAssetTable,
   printIssues,
   printSkillTable
 } from "../format.js";
@@ -39,6 +46,7 @@ import {
   selectSkillsForUpload
 } from "../interactive.js";
 import type { ParsedArgs } from "../types.js";
+import { downloadWorkspaceFile, requestWorkspaceJson, resolveRemoteContext } from "../remote.js";
 
 export function runScan(parsed: ParsedArgs): number {
   const catalogPath = resolveCatalogPath(parsed);
@@ -79,7 +87,23 @@ export function runValidate(parsed: ParsedArgs): number {
   return hasErrors(issues) ? 1 : 0;
 }
 
-export function runList(parsed: ParsedArgs): number {
+export async function runList(parsed: ParsedArgs): Promise<number> {
+  if (isRemote(parsed)) {
+    try {
+      const payload = await requestWorkspaceJson<{ skills: AssetRecord[] }>(parsed, "/skills");
+      if (hasBooleanOption(parsed, "json")) {
+        console.log(JSON.stringify(payload.skills, null, 2));
+      } else if (payload.skills.length === 0) {
+        console.log("No remote skills matched.");
+      } else {
+        printAssetTable(payload.skills);
+      }
+      return 0;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      return 1;
+    }
+  }
   const catalog = readCatalog(resolveCatalogPath(parsed));
   const skills = filterCatalog(catalog);
 
@@ -97,11 +121,32 @@ export function runList(parsed: ParsedArgs): number {
   return 0;
 }
 
-export function runShow(parsed: ParsedArgs): number {
+export async function runShow(parsed: ParsedArgs): Promise<number> {
   const query = parsed.positionals[0];
   if (!query) {
     console.error("Usage: harhub skills show <id|name|slug>");
     return 1;
+  }
+
+  if (isRemote(parsed)) {
+    try {
+      const skill = await requestWorkspaceJson<AssetRecord>(parsed, `/skills/${encodeURIComponent(query)}`);
+      if (hasBooleanOption(parsed, "json")) {
+        console.log(JSON.stringify(skill, null, 2));
+      } else {
+        console.log(skill.displayName ?? skill.name ?? query);
+        console.log(`  id: ${skill.id}`);
+        console.log(`  name: ${skill.name}`);
+        console.log(`  version: ${skill.version}`);
+        console.log(`  health: ${skill.health}`);
+        console.log("");
+        console.log(skill.description || "No description.");
+      }
+      return 0;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      return 1;
+    }
   }
 
   const skill = findSkill(readCatalog(resolveCatalogPath(parsed)), query);
@@ -289,9 +334,106 @@ function shouldUseInteractiveUpload(parsed: ParsedArgs): boolean {
   );
 }
 
-function hasBooleanOption(parsed: ParsedArgs, name: string): boolean {
-  const value = parsed.options[name];
-  return value === true || value === "true";
+function isRemote(parsed: ParsedArgs): boolean {
+  return Boolean(optionString(parsed, "workspace")) || hasBooleanOption(parsed, "remote");
+}
+
+export async function runEdit(parsed: ParsedArgs): Promise<number> {
+  const query = parsed.positionals[0];
+  if (!query) {
+    console.error("Usage: harhub skills edit <id|name|slug> [--file SKILL.md] [--content text|--content-file path]");
+    return 1;
+  }
+
+  try {
+    const contentValue = optionString(parsed, "content");
+    const contentFile = optionString(parsed, "content-file");
+    if (contentValue !== undefined && contentFile !== undefined) {
+      throw new Error("Use either --content or --content-file, not both.");
+    }
+
+    const asset = await requestWorkspaceJson<AssetRecord>(parsed, `/skills/${encodeURIComponent(query)}`);
+    const version = asset.version;
+    if (typeof version !== "number" || !Number.isSafeInteger(version) || version < 1) {
+      throw new Error("The remote Skill does not have a downloadable version.");
+    }
+    const downloaded = await downloadWorkspaceFile(
+      parsed,
+      `/assets/${encodeURIComponent(query)}/versions/${version}/download`,
+      `${asset.slug ?? asset.name ?? query}-v${version}.zip`
+    );
+    const zip = await JSZip.loadAsync(downloaded.buffer, { checkCRC32: true });
+    const filePath = safeSkillFilePath(optionString(parsed, "file") ?? "SKILL.md");
+    const entry = zip.file(filePath);
+    if (!entry) throw new Error(`File not found in Skill package: ${filePath}`);
+    const original = await entry.async("string");
+    const next = contentValue !== undefined
+      ? contentValue
+      : contentFile !== undefined
+        ? readFileSync(path.resolve(process.cwd(), contentFile), "utf8")
+        : editWithConfiguredEditor(original, filePath, optionString(parsed, "editor"));
+    if (next === original) {
+      throw new Error("No changes were made.");
+    }
+    zip.file(filePath, next);
+    const buffer = await zip.generateAsync({
+      type: "nodebuffer",
+      compression: "DEFLATE",
+      compressionOptions: { level: 6 },
+      platform: "UNIX"
+    });
+    const candidates = await discoverSkillsInArchive(buffer);
+    const candidate = candidates.length === 1 ? candidates[0] : undefined;
+    if (!candidate || candidate.skillPath !== "SKILL.md" || candidate.rootPath !== ".") {
+      throw new Error("Edited package must contain exactly one SKILL.md at its root.");
+    }
+    const errors = candidate.validationIssues.filter((issue) => issue.severity === "error");
+    if (errors.length > 0) {
+      throw new Error(`Edited Skill is invalid: ${errors.map((issue) => issue.message).join("; ")}`);
+    }
+
+    const context = resolveRemoteContext(parsed);
+    const response = await uploadSkillZip({
+      ...context,
+      fileName: downloaded.fileName,
+      buffer
+    });
+    const uploaded = response.uploaded?.[0];
+    if (!uploaded) throw new Error("Harhub did not return the edited Skill version.");
+    if (hasBooleanOption(parsed, "json")) {
+      console.log(JSON.stringify({ asset: uploaded, file: filePath }, null, 2));
+    } else {
+      console.log(`Updated ${uploaded.displayName ?? uploaded.name ?? query} by uploading version ${uploaded.version}.`);
+    }
+    return 0;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
+}
+
+function safeSkillFilePath(value: string): string {
+  const normalized = path.posix.normalize(value.replace(/\\/g, "/"));
+  if (!normalized || normalized === "." || normalized.startsWith("../") || path.posix.isAbsolute(normalized)) {
+    throw new Error(`Invalid Skill file path: ${value}`);
+  }
+  return normalized;
+}
+
+function editWithConfiguredEditor(original: string, filePath: string, configured?: string): string {
+  const editor = configured ?? process.env.VISUAL ?? process.env.EDITOR;
+  if (!editor) throw new Error("Set $EDITOR, pass --editor <command>, or provide --content/--content-file.");
+  const directory = mkdtempSync(path.join(tmpdir(), "harhub-edit-"));
+  const temporaryPath = path.join(directory, path.basename(filePath));
+  try {
+    writeFileSync(temporaryPath, original);
+    const result = spawnSync(editor, [temporaryPath], { stdio: "inherit" });
+    if (result.error) throw result.error;
+    if (result.status !== 0) throw new Error(`Editor exited with status ${result.status}.`);
+    return readFileSync(temporaryPath, "utf8");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 }
 
 export async function runDelete(parsed: ParsedArgs): Promise<number> {
