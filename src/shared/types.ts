@@ -746,7 +746,10 @@ export interface GitHubRepositorySummary {
   };
 }
 
-export type ProjectChangeProposalKind = "bootstrap" | "adopt-library";
+export type ProjectChangeProposalKind =
+  | "bootstrap"
+  | "add-library-skills"
+  | "remove-skill";
 export type ProjectChangeProposalStatus =
   | "preview"
   | "creating"
@@ -757,8 +760,10 @@ export type ProjectChangeProposalStatus =
 
 export interface ProjectChangeProposalFile {
   path: string;
-  status: "added" | "modified";
-  content: string;
+  status: "added" | "modified" | "deleted";
+  /** Text or base64-encoded file body. Deleted files do not include content. */
+  content?: string;
+  encoding?: "utf-8" | "base64";
 }
 
 export interface ProjectChangeProposal {

@@ -261,8 +261,14 @@ export async function createRepositoryPullRequest(input: {
   if (input.files.length === 0 || input.files.length > 100) {
     throw new GitHubAppError("invalid_proposal", "A proposal must contain between 1 and 100 files.", false);
   }
-  const totalBytes = input.files.reduce((total, file) => total + Buffer.byteLength(file.content), 0);
-  if (totalBytes > 5 * 1024 * 1024 || input.files.some((file) => Buffer.byteLength(file.content) > 1024 * 1024)) {
+  if (new Set(input.files.map((file) => file.path)).size !== input.files.length) {
+    throw new GitHubAppError("invalid_proposal", "Proposal file paths must be unique.", false);
+  }
+  if (input.files.some((file) => file.status !== "deleted" && file.content === undefined)) {
+    throw new GitHubAppError("invalid_proposal", "Added and modified proposal files require content.", false);
+  }
+  const totalBytes = input.files.reduce((total, file) => total + proposalFileBytes(file), 0);
+  if (totalBytes > 5 * 1024 * 1024 || input.files.some((file) => proposalFileBytes(file) > 1024 * 1024)) {
     throw new GitHubAppError("proposal_too_large", "Proposal files exceed the GitHub write limit.", false);
   }
   const token = await installationAccessToken(input.installationId, input.owner, input.name, true);
@@ -271,12 +277,21 @@ export async function createRepositoryPullRequest(input: {
     repoPath(repo, `/git/commits/${encodeURIComponent(input.baseSha)}`),
     { auth: `Bearer ${token}` }
   );
-  const treeEntries: Array<{ path: string; mode: "100644"; type: "blob"; sha: string }> = [];
+  const treeEntries: Array<{
+    path: string;
+    mode: "100644";
+    type: "blob";
+    sha: string | null;
+  }> = [];
   for (const file of input.files) {
+    if (file.status === "deleted") {
+      treeEntries.push({ path: file.path, mode: "100644", type: "blob", sha: null });
+      continue;
+    }
     const blob = await githubRequest<{ sha: string }>(repoPath(repo, "/git/blobs"), {
       method: "POST",
       auth: `Bearer ${token}`,
-      body: { content: file.content, encoding: "utf-8" }
+      body: { content: file.content, encoding: file.encoding ?? "utf-8" }
     });
     treeEntries.push({ path: file.path, mode: "100644", type: "blob", sha: blob.sha });
   }
@@ -301,6 +316,13 @@ export async function createRepositoryPullRequest(input: {
     body: { title: input.title, body: input.body, head: input.branch, base: input.defaultBranch }
   });
   return { number: pull.number, url: pull.html_url };
+}
+
+function proposalFileBytes(file: ProjectChangeProposalFile): number {
+  if (file.status === "deleted" || file.content === undefined) return 0;
+  return file.encoding === "base64"
+    ? Buffer.from(file.content, "base64").byteLength
+    : Buffer.byteLength(file.content);
 }
 
 export function createGitHubAppJwt(now = new Date()): string {
