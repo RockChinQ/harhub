@@ -3,6 +3,7 @@ import {
   Archive,
   ArrowLeft,
   Check,
+  ChevronDown,
   Copy,
   ExternalLink,
   FileDiff,
@@ -54,6 +55,11 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Checkbox } from "../components/ui/checkbox";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger
+} from "../components/ui/collapsible";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -61,6 +67,7 @@ import {
   DialogTitle
 } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import {
   Tooltip,
   TooltipContent,
@@ -151,10 +158,14 @@ export function ProjectsView({
   const [isLoadingLibrarySkills, setIsLoadingLibrarySkills] = useState(false);
   const [removeSkillOpen, setRemoveSkillOpen] = useState(false);
   const [removeSkillBinding, setRemoveSkillBinding] = useState<ProjectBinding>();
+  const [projectDetailTab, setProjectDetailTab] = useState("skills");
+  const [scanHistoryOpen, setScanHistoryOpen] = useState(false);
 
   useEffect(() => {
     setSyncToken(undefined);
     setCopied(false);
+    setProjectDetailTab("skills");
+    setScanHistoryOpen(false);
     void refresh();
   }, [routedProjectId, token, workspace.id]);
 
@@ -603,7 +614,7 @@ export function ProjectsView({
                       <CardTitle className="text-xl">{project.name}</CardTitle>
                       <ProjectStatusBadge project={project} />
                     </div>
-                    <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                    <p className="mt-2 line-clamp-2 max-w-3xl text-sm leading-6 text-muted-foreground">
                       {project.description}
                     </p>
                   </div>
@@ -612,10 +623,10 @@ export function ProjectsView({
                       href={project.repository.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-accent"
+                      className="inline-flex h-9 max-w-full shrink-0 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-accent sm:max-w-xs"
                     >
                       <FolderGit2 className="h-4 w-4" aria-hidden="true" />
-                      {project.repository.owner}/{project.repository.name}
+                      <span className="truncate">{project.repository.owner}/{project.repository.name}</span>
                       <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                     </a>
                   ) : (
@@ -623,7 +634,7 @@ export function ProjectsView({
                   )}
                 </div>
               </CardHeader>
-              <CardContent className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4">
+              <CardContent className="flex flex-wrap gap-x-10 gap-y-4 p-5">
                 <Metric label="Bindings" value={String(project.bindings.length)} />
                 <Metric label="Synced" value={String(bindingCounts.synced)} />
                 <Metric label="Changed" value={String(bindingCounts.added + bindingCounts.modified)} />
@@ -638,8 +649,37 @@ export function ProjectsView({
               </CardContent>
             </Card>
 
-            {inventory?.connection?.mode === "github-app" ? (
-              <Card className="shadow-sm">
+            <Tabs value={projectDetailTab} onValueChange={setProjectDetailTab}>
+              <TabsList className="h-auto w-full justify-start gap-6 overflow-x-auto rounded-none border-b bg-transparent p-0">
+                <TabsTrigger
+                  value="skills"
+                  className="gap-2 rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:border-blue-700 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                >
+                  Skills
+                  <Badge variant="secondary" className="h-5 min-w-5 justify-center px-1.5 text-[10px]">
+                    {projectSkills.length}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="inventory"
+                  className="gap-2 rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:border-blue-700 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                >
+                  Inventory
+                  <Badge variant="secondary" className="h-5 min-w-5 justify-center px-1.5 text-[10px]">
+                    {inventory?.latestSnapshot?.artifacts.length ?? 0}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="settings"
+                  className="rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:border-blue-700 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                >
+                  Settings
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="inventory" className="mt-4">
+                {inventory?.connection?.mode === "github-app" ? (
+                  <Card className="shadow-sm">
                 <CardHeader className="border-b">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <CardTitle className="flex items-center gap-2 text-base">
@@ -696,7 +736,7 @@ export function ProjectsView({
                     </div>
                   ) : null}
                   {inventory.latestSnapshot?.artifacts.length ? (
-                    <div className="divide-y">
+                    <div className="max-h-[56vh] divide-y overflow-y-auto">
                       {inventory.latestSnapshot.artifacts.map((artifact) => (
                         <div
                           key={artifact.id}
@@ -763,29 +803,68 @@ export function ProjectsView({
                     ) : null}
                   </div>
                   {inventory.jobs.length > 0 ? (
-                    <div className="border-t px-5 py-4">
-                      <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent scans</p>
-                      <div className="space-y-2">
-                        {inventory.jobs.slice(0, 5).map((job) => (
-                          <div key={job.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                            <span>{job.trigger} · {formatTime(job.completedAt ?? job.startedAt ?? job.createdAt)}</span>
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                job.status === "succeeded" && "border-emerald-300 text-emerald-800",
-                                job.status === "failed" && "border-red-300 text-red-700"
-                              )}
-                            >
-                              {job.status}
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    <Collapsible
+                      open={scanHistoryOpen}
+                      onOpenChange={setScanHistoryOpen}
+                      className="border-t"
+                    >
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="h-auto w-full justify-between rounded-none px-5 py-4 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                        >
+                          <span>Recent scans · {inventory.jobs.length}</span>
+                          <ChevronDown
+                            className={cn("h-4 w-4 transition-transform", scanHistoryOpen && "rotate-180")}
+                            aria-hidden="true"
+                          />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="space-y-2 border-t px-5 py-4">
+                          {inventory.jobs.slice(0, 5).map((job) => (
+                            <div key={job.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                              <span>{job.trigger} · {formatTime(job.completedAt ?? job.startedAt ?? job.createdAt)}</span>
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  job.status === "succeeded" && "border-emerald-300 text-emerald-800",
+                                  job.status === "failed" && "border-red-300 text-red-700"
+                                )}
+                              >
+                                {job.status}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
                   ) : null}
                 </CardContent>
               </Card>
-            ) : null}
+                ) : (
+                  <Card className="shadow-sm">
+                    <CardContent className="flex min-h-56 flex-col items-center justify-center p-8 text-center">
+                      <ScanSearch className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+                      <p className="mt-4 text-sm font-medium">Repository inventory is not available yet</p>
+                      <p className="mt-1 max-w-md text-sm leading-6 text-muted-foreground">
+                        Connect this Project through the GitHub App to scan and classify repository assets.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="mt-4"
+                        onClick={() => setProjectDetailTab("settings")}
+                      >
+                        Open settings
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+
+              <TabsContent value="skills" className="mt-4 space-y-4">
 
             <TooltipProvider delayDuration={250}>
               <Card className="shadow-sm">
@@ -852,7 +931,7 @@ export function ProjectsView({
                 </CardHeader>
                 <CardContent className="p-0">
                   {filteredProjectSkills.length ? (
-                    <div className="divide-y">
+                    <div className="max-h-[56vh] divide-y overflow-y-auto">
                       {filteredProjectSkills.map((binding) => (
                         <ProjectSkillRow
                           key={binding.id}
@@ -876,16 +955,16 @@ export function ProjectsView({
               </Card>
             </TooltipProvider>
 
-            <Card className="shadow-sm">
-              <CardHeader className="border-b">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <GitBranch className="h-4 w-4 text-blue-700" aria-hidden="true" />
-                  Other harness bindings
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
                 {otherBindings.length ? (
-                  <div className="divide-y">
+                  <Card className="shadow-sm">
+                    <CardHeader className="border-b">
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <GitBranch className="h-4 w-4 text-blue-700" aria-hidden="true" />
+                        Other harness bindings
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <div className="max-h-80 divide-y overflow-y-auto">
                     {otherBindings.map((binding) => (
                       <BindingRow
                         key={binding.id}
@@ -893,22 +972,18 @@ export function ProjectsView({
                         onReview={() => void openSkillDiff(binding)}
                       />
                     ))}
-                  </div>
-                ) : (
-                  <p className="p-6 text-sm text-muted-foreground">
-                    No MCP, Rule, or instruction bindings are present.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : null}
+              </TabsContent>
 
-            <Card className="shadow-sm">
+              <TabsContent value="settings" className="mt-4">
+                <Card className="shadow-sm">
               <CardHeader className="border-b">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <ShieldCheck className="h-4 w-4 text-blue-700" aria-hidden="true" />
-                  {inventory?.connection?.mode === "github-app"
-                    ? "GitHub App connection"
-                    : "GitHub Actions connection (self-hosted mode)"}
+                  Repository connection
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4 p-5">
@@ -959,9 +1034,24 @@ export function ProjectsView({
                       Connect repository
                     </Button>
                   </div>
+                ) : inventory?.connection?.mode === "github-app" ? (
+                  <div className="space-y-3">
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      Harhub tracks this repository through the GitHub App. No repository secret is required.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="outline">
+                        {inventory.connection.status === "active" ? "Connected" : inventory.connection.status}
+                      </Badge>
+                      <Badge variant="outline">
+                        {inventory.connection.permissionMode === "write" ? "Managed changes" : "Read only"}
+                      </Badge>
+                      <Badge variant="outline">{inventory.connection.defaultBranch}</Badge>
+                    </div>
+                  </div>
                 ) : (
                   <p className="text-sm leading-6 text-muted-foreground">
-                    The generated framework watches harness Skills, MCP definitions, and Rules.
+                    Repository synchronization is handled by the generated GitHub Actions workflow.
                     Add the sync token as the repository secret
                     {" "}<code>HARHUB_PROJECT_TOKEN</code>.
                   </p>
@@ -983,7 +1073,11 @@ export function ProjectsView({
                     </div>
                   </div>
                 ) : null}
-                <div className="flex flex-wrap gap-2">
+                {project.repository && (
+                  inventory?.connection?.mode !== "github-app" ||
+                  inventory.connection.status !== "active"
+                ) ? (
+                  <div className="flex flex-wrap gap-2">
                   {project.repository && inventory?.connection?.mode !== "github-app" ? (
                     <Button
                       type="button"
@@ -1007,9 +1101,29 @@ export function ProjectsView({
                       Rotate sync token
                     </Button>
                   ) : null}
+                    {inventory?.connection?.mode === "github-app" && inventory.connection.status !== "active" ? (
+                      <Button
+                        type="button"
+                        disabled={project.status === "archived"}
+                        onClick={() => void openRepositoryImport(true)}
+                      >
+                        <Github className="h-4 w-4" />
+                        Reconnect GitHub App
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+                <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Project lifecycle</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Archiving makes this Project read-only while preserving its history.
+                    </p>
+                  </div>
                   <Button
                     type="button"
                     variant="outline"
+                    className="shrink-0"
                     disabled={project.status === "archived"}
                     onClick={() => setArchiveOpen(true)}
                   >
@@ -1019,6 +1133,8 @@ export function ProjectsView({
                 </div>
               </CardContent>
             </Card>
+              </TabsContent>
+            </Tabs>
           </>
         ) : null}
 
@@ -1986,9 +2102,9 @@ function ChangedLineText({
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border bg-muted/20 p-4">
+    <div className="min-w-28">
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-2 text-sm font-semibold">{value}</p>
+      <p className="mt-1 truncate text-sm font-semibold" title={value}>{value}</p>
     </div>
   );
 }
