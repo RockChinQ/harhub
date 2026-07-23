@@ -110,7 +110,20 @@ jobs:
             "$PORTAINER_URL/api/stacks/$STACK_ID" \
             -H "Authorization: Bearer $JWT")
           STACK_ENV=$(jq -c '.Env // []' <<< "$STACK_JSON")
-          for NAME in HARHUB_DB_PASSWORD MINIO_ACCESS_KEY MINIO_SECRET_KEY GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET RESEND_API_KEY; do
+          for NAME in \
+            HARHUB_DB_PASSWORD \
+            HARHUB_ENCRYPTION_KEY \
+            MINIO_ACCESS_KEY \
+            MINIO_SECRET_KEY \
+            GITHUB_CLIENT_ID \
+            GITHUB_CLIENT_SECRET \
+            HARHUB_GITHUB_APP_ID \
+            HARHUB_GITHUB_APP_SLUG \
+            HARHUB_GITHUB_APP_CLIENT_ID \
+            HARHUB_GITHUB_APP_CLIENT_SECRET \
+            HARHUB_GITHUB_APP_PRIVATE_KEY \
+            HARHUB_GITHUB_WEBHOOK_SECRET \
+            RESEND_API_KEY; do
             jq -e --arg name "$NAME" \
               'any(.[]; .name == $name and (.value | type == "string") and (.value | length > 0))' \
               <<< "$STACK_ENV" >/dev/null

@@ -12,7 +12,12 @@ import type {
   WorkspaceMembership,
   WorkspaceRecord
 } from "../shared/types.js";
-import type { AccountRecord, AuthContext, OAuthStateRecord } from "./types.js";
+import type {
+  AccountRecord,
+  AppState,
+  AuthContext,
+  OAuthStateRecord
+} from "./types.js";
 
 const EMAIL_CODE_TTL_MS = 10 * 60 * 1000;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -233,21 +238,64 @@ export async function signInWithOAuthProfile(input: {
   provider: AuthProvider;
   providerAccountId: string;
   email: string;
+  emailVerified: boolean;
   name: string;
   inviteToken?: string;
 }): Promise<AccountProfile> {
   const state = await loadState();
   const email = normalizeEmail(input.email);
-  if (!email) throw new Error("OAuth provider did not return a verified email.");
+  if (!email) throw new Error("OAuth provider did not return an email.");
+  if (input.provider === "github" && !/^\d+$/.test(input.providerAccountId)) {
+    throw new Error("GitHub OAuth account ID must be numeric.");
+  }
 
   const existingIdentity = state.identities.find(
     (identity) =>
       identity.provider === input.provider &&
       identity.providerAccountId === input.providerAccountId
   );
+  const matchingEmailAccounts = input.emailVerified
+    ? state.accounts.filter((candidate) => normalizeEmail(candidate.email) === email)
+    : [];
+  const conflictingIdentity = input.emailVerified
+    ? state.identities.find((identity) => {
+        if (identity.accountId === existingIdentity?.accountId) return false;
+        return (
+          normalizeEmail(identity.email) === email ||
+          matchingEmailAccounts.some((candidate) => candidate.id === identity.accountId)
+        );
+      })
+    : undefined;
+  if (conflictingIdentity) {
+    throw new Error("OAuth email is already linked to another account.");
+  }
+  if (!existingIdentity && matchingEmailAccounts.length > 1) {
+    throw new Error("OAuth email matches multiple accounts and requires manual review.");
+  }
+  const matchingEmailAccount = !existingIdentity && input.emailVerified
+    ? matchingEmailAccounts[0]
+    : undefined;
   const account = existingIdentity
     ? requireAccountRecord(state, existingIdentity.accountId)
-    : findOrCreateAccountByEmail(state, { email, name: input.name });
+    : matchingEmailAccount ?? createAccount(state, { email, name: input.name });
+  const canConvergeByEmail = Boolean(
+    existingIdentity && input.provider === "github" && input.emailVerified
+  );
+
+  const now = new Date().toISOString();
+  const duplicateAccountIds = canConvergeByEmail
+    ? state.accounts
+        .filter(
+          (candidate) =>
+            candidate.id !== account.id &&
+            normalizeEmail(candidate.email) === email &&
+            !state.identities.some((identity) => identity.accountId === candidate.id)
+        )
+        .map((candidate) => candidate.id)
+    : [];
+  for (const duplicateAccountId of duplicateAccountIds) {
+    mergeAccountInto(state, duplicateAccountId, account.id, now);
+  }
 
   if (!existingIdentity) {
     state.identities.push({
@@ -256,18 +304,116 @@ export async function signInWithOAuthProfile(input: {
       provider: input.provider,
       providerAccountId: input.providerAccountId,
       email,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt: now,
+      updatedAt: now
     });
+  } else if (input.emailVerified) {
+    existingIdentity.email = email;
+    existingIdentity.updatedAt = now;
   }
 
-  account.email = email;
+  if (!existingIdentity || input.emailVerified) account.email = email;
   account.name = input.name.trim() || account.name;
-  account.updatedAt = new Date().toISOString();
+  account.updatedAt = now;
   acceptMatchingPendingInvitations(state, account, input.inviteToken);
   ensureAccountHasWorkspace(state, account);
-  await saveState(state);
+  await saveState(state, {
+    accountReferenceReplacement: {
+      sourceAccountIds: duplicateAccountIds,
+      targetAccountId: account.id
+    }
+  });
   return toPublicAccount(account);
+}
+
+function mergeAccountInto(
+  state: AppState,
+  sourceAccountId: string,
+  targetAccountId: string,
+  now: string
+): void {
+  if (sourceAccountId === targetAccountId) return;
+  requireAccountRecord(state, sourceAccountId);
+  requireAccountRecord(state, targetAccountId);
+
+  for (const sourceMembership of state.memberships.filter(
+    (membership) => membership.accountId === sourceAccountId
+  )) {
+    const targetMembership = state.memberships.find(
+      (membership) =>
+        membership.accountId === targetAccountId &&
+        membership.workspaceId === sourceMembership.workspaceId
+    );
+    if (!targetMembership) {
+      sourceMembership.accountId = targetAccountId;
+      sourceMembership.updatedAt = now;
+      continue;
+    }
+    if (workspaceRoleRank(sourceMembership.role) > workspaceRoleRank(targetMembership.role)) {
+      targetMembership.role = sourceMembership.role;
+    }
+    if (sourceMembership.createdAt < targetMembership.createdAt) {
+      targetMembership.createdAt = sourceMembership.createdAt;
+    }
+    targetMembership.updatedAt = now;
+    state.memberships = state.memberships.filter(
+      (membership) => membership.id !== sourceMembership.id
+    );
+  }
+
+  for (const identity of state.identities) {
+    if (identity.accountId === sourceAccountId) identity.accountId = targetAccountId;
+  }
+  for (const session of state.sessions) {
+    if (session.accountId === sourceAccountId) session.accountId = targetAccountId;
+  }
+  for (const invitation of state.invitations) {
+    if (invitation.invitedByAccountId === sourceAccountId) {
+      invitation.invitedByAccountId = targetAccountId;
+    }
+    if (invitation.acceptedByAccountId === sourceAccountId) {
+      invitation.acceptedByAccountId = targetAccountId;
+    }
+  }
+  for (const share of state.assetShares) {
+    if (share.createdByAccountId === sourceAccountId) share.createdByAccountId = targetAccountId;
+  }
+  for (const authorization of state.deviceAuthorizations) {
+    if (authorization.accountId === sourceAccountId) authorization.accountId = targetAccountId;
+  }
+  for (const configuration of state.workspaceAiConfigurations) {
+    if (configuration.updatedByAccountId === sourceAccountId) {
+      configuration.updatedByAccountId = targetAccountId;
+    }
+  }
+  for (const session of state.forgeSessions) {
+    if (session.accountId === sourceAccountId) session.accountId = targetAccountId;
+  }
+  for (const authorization of state.githubInstallationAuthorizations) {
+    if (authorization.accountId === sourceAccountId) authorization.accountId = targetAccountId;
+  }
+  for (const installation of state.githubInstallations) {
+    if (installation.linkedByAccountId === sourceAccountId) {
+      installation.linkedByAccountId = targetAccountId;
+    }
+  }
+  for (const policy of state.projectBindingPolicies) {
+    if (policy.decidedByAccountId === sourceAccountId) policy.decidedByAccountId = targetAccountId;
+  }
+  for (const proposal of state.projectChangeProposals) {
+    if (proposal.createdByAccountId === sourceAccountId) {
+      proposal.createdByAccountId = targetAccountId;
+    }
+  }
+  for (const event of state.auditEvents) {
+    if (event.actorAccountId === sourceAccountId) event.actorAccountId = targetAccountId;
+  }
+
+  state.accounts = state.accounts.filter((candidate) => candidate.id !== sourceAccountId);
+}
+
+function workspaceRoleRank(role: WorkspaceMembership["role"]): number {
+  return { viewer: 0, member: 1, admin: 2, owner: 3 }[role];
 }
 
 export async function updateAccountProfile(
@@ -334,7 +480,13 @@ function findOrCreateAccountByEmail(
     (item) => item.email.toLowerCase() === input.email.toLowerCase()
   );
   if (existing) return existing;
+  return createAccount(state, input);
+}
 
+function createAccount(
+  state: Awaited<ReturnType<typeof loadState>>,
+  input: { email: string; name: string }
+): AccountRecord {
   const account: AccountRecord = {
     id: randomUUID(),
     email: input.email,
