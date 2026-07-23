@@ -23,6 +23,10 @@ import {
 } from "../../shared/forge.js";
 import { addProjectIntegrationFiles } from "../../features/projects/framework.js";
 import { loadStoredSkill } from "./skill-packages.js";
+import {
+  forgeDiscoveryLensPrompt,
+  isForgeDiscoveryLensId
+} from "./forge-discovery-lenses.js";
 
 const MAX_LIST_ITEMS = 6;
 const MAX_ARCHIVE_SKILL_BYTES = 25 * 1024 * 1024;
@@ -263,14 +267,20 @@ export async function createHarnessFollowUp(
         "Rank unresolved information by its expected impact on the framework, asset selection, core workflow, constraints, and delivery risk. Put the highest-impact unresolved questions first.",
         `Once at least ${MIN_FORGE_INTERVIEW_ANSWERS} essential answers are recorded, set ready to true as soon as the available context is sufficient. There is no target number beyond that minimum.`,
         "When more context would materially change the result, set ready to false and return a questions array containing all and only the useful follow-ups that should be answered next, in the same language as the user's requirement.",
+        "Before writing questions, select the smallest useful set of discovery lenses for the unresolved risks. Usually one lens is enough; combine lenses only when they expose independent, material gaps. Use core when no specialized lens fits, and do not force a framework onto a clear implementation request.",
+        "Treat each lens as a reasoning aid, not a checklist. Never ask the user to complete an entire canvas, map, interview script, scoring exercise, press release, or framework.",
+        "The user is the project proposer, not a proxy research participant. Ask for known facts, decisions, constraints, or evidence; never present assumptions as user research. Unknown is an acceptable answer and should remain explicit in the generated framework.",
+        `Discovery lens catalog: ${forgeDiscoveryLensPrompt()}`,
         "Derive the question count from the requirement's actual unresolved information. There is no preferred or fixed batch size: do not default to 2, 3, or 4 questions.",
         "Ask one question when its answer should determine what to ask next. Ask multiple questions together only when the gaps are independent, equally important, and quick to answer without depending on another answer. Always return the smallest useful batch and never create a large questionnaire.",
         "Minimize user effort. Prefer single-select and multi-select components whenever a small set of concrete options can capture the likely answers, and allow a custom answer when the options may not be exhaustive.",
         "Use a text component only when presets would be misleading. Each text question must ask for one bounded fact that can be answered with a phrase, one sentence, or a short list. Never ask for an essay, a full requirement restatement, or generic elaboration such as 'describe the project in detail'. Avoid multiple text questions in the same batch unless they are unavoidable.",
         "Clarify target users, must-work workflow, constraints, success criteria, or technical context.",
         "Do not repeat answered questions, ask for information that is already explicit, or continue merely to reach a question quota.",
-        "Return only JSON with sessionTitle, ready and, when ready is false, questions. Each questions item contains question and component.",
-        "When ready is true, omit questions.",
+        "Return only JSON with sessionTitle, ready and, when ready is false, appliedLenses and questions.",
+        "Each appliedLenses item must be an exact id from the discovery lens catalog or core. Keep it unique and include only lenses actually used this round.",
+        "Each questions item contains question, component, lens, gap, and intent. lens is an applied lens id, gap is a concise unresolved fact or decision, and intent explains in one short sentence why the answer materially affects the framework.",
+        "When ready is true, omit appliedLenses and questions.",
         "Each component.type is single-select, multi-select, or text.",
         "Use single-select for one mutually exclusive answer, multi-select when several choices may apply, and text only for concise project-specific information that choices cannot represent accurately.",
         "Choice components contain 3 to 6 options with short label and optional description, plus allowCustom.",
@@ -300,11 +310,17 @@ export async function createHarnessFollowUp(
       throw new Error("AI follow-up did not match the expected shape");
     }
 
+    const appliedLenses = ready ? [] : readAppliedDiscoveryLenses(payload.appliedLenses, questions);
     return {
       mode: "llm",
       sessionTitle,
       ready,
-      ...(ready ? {} : { questions })
+      ...(ready
+        ? {}
+        : {
+            questions,
+            ...(appliedLenses.length > 0 ? { appliedLenses } : {})
+          })
     };
   }, context, FOLLOW_UP_AI_POLICY);
 }
@@ -1187,9 +1203,33 @@ function readFollowUpQuestions(value: unknown): HarnessFollowUpQuestion[] {
     const component = readFollowUpComponent(item.component);
     if (!question || !component || seen.has(question)) continue;
     seen.add(question);
-    questions.push({ question, component });
+    const rawLens = readString(item.lens)?.slice(0, 64);
+    const lens = rawLens && isForgeDiscoveryLensId(rawLens) ? rawLens : undefined;
+    const gap = readString(item.gap)?.slice(0, 160);
+    const intent = readString(item.intent)?.slice(0, 320);
+    questions.push({
+      question,
+      component,
+      ...(lens ? { lens } : {}),
+      ...(gap ? { gap } : {}),
+      ...(intent ? { intent } : {})
+    });
   }
   return questions;
+}
+
+function readAppliedDiscoveryLenses(
+  value: unknown,
+  questions: HarnessFollowUpQuestion[]
+): string[] {
+  const declared = Array.isArray(value)
+    ? value.flatMap((item) => {
+        const lens = readString(item)?.slice(0, 64);
+        return lens && isForgeDiscoveryLensId(lens) ? [lens] : [];
+      })
+    : [];
+  const inferred = questions.flatMap((question) => question.lens ? [question.lens] : []);
+  return Array.from(new Set([...declared, ...inferred])).slice(0, MAX_LIST_ITEMS);
 }
 
 function readRequiredAiString(value: unknown, label: string): string {

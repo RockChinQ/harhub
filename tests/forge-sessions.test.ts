@@ -60,8 +60,12 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
         mode: "llm",
         sessionTitle: "Release Readiness",
         ready: false,
+        appliedLenses: ["delivery-reality"],
         questions: [{
           question: "What should it do?",
+          lens: "delivery-reality",
+          gap: "must-work workflow",
+          intent: "The primary workflow determines the generated delivery steps.",
           component: {
             type: "multi-select",
             options: [{ label: "Review changes" }, { label: "Prepare a handoff" }],
@@ -75,6 +79,19 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
     assert.equal(restoredQuestion.title, "Release Readiness");
     assert.equal(restoredQuestion.answerCount, 1);
     assert.equal(restoredQuestion.followUp?.questions?.[0]?.question, "What should it do?");
+    assert.deepEqual(restoredQuestion.followUp?.appliedLenses, ["delivery-reality"]);
+    assert.deepEqual(
+      {
+        lens: restoredQuestion.followUp?.questions?.[0]?.lens,
+        gap: restoredQuestion.followUp?.questions?.[0]?.gap,
+        intent: restoredQuestion.followUp?.questions?.[0]?.intent
+      },
+      {
+        lens: "delivery-reality",
+        gap: "must-work workflow",
+        intent: "The primary workflow determines the generated delivery steps."
+      }
+    );
 
     await updateForgeSessionViewState("acct_demo", "ws_demo", resumable.id, {
       followUpDrafts: [{
@@ -189,8 +206,12 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
       {
         mode: "llm",
         ready: false,
+        appliedLenses: ["delivery-reality"],
         questions: [{
           question: concurrentQuestion,
+          lens: "delivery-reality",
+          gap: "release boundary",
+          intent: "The release boundary controls delivery and verification scope.",
           component: { type: "text", options: [] }
         }]
       }
@@ -220,7 +241,13 @@ test("keeps Forge history private, bounded, expiring, and non-cacheable", async 
     );
     assert.equal(concurrentResult.status, "working");
     assert.deepEqual(concurrentResult.viewState.followUpDrafts, []);
-    assert.equal(concurrentResult.answers[0]?.answer, "Only the API workflow");
+    assert.deepEqual(concurrentResult.answers[0], {
+      question: concurrentQuestion,
+      answer: "Only the API workflow",
+      lens: "delivery-reality",
+      gap: "release boundary",
+      intent: "The release boundary controls delivery and verification scope."
+    });
 
     const priorAnswers = [
       { question: "Who is it for?", answer: "Release engineers" },

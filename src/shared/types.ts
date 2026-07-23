@@ -367,6 +367,10 @@ export type HarnessBuilderMode = "llm";
 export interface HarnessInterviewAnswer {
   question: string;
   answer: string;
+  /** Server-captured discovery trace from the question that produced this answer. */
+  lens?: string;
+  gap?: string;
+  intent?: string;
 }
 
 export type HarnessFollowUpComponentType = "single-select" | "multi-select" | "text";
@@ -387,6 +391,12 @@ export interface HarnessFollowUpComponent {
 export interface HarnessFollowUpQuestion {
   question: string;
   component: HarnessFollowUpComponent;
+  /** Internal discovery-method trace used for observability, not required for legacy sessions. */
+  lens?: string;
+  /** The unresolved project fact or decision this question is intended to close. */
+  gap?: string;
+  /** Concise reason this question materially affects the generated framework. */
+  intent?: string;
 }
 
 export interface HarnessFollowUpRequest {
@@ -400,6 +410,8 @@ export interface HarnessFollowUpResponse {
   /** AI-generated semantic name for the session. Optional for legacy persisted sessions. */
   sessionTitle?: string;
   ready: boolean;
+  /** Compact discovery methods selected for this round. */
+  appliedLenses?: string[];
   questions?: HarnessFollowUpQuestion[];
   /** Legacy single-question fields retained for persisted sessions created before question batches. */
   question?: string;

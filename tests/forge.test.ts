@@ -427,9 +427,17 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
         ? {
             sessionTitle: "Documentation Site",
             ready: false,
+            appliedLenses: [
+              "working-backwards",
+              "delivery-reality",
+              "not-a-real-lens"
+            ],
             questions: [
               {
                 question: "Which outcome is most important for the first release?",
+                lens: "working-backwards",
+                gap: "first-release promise",
+                intent: "The promised outcome determines the framework goals and workflow.",
                 component: {
                   type: "single-select",
                   options: [
@@ -441,6 +449,9 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
               },
               {
                 question: "Which surfaces must the first release support?",
+                lens: "delivery-reality",
+                gap: "delivery surfaces",
+                intent: "The required surfaces determine implementation and verification constraints.",
                 component: {
                   type: "multi-select",
                   options: [
@@ -455,6 +466,7 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
               },
               {
                 question: "Which success signals should be tracked?",
+                lens: "not-a-real-lens",
                 component: {
                   type: "multi-select",
                   options: [
@@ -532,6 +544,23 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
   assert.equal(requiredQuestion.questions?.length, 5);
   assert.equal(requiredQuestion.questions?.[1]?.component.maxSelections, 4);
   assert.equal(requiredQuestion.questions?.[2]?.component.maxSelections, undefined);
+  assert.deepEqual(requiredQuestion.appliedLenses, [
+    "working-backwards",
+    "delivery-reality"
+  ]);
+  assert.deepEqual(
+    {
+      lens: requiredQuestion.questions?.[0]?.lens,
+      gap: requiredQuestion.questions?.[0]?.gap,
+      intent: requiredQuestion.questions?.[0]?.intent
+    },
+    {
+      lens: "working-backwards",
+      gap: "first-release promise",
+      intent: "The promised outcome determines the framework goals and workflow."
+    }
+  );
+  assert.equal(requiredQuestion.questions?.[2]?.lens, undefined);
   assert.match(receivedSystemPrompts[0] ?? "", /Required questions must be essential/);
   assert.match(receivedSystemPrompts[0] ?? "", /Always return sessionTitle/);
   assert.match(receivedSystemPrompts[0] ?? "", /Put the highest-impact unresolved questions first/);
@@ -542,6 +571,13 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
   assert.match(receivedSystemPrompts[0] ?? "", /phrase, one sentence, or a short list/);
   assert.match(receivedSystemPrompts[0] ?? "", /Never ask for an essay/);
   assert.match(receivedSystemPrompts[0] ?? "", /Never use a fixed default such as 3/);
+  assert.match(receivedSystemPrompts[0] ?? "", /smallest useful set of discovery lenses/);
+  assert.match(receivedSystemPrompts[0] ?? "", /not a proxy research participant/);
+  assert.match(receivedSystemPrompts[0] ?? "", /job-to-be-done/);
+  assert.match(receivedSystemPrompts[0] ?? "", /service-blueprint/);
+  assert.match(receivedSystemPrompts[0] ?? "", /delivery-reality/);
+  assert.match(receivedSystemPrompts[0] ?? "", /Never ask the user to complete an entire canvas/);
+  assert.match(receivedSystemPrompts[0] ?? "", /question, component, lens, gap, and intent/);
   assert.equal("workspaceSkills" in (receivedInputs[0] ?? {}), false);
 
   const twoAnswers = Array.from({ length: 2 }, (_, index) => ({
