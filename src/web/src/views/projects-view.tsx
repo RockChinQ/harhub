@@ -1432,9 +1432,9 @@ function RepositoryImportDialog({
         ) : null}
         {githubStatus?.configured && installations.length === 0 ? (
           <div className="rounded-lg border p-5">
-            <p className="font-medium">Connect the Harhub GitHub App</p>
+            <p className="font-medium">Connect the Harhub GitHub App to your account</p>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Select only the repositories this workspace should be allowed to inventory.
+              Your GitHub App installations are available in every workspace you belong to.
             </p>
             <Button className="mt-4" disabled={isLoading} onClick={onInstall}>
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Github className="h-4 w-4" />}

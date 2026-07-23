@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import test from "node:test";
 import { Pool } from "pg";
+import type { AccountRecord } from "../src/state/types.js";
 
 const baseDatabaseUrl = process.env.HARHUB_TEST_DATABASE_URL;
 
@@ -19,17 +20,29 @@ test("OAuth account convergence atomically updates Postgres state and account pr
   try {
     const identityAccount = await state.signInWithOAuthProfile({
       provider: "github",
-      providerAccountId: "45992437",
-      email: "45992437+user@users.noreply.github.com",
+      providerAccountId: "github-metadata",
+      email: "owner@example.com",
       emailVerified: true,
-      name: "GitHub Identity"
+      name: "Canonical Email Account"
     });
-    const sourceAccount = await state.signInForDevelopment({ email: "owner@example.com" });
     const sourceState = await state.loadState();
-    const sourceWorkspaceId = sourceState.memberships.find(
-      (membership) => membership.accountId === sourceAccount.id
-    )?.workspaceId;
-    assert.ok(sourceWorkspaceId);
+    const canonicalRecord = sourceState.accounts.find(
+      (account: AccountRecord) => account.id === identityAccount.id
+    );
+    assert.ok(canonicalRecord);
+    const sourceAccount: AccountRecord = {
+      ...canonicalRecord,
+      id: "historical-same-email-account",
+      name: "Historical Duplicate",
+      createdAt: new Date(Date.parse(canonicalRecord.createdAt) + 1_000).toISOString(),
+      updatedAt: new Date(Date.parse(canonicalRecord.updatedAt) + 1_000).toISOString()
+    };
+    sourceState.accounts.push(sourceAccount);
+    await state.saveState(sourceState);
+    const sourceWorkspace = await state.createWorkspaceForAccount(sourceAccount.id, {
+      name: "Historical Workspace"
+    });
+    const sourceWorkspaceId = sourceWorkspace.id;
 
     await adminPool.query(
       `insert into ${schema}.harhub_audit_events
@@ -49,7 +62,8 @@ test("OAuth account convergence atomically updates Postgres state and account pr
     );
     await adminPool.query(`
       create table ${schema}.harhub_github_installations (
-        id text primary key, linked_by_account_id text not null
+        installation_id text primary key,
+        linked_by_account_id text not null
       );
       create table ${schema}.harhub_project_binding_policies (
         id text primary key, decided_by_account_id text not null
@@ -97,8 +111,8 @@ test("OAuth account convergence atomically updates Postgres state and account pr
 
     await assert.rejects(
       state.signInWithOAuthProfile({
-        provider: "github",
-        providerAccountId: "45992437",
+        provider: "google",
+        providerAccountId: "google-metadata",
         email: "owner@example.com",
         emailVerified: true,
         name: "Updated GitHub Identity"
@@ -110,7 +124,7 @@ test("OAuth account convergence atomically updates Postgres state and account pr
     assert.ok(failedState.accounts.some((account) => account.id === sourceAccount.id));
     assert.equal(
       failedState.accounts.find((account) => account.id === identityAccount.id)?.email,
-      "45992437+user@users.noreply.github.com"
+      "owner@example.com"
     );
     assert.equal(await readAuditActor(adminPool, schema), sourceAccount.id);
     assert.deepEqual(
@@ -123,8 +137,8 @@ test("OAuth account convergence atomically updates Postgres state and account pr
       drop function ${schema}.reject_account_rewrite();
     `);
     await state.signInWithOAuthProfile({
-      provider: "github",
-      providerAccountId: "45992437",
+      provider: "google",
+      providerAccountId: "google-metadata",
       email: "owner@example.com",
       emailVerified: true,
       name: "Updated GitHub Identity"
@@ -140,6 +154,41 @@ test("OAuth account convergence atomically updates Postgres state and account pr
     assert.deepEqual(
       await readProjectionActors(adminPool, schema),
       Array(5).fill(identityAccount.id)
+    );
+
+    const preclaim = await state.signInWithPassword({
+      email: "stale-preclaim@example.com",
+      password: "attacker-password"
+    });
+    const attackerSession = await state.createSession(preclaim.id);
+    const staleState = await state.loadState();
+    const verifiedOwner = await state.signInWithOAuthProfile({
+      provider: "github",
+      providerAccountId: "stale-preclaim-owner",
+      email: "stale-preclaim@example.com",
+      emailVerified: true,
+      name: "Verified Preclaim Owner"
+    }, true);
+    staleState.workspaces[0]!.name = "stale workspace overwrite";
+    await assert.rejects(
+      state.saveState(staleState),
+      /state changed.*retry/i
+    );
+    const protectedState = await state.loadState();
+    assert.ok(
+      protectedState.accounts.find((account) => account.id === preclaim.id)?.emailVerifiedAt
+    );
+    assert.equal(await state.authenticate(attackerSession), undefined);
+    assert.equal(
+      (await state.authenticate(verifiedOwner.token))?.account.id,
+      verifiedOwner.account.id
+    );
+    await assert.rejects(
+      state.signInWithPassword({
+        email: "stale-preclaim@example.com",
+        password: "attacker-password"
+      }),
+      /invalid email or password/i
     );
   } finally {
     await state.closeDatabaseConnection();
@@ -178,7 +227,7 @@ async function readProjectionActors(pool: Pool, schema: string): Promise<Array<s
       from ${schema}.harhub_audit_events where id = 'merge-projection'
     union all
     select 3, linked_by_account_id
-      from ${schema}.harhub_github_installations where id = 'projection'
+      from ${schema}.harhub_github_installations where installation_id = 'projection'
     union all
     select 4, decided_by_account_id
       from ${schema}.harhub_project_binding_policies where id = 'projection'

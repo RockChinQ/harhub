@@ -50,6 +50,7 @@ interface PendingAuditEvent extends WorkspaceAuditEvent {
 }
 
 const databaseUrl = process.env.HARHUB_DATABASE_URL ?? process.env.DATABASE_URL;
+const databaseStateRevisions = new WeakMap<AppState, number>();
 let pool: Pool | undefined;
 let setupPromise: Promise<void> | undefined;
 
@@ -67,15 +68,41 @@ export function getCatalogStorageLabel(workspaceId: string): string {
     : "local-json";
 }
 
+export async function withDatabaseStateAccessLock<T>(operation: () => Promise<T>): Promise<T> {
+  if (!isDatabaseStateEnabled()) return operation();
+  await ensureDatabase();
+  const client = await getPool().connect();
+  try {
+    await client.query(
+      "select pg_advisory_lock(hashtextextended($1, 0))",
+      ["harhub:state-access"]
+    );
+    return await operation();
+  } finally {
+    try {
+      await client.query(
+        "select pg_advisory_unlock(hashtextextended($1, 0))",
+        ["harhub:state-access"]
+      );
+    } finally {
+      client.release();
+    }
+  }
+}
+
 export async function readDatabaseState(): Promise<AppState | undefined> {
   if (!isDatabaseStateEnabled()) return undefined;
   await ensureDatabase();
-  const result = await getPool().query<{ data: AppState }>(
-    "select data from harhub_state where id = $1",
+  const result = await getPool().query<{ data: AppState; revision: string | number }>(
+    "select data, revision from harhub_state where id = $1",
     ["app"]
   );
-  const state = result.rows[0]?.data;
-  if (state) state.auditEvents = [];
+  const row = result.rows[0];
+  const state = row?.data;
+  if (state) {
+    state.auditEvents = [];
+    databaseStateRevisions.set(state, Number(row.revision));
+  }
   return state;
 }
 
@@ -96,23 +123,46 @@ export async function writeDatabaseState(
   try {
     await client.query("begin");
     await acquireTransactionLock(client, "state:app");
-    const previousResult = await client.query<{ data: AppState }>(
-      "select data from harhub_state where id = $1 for update",
+    const expectedRevision = databaseStateRevisions.get(state);
+    const previousResult = await client.query<{
+      data: AppState;
+      revision: string | number;
+    }>(
+      "select data, revision from harhub_state where id = $1 for update",
       ["app"]
     );
-    const previous = previousResult.rows[0]?.data;
+    const previousRow = previousResult.rows[0];
+    const previous = previousRow?.data;
+    const currentRevision = previousRow ? Number(previousRow.revision) : undefined;
+    if (currentRevision !== expectedRevision) {
+      throw new Error("State changed during this operation. Retry the request.");
+    }
+
     const snapshot = databaseStateSnapshot(state);
-    await client.query(
-      `insert into harhub_state (id, data, updated_at)
-       values ($1, $2::jsonb, now())
-       on conflict (id) do update set data = excluded.data, updated_at = now()`,
-      ["app", JSON.stringify(snapshot)]
-    );
+    const nextRevision = (currentRevision ?? 0) + 1;
+    if (previousRow) {
+      const updated = await client.query(
+        `update harhub_state
+         set data = $2::jsonb, revision = $3, updated_at = now()
+         where id = $1 and revision = $4`,
+        ["app", JSON.stringify(snapshot), nextRevision, currentRevision]
+      );
+      if (updated.rowCount !== 1) {
+        throw new Error("State changed during this operation. Retry the request.");
+      }
+    } else {
+      await client.query(
+        `insert into harhub_state (id, data, revision, updated_at)
+         values ($1, $2::jsonb, $3, now())`,
+        ["app", JSON.stringify(snapshot), nextRevision]
+      );
+    }
     await insertAuditEvents(client, stateAuditEvents(previous, state));
     if (options.accountReferenceReplacement) {
       await replaceDatabaseAccountReferences(client, options.accountReferenceReplacement);
     }
     await client.query("commit");
+    databaseStateRevisions.set(state, nextRevision);
   } catch (error) {
     await client.query("rollback").catch(() => undefined);
     throw error;
@@ -244,6 +294,26 @@ async function replaceDatabaseAccountReferences(
     throw new Error(`Account convergence does not cover database references: ${unknown.join(", ")}`);
   }
 
+  if (actual.has("harhub_github_installations.linked_by_account_id")) {
+    await client.query(
+      `delete from harhub_github_installations as candidate
+       where candidate.linked_by_account_id = any($1::text[])
+         and exists (
+           select 1
+           from harhub_github_installations as survivor
+           where survivor.installation_id = candidate.installation_id
+             and (
+               survivor.linked_by_account_id = $2
+               or (
+                 survivor.linked_by_account_id = any($1::text[])
+                 and survivor.linked_by_account_id < candidate.linked_by_account_id
+               )
+             )
+         )`,
+      [sources, replacement.targetAccountId]
+    );
+  }
+
   for (const [tableName, columnName] of DATABASE_ACCOUNT_REFERENCES) {
     if (!actual.has(`${tableName}.${columnName}`)) continue;
     const table = quoteIdentifier(tableName);
@@ -290,8 +360,13 @@ async function setupDatabase(): Promise<void> {
     create table if not exists harhub_state (
       id text primary key,
       data jsonb not null,
+      revision bigint not null default 0,
       updated_at timestamptz not null default now()
     )
+  `);
+  await getPool().query(`
+    alter table harhub_state
+      add column if not exists revision bigint not null default 0
   `);
   await getPool().query(`
     create table if not exists harhub_workspace_catalogs (

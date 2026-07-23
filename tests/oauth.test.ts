@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveGitHubEmail } from "../src/server/services/github-email.js";
+import {
+  buildGitHubOAuthProfile,
+  OAuthEmailVerificationRequiredError
+} from "../src/server/services/oauth.js";
 
 test("uses a verified public email from the GitHub profile", () => {
   const resolved = resolveGitHubEmail(
     { id: 45992437, login: "user", email: " public@example.com " },
-    [{ email: "public@example.com", verified: true }]
+    []
   );
 
   assert.deepEqual(resolved, { email: "public@example.com", emailVerified: true });
@@ -35,21 +39,38 @@ test("uses any verified email when GitHub returns no verified primary email", ()
   assert.deepEqual(resolved, { email: "verified@example.com", emailVerified: true });
 });
 
-test("uses a deterministic unverified noreply address when GitHub email lookup is unavailable", () => {
-  const resolved = resolveGitHubEmail(
-    { id: 45992437, login: "User", email: "public@example.com" },
-    []
+test("rejects GitHub login when no verified email is available", () => {
+  assert.throws(
+    () => resolveGitHubEmail(
+      { id: 45992437, login: "User", email: null },
+      []
+    ),
+    /verified email/i
   );
-
-  assert.deepEqual(resolved, {
-    email: "45992437+user@users.noreply.github.com",
-    emailVerified: false
-  });
 });
 
-test("requires the stable GitHub account ID for a fallback address", () => {
+test("does not require a stable GitHub account ID when a verified email is available", () => {
+  const resolved = resolveGitHubEmail(
+    { login: "user", email: null },
+    [{ email: "owner@example.com", primary: true, verified: true }]
+  );
+  assert.deepEqual(resolved, { email: "owner@example.com", emailVerified: true });
+});
+
+test("returns a pending email proof when GitHub cannot expose a verified email", () => {
   assert.throws(
-    () => resolveGitHubEmail({ login: "user", email: null }, []),
-    /stable account ID/
+    () => buildGitHubOAuthProfile(
+      { id: 45992437, login: "private-user", name: "Private User", email: null },
+      []
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof OAuthEmailVerificationRequiredError);
+      assert.deepEqual(error.proof, {
+        provider: "github",
+        providerAccountId: "45992437",
+        name: "Private User"
+      });
+      return true;
+    }
   );
 });

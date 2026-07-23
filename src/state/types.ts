@@ -22,6 +22,7 @@ import type {
 
 export interface AccountRecord extends AccountProfile {
   passwordHash: string;
+  emailVerifiedAt?: string;
 }
 
 export interface SessionRecord {
@@ -35,10 +36,23 @@ export interface EmailLoginCodeRecord {
   email: string;
   codeHash: string;
   inviteToken?: string;
+  oauthEmailVerificationId?: string;
   attempts: number;
   createdAt: string;
   expiresAt: string;
   consumedAt?: string;
+}
+
+export interface OAuthEmailVerificationRecord {
+  id: string;
+  tokenHash: string;
+  provider: AuthProvider;
+  providerAccountId: string;
+  name: string;
+  redirectPath: string;
+  inviteToken?: string;
+  createdAt: string;
+  expiresAt: string;
 }
 
 export interface OAuthStateRecord {
@@ -67,7 +81,7 @@ export interface OAuthDeviceAuthorizationRecord {
 }
 
 export interface AppState {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   accounts: AccountRecord[];
   identities: AccountIdentity[];
   workspaces: WorkspaceRecord[];
@@ -76,6 +90,7 @@ export interface AppState {
   assetShares: AssetShareRecord[];
   emailLoginCodes: EmailLoginCodeRecord[];
   oauthStates: OAuthStateRecord[];
+  oauthEmailVerifications: OAuthEmailVerificationRecord[];
   deviceAuthorizations: OAuthDeviceAuthorizationRecord[];
   sessions: SessionRecord[];
   workspaceAiConfigurations: WorkspaceAiConfigurationRecord[];

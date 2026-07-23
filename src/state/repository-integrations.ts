@@ -209,12 +209,13 @@ export async function upsertGitHubInstallation(
          installation_id, workspace_id, account_login, account_type,
          repository_selection, permissions, linked_by_account_id, linked_at, suspended_at
        ) values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
-       on conflict (workspace_id, installation_id) do update set
+       on conflict (linked_by_account_id, installation_id) do update set
+         workspace_id = excluded.workspace_id,
          account_login = excluded.account_login,
          account_type = excluded.account_type,
          repository_selection = excluded.repository_selection,
          permissions = excluded.permissions,
-         linked_by_account_id = excluded.linked_by_account_id,
+         linked_at = excluded.linked_at,
          suspended_at = excluded.suspended_at`,
       [
         installation.id,
@@ -234,7 +235,7 @@ export async function upsertGitHubInstallation(
     const state = await loadState();
     state.githubInstallations = [
       ...state.githubInstallations.filter((item) =>
-        !(item.workspaceId === installation.workspaceId && item.id === installation.id)
+        !(item.linkedByAccountId === installation.linkedByAccountId && item.id === installation.id)
       ),
       structuredClone(installation)
     ];
@@ -248,11 +249,11 @@ export async function listGitHubInstallations(
 ): Promise<GitHubInstallation[]> {
   const state = await loadState();
   requireWorkspaceMembership(state, accountId, workspaceId);
-  return listGitHubInstallationsInternal(workspaceId);
+  return listGitHubInstallationsInternal(accountId);
 }
 
 export async function listGitHubInstallationsInternal(
-  workspaceId: string
+  accountId: string
 ): Promise<GitHubInstallation[]> {
   if (isDatabaseStateEnabled()) {
     await ensureRepositoryDatabase();
@@ -260,23 +261,26 @@ export async function listGitHubInstallationsInternal(
       `select installation_id, workspace_id, account_login, account_type,
               repository_selection, permissions, linked_by_account_id, linked_at, suspended_at
        from harhub_github_installations
-       where workspace_id = $1
+       where linked_by_account_id = $1
        order by linked_at desc`,
-      [workspaceId]
+      [accountId]
     );
     return rows.map(installationFromRow);
   }
   const state = await loadState();
   return state.githubInstallations
-    .filter((item) => item.workspaceId === workspaceId)
+    .filter((item) => item.linkedByAccountId === accountId)
     .sort((left, right) => right.linkedAt.localeCompare(left.linkedAt));
 }
 
-export async function getGitHubInstallationInternal(
+export async function getGitHubInstallationForAccount(
+  accountId: string,
   workspaceId: string,
   installationId: string
 ): Promise<GitHubInstallation | undefined> {
-  return (await listGitHubInstallationsInternal(workspaceId))
+  const state = await loadState();
+  requireWorkspaceMembership(state, accountId, workspaceId);
+  return (await listGitHubInstallationsInternal(accountId))
     .find((item) => item.id === installationId);
 }
 
@@ -356,6 +360,7 @@ export async function getProjectRepositoryConnectionInternal(
 }
 
 export async function findProjectRepositoryConnection(
+  workspaceId: string,
   installationId: string,
   repositoryId: string
 ): Promise<ProjectRepositoryConnectionRecord | undefined> {
@@ -366,12 +371,37 @@ export async function findProjectRepositoryConnection(
               repository_id, repository_node_id, owner, name, default_branch, connected_at,
               last_observed_head_sha, last_observed_at
        from harhub_project_repository_connections
-       where installation_id = $1 and repository_id = $2 and status = 'active'`,
-      [installationId, repositoryId]
+       where workspace_id = $1 and installation_id = $2 and repository_id = $3
+         and status = 'active'`,
+      [workspaceId, installationId, repositoryId]
     );
     return rows[0] ? connectionFromRow(rows[0]) : undefined;
   }
   return (await loadState()).projectRepositoryConnections.find((item) =>
+    item.workspaceId === workspaceId &&
+    item.installationId === installationId &&
+    item.repositoryId === repositoryId &&
+    item.status === "active"
+  );
+}
+
+export async function listProjectRepositoryConnectionsForRepository(
+  installationId: string,
+  repositoryId: string
+): Promise<ProjectRepositoryConnectionRecord[]> {
+  if (isDatabaseStateEnabled()) {
+    await ensureRepositoryDatabase();
+    const rows = await queryDatabase<ConnectionRow>(
+      `select project_id, workspace_id, mode, status, installation_id, permission_mode,
+              repository_id, repository_node_id, owner, name, default_branch, connected_at,
+              last_observed_head_sha, last_observed_at
+       from harhub_project_repository_connections
+       where installation_id = $1 and repository_id = $2 and status = 'active'`,
+      [installationId, repositoryId]
+    );
+    return rows.map(connectionFromRow);
+  }
+  return (await loadState()).projectRepositoryConnections.filter((item) =>
     item.installationId === installationId &&
     item.repositoryId === repositoryId &&
     item.status === "active"
@@ -983,8 +1013,42 @@ async function setupRepositoryDatabase(): Promise<void> {
       linked_by_account_id text not null,
       linked_at timestamptz not null,
       suspended_at timestamptz,
-      primary key (workspace_id, installation_id)
+      primary key (linked_by_account_id, installation_id)
     )`,
+    `do $$
+     declare
+       primary_key_columns text[];
+     begin
+       lock table harhub_github_installations in access exclusive mode;
+
+       select array_agg(attribute.attname order by key_column.ordinality)
+       into primary_key_columns
+       from pg_constraint as constraint_record
+       cross join lateral unnest(constraint_record.conkey) with ordinality as key_column(attnum, ordinality)
+       join pg_attribute as attribute
+         on attribute.attrelid = constraint_record.conrelid
+        and attribute.attnum = key_column.attnum
+       where constraint_record.conrelid = 'harhub_github_installations'::regclass
+         and constraint_record.contype = 'p';
+
+       if primary_key_columns is distinct from array['linked_by_account_id', 'installation_id']::text[] then
+         delete from harhub_github_installations as older
+         using harhub_github_installations as newer
+         where older.linked_by_account_id = newer.linked_by_account_id
+           and older.installation_id = newer.installation_id
+           and (
+             older.linked_at < newer.linked_at
+             or (older.linked_at = newer.linked_at and older.workspace_id < newer.workspace_id)
+           );
+
+         alter table harhub_github_installations
+           drop constraint if exists harhub_github_installations_pkey;
+         alter table harhub_github_installations
+           add constraint harhub_github_installations_pkey
+           primary key (linked_by_account_id, installation_id);
+       end if;
+     end
+     $$`,
     `create table if not exists harhub_project_repository_connections (
       project_id text primary key,
       workspace_id text not null,
