@@ -16,7 +16,8 @@
   </p>
 </div>
 
-![Harhub abstract city marketing illustration](./docs/public/harhub-social-preview.png)
+<!--
+![Harhub abstract city marketing illustration](./docs/public/harhub-social-preview.png) -->
 
 ## Overview
 
