@@ -1,4 +1,4 @@
-import { parseArgs } from "./args.js";
+import { hasBooleanOption, parseArgs } from "./args.js";
 import {
   runAssetsCreate,
   runAssetsDelete,
@@ -17,16 +17,25 @@ import {
   runRevalidate,
   runScan,
   runShow,
+  runEdit,
   runUpdate,
   runUpload,
   runValidate
 } from "./commands/skills.js";
 import { runLogin, runLogout, runWhoami } from "./commands/auth.js";
 import { runInstall, runShare, runUnshare } from "./commands/share.js";
+import { runDownload } from "./commands/download.js";
+import { runProjectCommand } from "./commands/projects.js";
+import { runRepositoryCommand } from "./commands/repositories.js";
+import { runForgeCommand } from "./commands/forge.js";
 import {
   printAssetsHelp,
+  printDownloadHelp,
+  printForgeHelp,
   printHelp,
   printLoginHelp,
+  printProjectsHelp,
+  printRepositoriesHelp,
   printSkillsHelp
 } from "./help.js";
 
@@ -46,8 +55,32 @@ export async function runCli(argv: string[]): Promise<number> {
   if (command === "logout") return runLogout(parseArgs(argv.slice(1)));
   if (command === "whoami") return runWhoami(parseArgs(argv.slice(1)));
   if (command === "install") return runInstall(parseArgs(argv.slice(1)));
+  if (command === "download" && ["help", "--help", "-h"].includes(subcommand ?? "")) {
+    printDownloadHelp();
+    return 0;
+  }
+  if (command === "download") return runDownload(parseArgs(argv.slice(1)));
   if (command === "share") return runShare(parseArgs(argv.slice(1)));
   if (command === "unshare") return runUnshare(parseArgs(argv.slice(1)));
+
+  if (["projects", "repositories", "forge"].includes(command)) {
+    if (!subcommand || ["help", "--help", "-h"].includes(subcommand)) {
+      if (command === "projects") printProjectsHelp();
+      else if (command === "repositories") printRepositoriesHelp();
+      else printForgeHelp();
+      return 0;
+    }
+    const parsed = parseArgs(rest);
+    if (hasBooleanOption(parsed, "help")) {
+      if (command === "projects") printProjectsHelp();
+      else if (command === "repositories") printRepositoriesHelp();
+      else printForgeHelp();
+      return 0;
+    }
+    if (command === "projects") return runProjectCommand(subcommand, parsed);
+    if (command === "repositories") return runRepositoryCommand(subcommand, parsed);
+    return runForgeCommand(subcommand, parsed);
+  }
 
   if (command !== "skills" && command !== "assets") {
     console.error(`Unknown command: ${command}`);
@@ -55,13 +88,18 @@ export async function runCli(argv: string[]): Promise<number> {
     return 1;
   }
 
-  if (!subcommand || subcommand === "help" || subcommand === "--help") {
+  if (!subcommand || ["help", "--help", "-h"].includes(subcommand)) {
     if (command === "assets") printAssetsHelp();
     else printSkillsHelp();
     return 0;
   }
 
   const parsed = parseArgs(rest);
+  if (hasBooleanOption(parsed, "help")) {
+    if (command === "assets") printAssetsHelp();
+    else printSkillsHelp();
+    return 0;
+  }
   return command === "assets"
     ? runAssetCommand(subcommand, parsed)
     : runSkillCommand(subcommand, parsed);
@@ -104,6 +142,8 @@ function runSkillCommand(subcommand: string, parsed: ReturnType<typeof parseArgs
       return runList(parsed);
     case "show":
       return runShow(parsed);
+    case "edit":
+      return runEdit(parsed);
     case "create":
       return runCreate(parsed);
     case "upload":

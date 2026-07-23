@@ -231,24 +231,38 @@ harhub whoami
 harhub skills scan [paths...]
 harhub skills validate [paths...]
 harhub skills create <name>
-harhub skills upload [paths...]
 harhub skills upload [paths...] --share
-harhub install <share-url|token>
+harhub skills list --remote
+harhub skills show <id|name|slug> --remote
+harhub skills edit <id|name|slug> [--file SKILL.md]
+harhub assets list --remote
+harhub download <id|name|slug> [-v 2] [-o skill.zip]
+harhub projects list
+harhub repositories status
+harhub forge list
+harhub install <share-url|token> -g -y
 harhub share <id|name|slug>
 harhub unshare <id|name|slug>
-harhub assets list
-harhub assets show <id|name|slug>
 harhub logout
 ```
 
-`scan`, `validate`, `list`, and `show` operate on local paths and local
-`.harhub` indexes. `skills upload` packages valid local Skills and sends them to
-the configured hosted or self-managed workspace. During import, Harhub stores
-each Skill as an independent S3 file prefix and does not retain the source zip.
-Preview reads those objects directly; download and discovery generate a standard
-root-level Skill zip on demand. Uploaded Skills are immutable; edit the local
-Skill and upload it again instead of patching it in place. Harhub retains the
-current package and four previous versions for authenticated download or restore.
+Common short options include `-y`/`--yes`, `-g`/`--global`, `-j`/`--json`,
+`-r`/`--remote`, `-o`/`--output`, and `-w`/`--workspace`. Run
+`harhub <assets|skills|projects|repositories|forge> help` for each command group.
+
+`scan`, `validate`, local `list`, and local `show` operate on paths and `.harhub`
+indexes. Add `--remote` to `assets/skills list` or `show` to query the workspace.
+`skills upload` packages valid local Skills and sends them to the configured
+hosted or self-managed workspace. During import, Harhub stores each Skill as an
+independent S3 file prefix and does not retain the source zip. Preview reads
+those objects directly; download and discovery generate a standard root-level
+Skill zip on demand. Uploaded versions are immutable. `skills edit` downloads
+the current package, edits and validates it, then uploads a new version. Harhub
+retains the current package and four previous versions for authenticated
+download or restore.
+
+See the [CLI guide](./docs/guide/cli.md) for Project, GitHub Repository, Forge,
+remote edit, download, streaming, and automation examples.
 
 ## Configuration
 
