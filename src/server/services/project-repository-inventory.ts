@@ -44,6 +44,7 @@ import {
 import { type ProjectRepositoryConnectionRecord } from "../../state/types.js";
 import { GitHubAppError, readRepositoryInventorySource } from "./github-app.js";
 import { syncProjectRepositoryFiles } from "./project-skill-forks.js";
+import { resolveExplicitLibraryAsset } from "./project-repository-ownership.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
 
 const MAX_SCAN_ATTEMPTS = 3;
@@ -379,9 +380,9 @@ function resolveRelationships(
       return { ...artifact, relationship: "repository-owned" };
     }
     const skill = skillAtPath(files, artifact.path);
-    const base = policy?.libraryAssetId
-      ? catalog.assets.find((asset) => asset.id === policy.libraryAssetId)
-      : catalog.assets.find((asset) => asset.kind === "skill" && asset.name === skill?.name);
+    const base = resolveExplicitLibraryAsset(catalog, {
+      libraryAssetId: policy?.ownership === "library" ? policy.libraryAssetId : undefined
+    });
     const version = policy?.pinnedVersion
       ? base?.versionHistory?.find((candidate) => candidate.version === policy.pinnedVersion)
       : undefined;
