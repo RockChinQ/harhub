@@ -20,11 +20,15 @@ export function resolveGitHubEmail(
   profile: GitHubProfileEmailSource,
   emailRecords: GitHubEmailRecordSource[]
 ): ResolvedGitHubEmail {
+  const publicEmail = typeof profile.email === "string" ? profile.email.trim() : "";
+  if (publicEmail) {
+    return { email: publicEmail, emailVerified: true };
+  }
+
   const verifiedRecords = emailRecords.filter(
     (record): record is GitHubEmailRecordSource & { email: string; verified: true } =>
       record.verified === true && typeof record.email === "string" && Boolean(record.email.trim())
   );
-  const publicEmail = typeof profile.email === "string" ? profile.email.trim() : "";
   const selected =
     verifiedRecords.find(
       (record) => record.email.trim().toLowerCase() === publicEmail.toLowerCase()

@@ -9,7 +9,7 @@ import {
 test("uses a verified public email from the GitHub profile", () => {
   const resolved = resolveGitHubEmail(
     { id: 45992437, login: "user", email: " public@example.com " },
-    [{ email: "public@example.com", verified: true }]
+    []
   );
 
   assert.deepEqual(resolved, { email: "public@example.com", emailVerified: true });
@@ -42,7 +42,7 @@ test("uses any verified email when GitHub returns no verified primary email", ()
 test("rejects GitHub login when no verified email is available", () => {
   assert.throws(
     () => resolveGitHubEmail(
-      { id: 45992437, login: "User", email: "public@example.com" },
+      { id: 45992437, login: "User", email: null },
       []
     ),
     /verified email/i

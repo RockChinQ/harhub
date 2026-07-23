@@ -203,35 +203,8 @@ async function exchangeGitHubCode(code: string, redirectUri: string): Promise<OA
 
   const emailsResponse = await fetch("https://api.github.com/user/emails", { headers });
   const emails = await emailsResponse.json().catch(() => undefined);
-  const emailRecords = emailsResponse.ok && Array.isArray(emails) ? emails : [];
-  try {
-    return buildGitHubOAuthProfile(profile, emailRecords);
-  } catch (error) {
-    const login = typeof profile.login === "string" ? profile.login.trim() : "";
-    if (!(error instanceof OAuthEmailVerificationRequiredError) || !login) throw error;
-
-    const publicProfileUrl = new URL(
-      `https://api.github.com/users/${encodeURIComponent(login)}`
-    );
-    publicProfileUrl.searchParams.set("harhub_email", String(Date.now()));
-    const publicProfileResponse = await fetch(publicProfileUrl, {
-      cache: "no-store",
-      headers: {
-        Accept: "application/vnd.github+json",
-        "User-Agent": "Harhub"
-      }
-    });
-    const publicProfile = await publicProfileResponse.json().catch(() => undefined);
-    if (
-      publicProfileResponse.ok &&
-      publicProfile?.id === profile.id &&
-      typeof publicProfile.email === "string" &&
-      publicProfile.email.trim()
-    ) {
-      return buildGitHubOAuthProfile(publicProfile, [
-        { email: publicProfile.email, verified: true }
-      ]);
-    }
-    throw error;
-  }
+  return buildGitHubOAuthProfile(
+    profile,
+    emailsResponse.ok && Array.isArray(emails) ? emails : []
+  );
 }
