@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   Archive,
   ArrowLeft,
@@ -61,6 +61,12 @@ import {
   DialogTitle
 } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "../components/ui/tooltip";
 import {
   archiveProject,
   authorizeGitHubInstallation,
@@ -197,13 +203,17 @@ export function ProjectsView({
     candidate.kind !== "bootstrap" &&
     (candidate.status === "preview" || candidate.status === "creating" || candidate.status === "open")
   );
-  const canManageProjectSkills = Boolean(
-    project && project.status !== "archived" &&
-    inventory?.connection?.mode === "github-app" &&
-    inventory.connection.status === "active" &&
-    inventory.connection.permissionMode === "write" &&
-    inventory.latestSnapshot
+  const projectSkillManagementDisabledReason = getProjectSkillManagementDisabledReason(
+    project,
+    inventory
   );
+  const projectSkillMutationDisabledReason = isCreatingProposal
+    ? "A Skill change is being prepared."
+    : activeSkillProposal?.status === "open"
+      ? "Merge or close the current Skill change before starting another."
+      : activeSkillProposal
+        ? "Finish the current Skill change before starting another."
+        : projectSkillManagementDisabledReason;
 
   async function refresh() {
     setIsLoading(true);
@@ -777,92 +787,94 @@ export function ProjectsView({
               </Card>
             ) : null}
 
-            <Card className="shadow-sm">
-              <CardHeader className="border-b">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <PackagePlus className="h-4 w-4 text-blue-700" aria-hidden="true" />
-                      Project Skills
-                    </CardTitle>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Search repository Skills or propose Library additions and removals through GitHub pull requests.
-                    </p>
-                  </div>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <div className="relative min-w-0 sm:w-64">
-                      <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                      <Input
-                        value={projectSkillSearch}
-                        onChange={(event) => setProjectSkillSearch(event.target.value)}
-                        className="pl-9"
-                        placeholder="Search Project Skills"
-                      />
+            <TooltipProvider delayDuration={250}>
+              <Card className="shadow-sm">
+                <CardHeader className="border-b">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <PackagePlus className="h-4 w-4 text-blue-700" aria-hidden="true" />
+                        Project Skills
+                      </CardTitle>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Search and manage the Skills included in this Project.
+                      </p>
                     </div>
-                    {activeSkillProposal?.status === "open" && activeSkillProposal.pullUrl ? (
-                      <a
-                        href={activeSkillProposal.pullUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-accent"
-                      >
-                        <GitPullRequest className="h-4 w-4" aria-hidden="true" />
-                        PR #{activeSkillProposal.pullNumber}
-                      </a>
-                    ) : activeSkillProposal?.status === "preview" ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          setProposal(activeSkillProposal);
-                          setProposalOpen(true);
-                        }}
-                      >
-                        <FileDiff className="h-4 w-4" aria-hidden="true" />
-                        Review pending change
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        disabled={!canManageProjectSkills}
-                        onClick={() => void openLibrarySkillPicker()}
-                      >
-                        <Plus className="h-4 w-4" aria-hidden="true" />
-                        Add from Library
-                      </Button>
-                    )}
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <div className="relative min-w-0 sm:w-64">
+                        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                        <Input
+                          value={projectSkillSearch}
+                          onChange={(event) => setProjectSkillSearch(event.target.value)}
+                          className="pl-9"
+                          placeholder="Search Project Skills"
+                        />
+                      </div>
+                      {activeSkillProposal?.status === "open" && activeSkillProposal.pullUrl ? (
+                        <a
+                          href={activeSkillProposal.pullUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-accent"
+                        >
+                          <GitPullRequest className="h-4 w-4" aria-hidden="true" />
+                          PR #{activeSkillProposal.pullNumber}
+                        </a>
+                      ) : activeSkillProposal?.status === "preview" ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setProposal(activeSkillProposal);
+                            setProposalOpen(true);
+                          }}
+                        >
+                          <FileDiff className="h-4 w-4" aria-hidden="true" />
+                          Review pending change
+                        </Button>
+                      ) : (
+                        <DisabledControlTooltip
+                          label="Add Skills from Library"
+                          reason={projectSkillMutationDisabledReason}
+                        >
+                          <Button
+                            type="button"
+                            disabled={Boolean(projectSkillMutationDisabledReason)}
+                            onClick={() => void openLibrarySkillPicker()}
+                          >
+                            <Plus className="h-4 w-4" aria-hidden="true" />
+                            Add from Library
+                          </Button>
+                        </DisabledControlTooltip>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent className="p-0">
-                {filteredProjectSkills.length ? (
-                  <div className="divide-y">
-                    {filteredProjectSkills.map((binding) => (
-                      <ProjectSkillRow
-                        key={binding.id}
-                        binding={binding}
-                        onReview={() => void openSkillDiff(binding)}
-                        onRemove={() => confirmRemoveSkill(binding)}
-                        canManage={canManageProjectSkills && !activeSkillProposal}
-                      />
-                    ))}
-                  </div>
-                ) : projectSkills.length ? (
-                  <p className="p-6 text-sm text-muted-foreground">
-                    No Project Skills match “{projectSkillSearch}”.
-                  </p>
-                ) : (
-                  <p className="p-6 text-sm text-muted-foreground">
-                    No Skills are present in the latest Project state.
-                  </p>
-                )}
-                {!canManageProjectSkills ? (
-                  <p className="border-t bg-muted/10 px-5 py-3 text-xs text-muted-foreground">
-                    Adding and removing Skills requires an active GitHub App connection with managed change permissions.
-                  </p>
-                ) : null}
-              </CardContent>
-            </Card>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {filteredProjectSkills.length ? (
+                    <div className="divide-y">
+                      {filteredProjectSkills.map((binding) => (
+                        <ProjectSkillRow
+                          key={binding.id}
+                          binding={binding}
+                          onReview={() => void openSkillDiff(binding)}
+                          onRemove={() => confirmRemoveSkill(binding)}
+                          removeDisabledReason={projectSkillMutationDisabledReason}
+                        />
+                      ))}
+                    </div>
+                  ) : projectSkills.length ? (
+                    <p className="p-6 text-sm text-muted-foreground">
+                      No Project Skills match “{projectSkillSearch}”.
+                    </p>
+                  ) : (
+                    <p className="p-6 text-sm text-muted-foreground">
+                      No Skills are present in the latest Project state.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </TooltipProvider>
 
             <Card className="shadow-sm">
               <CardHeader className="border-b">
@@ -1109,7 +1121,7 @@ export function ProjectsView({
             <DialogHeader>
               <DialogTitle>Add Skills from the Library</DialogTitle>
               <DialogDescription>
-                Select one or more workspace Skills. Harhub will copy their complete packages on a new branch and open one GitHub pull request.
+                Select one or more workspace Skills to add to this Project.
               </DialogDescription>
             </DialogHeader>
             <div className="relative">
@@ -1162,7 +1174,7 @@ export function ProjectsView({
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-muted-foreground">
-                {selectedLibrarySkillIds.length}/20 selected · repository files remain unchanged until the PR is merged
+                {selectedLibrarySkillIds.length}/20 selected
               </p>
               <Button
                 type="button"
@@ -1170,7 +1182,7 @@ export function ProjectsView({
                 onClick={() => void previewAddLibrarySkills()}
               >
                 {isCreatingProposal ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitPullRequest className="h-4 w-4" />}
-                Review pull request
+                Review addition
               </Button>
             </div>
           </DialogContent>
@@ -1181,14 +1193,15 @@ export function ProjectsView({
             <AlertDialogHeader>
               <AlertDialogTitle>Remove {removeSkillBinding?.name} from this Project?</AlertDialogTitle>
               <AlertDialogDescription>
-                Harhub will prepare a pull request that deletes this Skill package from the repository. The workspace Library Skill, if any, is not deleted.
+                This removes the Skill package from the Project through a GitHub pull request.
+                The workspace Library Skill, if any, is not deleted.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel disabled={isCreatingProposal}>Cancel</AlertDialogCancel>
               <AlertDialogAction disabled={isCreatingProposal} onClick={() => void previewRemoveSkill()}>
                 {isCreatingProposal ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                Review removal PR
+                Review removal
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -1548,17 +1561,17 @@ function ProjectSkillRow({
   binding,
   onReview,
   onRemove,
-  canManage
+  removeDisabledReason
 }: {
   binding: ProjectBinding;
   onReview: () => void;
   onRemove: () => void;
-  canManage: boolean;
+  removeDisabledReason?: string;
 }) {
   const reviewable = Boolean(binding.fork) &&
     (binding.status === "added" || binding.status === "modified");
   return (
-    <div className="grid gap-3 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_120px_120px_150px] lg:items-center">
+    <div className="grid gap-3 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <p className="truncate text-sm font-medium">{binding.name}</p>
@@ -1568,27 +1581,122 @@ function ProjectSkillRow({
         </div>
         <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{binding.path}</p>
       </div>
-      <div>
+      <div className="flex items-center justify-self-end gap-1.5">
         <BindingStatusBadge status={binding.status} />
+        {reviewable ? (
+          <ProjectSkillIconAction label="Review changes" onClick={onReview}>
+            <FileDiff className="h-4 w-4" aria-hidden="true" />
+          </ProjectSkillIconAction>
+        ) : null}
+        <ProjectSkillIconAction
+          label="Remove Skill"
+          disabledReason={removeDisabledReason}
+          className="hover:text-destructive"
+          onClick={onRemove}
+        >
+          <Trash2 className="h-4 w-4" aria-hidden="true" />
+        </ProjectSkillIconAction>
       </div>
-      {reviewable ? (
-        <Button type="button" variant="outline" size="sm" onClick={onReview}>
-          <FileDiff className="h-4 w-4" aria-hidden="true" />
-          Review
-        </Button>
-      ) : <span />}
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={!canManage}
-        onClick={onRemove}
-      >
-        <Trash2 className="h-4 w-4" aria-hidden="true" />
-        Remove via PR
-      </Button>
     </div>
   );
+}
+
+function ProjectSkillIconAction({
+  label,
+  disabledReason,
+  className,
+  onClick,
+  children
+}: {
+  label: string;
+  disabledReason?: string;
+  className?: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  const button = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className={cn("h-8 w-8 text-muted-foreground", className)}
+      aria-label={label}
+      disabled={Boolean(disabledReason)}
+      onClick={onClick}
+    >
+      {children}
+    </Button>
+  );
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {disabledReason ? (
+          <span
+            className="inline-flex"
+            tabIndex={0}
+            aria-label={`${label} unavailable: ${disabledReason}`}
+          >
+            {button}
+          </span>
+        ) : button}
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-72 text-center">
+        {disabledReason ? `${label} unavailable: ${disabledReason}` : label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function DisabledControlTooltip({
+  label,
+  reason,
+  children
+}: {
+  label: string;
+  reason?: string;
+  children: ReactNode;
+}) {
+  if (!reason) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className="inline-flex"
+          tabIndex={0}
+          aria-label={`${label} unavailable: ${reason}`}
+        >
+          {children}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-72 text-center">
+        {reason}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function getProjectSkillManagementDisabledReason(
+  project?: HarhubProject,
+  inventory?: ProjectInventoryResponse
+): string | undefined {
+  if (!project) return "Open a Project before managing its Skills.";
+  if (project.status === "archived") return "Archived Projects cannot be changed.";
+  if (!inventory?.connection || inventory.connection.mode !== "github-app") {
+    return "Connect this Project with the GitHub App to manage its Skills.";
+  }
+  if (inventory.connection.status === "permission-lost") {
+    return "Restore the GitHub App permissions before changing Project Skills.";
+  }
+  if (inventory.connection.status === "disconnected") {
+    return "Reconnect the GitHub App before changing Project Skills.";
+  }
+  if (inventory.connection.permissionMode !== "write") {
+    return "Grant managed change permissions before changing Project Skills.";
+  }
+  if (!inventory.latestSnapshot) {
+    return "Wait for the first repository scan before changing Project Skills.";
+  }
+  return undefined;
 }
 
 function proposalDialogTitle(proposal?: ProjectChangeProposal): string {
