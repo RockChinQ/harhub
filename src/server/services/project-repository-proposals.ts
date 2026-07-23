@@ -141,6 +141,9 @@ export function createRemoveSkillProposal(input: {
   if (input.binding.kind !== "skill" || input.binding.status === "missing") {
     throw new Error("Only an observed Project Skill can be removed.");
   }
+  if (input.binding.path === ".") {
+    throw new Error("A repository-root Skill cannot be removed through Harhub.");
+  }
   const root = safeRelativePath(input.binding.path);
   const filePaths = Array.from(new Set(input.filePaths.map(safeRelativePath))).sort();
   if (filePaths.length === 0) throw new Error("Project Skill files are unavailable in the latest inventory.");

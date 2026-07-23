@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import {
   detectRepositoryInventory,
+  discoverRepositorySkillPackages,
+  repositorySkillSourcePath,
   REPOSITORY_DETECTOR_VERSION,
   type RepositorySourceFile
 } from "../../features/repository-inventory/index.js";
@@ -405,32 +407,48 @@ function filesIncludedByPolicies(
   const ignored = new Set(
     policies.filter((policy) => policy.ownership === "ignored").map((policy) => policy.artifactPath)
   );
-  const excludedArtifacts = artifacts.filter((artifact) =>
-    ignored.has(artifact.path) || artifact.relationship === "blocked"
-  );
-  return files.filter((file) => !excludedArtifacts.some((artifact) =>
-    artifact.kind === "skill" ? file.path.startsWith(`${artifact.path}/`) : file.path === artifact.path
-  ));
+  const packagesByPath = repositorySkillPackagesByPath(files);
+  const excludedPaths = new Set<string>();
+  for (const artifact of artifacts) {
+    if (!ignored.has(artifact.path) && artifact.relationship !== "blocked") continue;
+    if (artifact.kind !== "skill") {
+      excludedPaths.add(artifact.path);
+      continue;
+    }
+    for (const file of packagesByPath.get(artifact.path)?.files ?? []) {
+      excludedPaths.add(repositorySkillSourcePath(artifact.path, file.path));
+    }
+  }
+  return files.filter((file) => !excludedPaths.has(file.path));
 }
 
 function inventoryFiles(artifacts: ProjectInventoryArtifact[], files: RepositorySourceFile[]) {
-  return artifacts.flatMap((artifact) => files
-    .filter((file) => artifact.kind === "skill"
-      ? file.path.startsWith(`${artifact.path}/`)
-      : file.path === artifact.path)
-    .map((file) => ({ artifactId: artifact.id, path: file.path, content: file.content }))
-  );
+  const packagesByPath = repositorySkillPackagesByPath(files);
+  return artifacts.flatMap((artifact) => {
+    if (artifact.kind !== "skill") {
+      return files
+        .filter((file) => file.path === artifact.path)
+        .map((file) => ({ artifactId: artifact.id, path: file.path, content: file.content }));
+    }
+    return (packagesByPath.get(artifact.path)?.files ?? []).map((file) => ({
+      artifactId: artifact.id,
+      path: repositorySkillSourcePath(artifact.path, file.path),
+      content: file.content
+    }));
+  });
 }
 
 function skillAtPath(files: RepositorySourceFile[], root: string) {
   try {
-    return analyzeStoredSkillFiles(files
-      .filter((file) => file.path.startsWith(`${root}/`))
-      .map((file) => ({ path: file.path.slice(root.length + 1), content: file.content }))
-    );
+    const skillPackage = repositorySkillPackagesByPath(files).get(root);
+    return skillPackage ? analyzeStoredSkillFiles(skillPackage.files) : undefined;
   } catch {
     return undefined;
   }
+}
+
+function repositorySkillPackagesByPath(files: RepositorySourceFile[]) {
+  return new Map(discoverRepositorySkillPackages(files).map((candidate) => [candidate.rootPath, candidate]));
 }
 
 function scanFailure(error: unknown): NonNullable<ProjectScanJob["failure"]> {
