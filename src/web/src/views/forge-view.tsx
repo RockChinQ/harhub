@@ -42,6 +42,7 @@ import type {
   WorkspaceAiSettings,
   WorkspaceRecord
 } from "../../../shared/types";
+import { useDocumentTitle } from "../app/document-title";
 import { MIN_FORGE_INTERVIEW_ANSWERS } from "../../../shared/forge";
 import { Badge } from "../components/ui/badge";
 import {
@@ -209,6 +210,10 @@ export function ForgeView({
   const [isSkillFileLoading, setIsSkillFileLoading] = useState(false);
   const [skillFileError, setSkillFileError] = useState<string>();
   const [skillFileRefreshKey, setSkillFileRefreshKey] = useState(0);
+  const routedSessionTitle = (
+    !routedSessionId || activeSessionId === routedSessionId
+  ) ? sessionTitle : undefined;
+  useDocumentTitle(routedSessionTitle ? `${routedSessionTitle} · Forge` : "Forge");
   const historyScope = `${workspace.id}\u0000${token}`;
   const historyScopeRef = useRef(historyScope);
   const routeSessionLoadRef = useRef<string | undefined>(undefined);

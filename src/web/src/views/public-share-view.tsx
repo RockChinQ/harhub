@@ -18,6 +18,7 @@ import type {
   AssetContentPreview,
   AssetShareResponse
 } from "../../../shared/types";
+import { useDocumentTitle } from "../app/document-title";
 import { healthBadgeClass } from "../app/format";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -45,6 +46,13 @@ export function PublicShareView({ shareToken }: { shareToken: string }) {
   const [preview, setPreview] = useState<AssetContentPreview>();
   const [previewError, setPreviewError] = useState<string>();
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  useDocumentTitle(
+    share?.token === shareToken && share.asset.displayName
+      ? `${share.asset.displayName} · Shared Skill`
+      : error
+        ? "Share unavailable"
+        : "Shared Skill"
+  );
 
   useEffect(() => {
     let active = true;

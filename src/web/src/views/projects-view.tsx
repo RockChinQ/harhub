@@ -96,6 +96,7 @@ import {
   rotateProjectSyncToken,
   updateProjectBindingPolicy
 } from "../lib/api";
+import { useDocumentTitle } from "../app/document-title";
 import { cn } from "../lib/utils";
 import {
   buildProjectSkillLineDiff,
@@ -160,6 +161,13 @@ export function ProjectsView({
   const [removeSkillBinding, setRemoveSkillBinding] = useState<ProjectBinding>();
   const [projectDetailTab, setProjectDetailTab] = useState("skills");
   const [scanHistoryOpen, setScanHistoryOpen] = useState(false);
+  useDocumentTitle(
+    routedProjectId
+      ? project?.id === routedProjectId
+        ? `${project.name} · Project`
+        : "Project"
+      : "Projects"
+  );
 
   useEffect(() => {
     setSyncToken(undefined);
