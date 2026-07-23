@@ -642,6 +642,36 @@ export async function readProjectInventoryFile(
   return file ? Buffer.from(file.contentBase64, "base64") : undefined;
 }
 
+export async function listProjectInventoryFilePaths(
+  workspaceId: string,
+  projectId: string,
+  snapshotId: string,
+  artifactId: string
+): Promise<string[]> {
+  if (isDatabaseStateEnabled()) {
+    await ensureRepositoryDatabase();
+    const rows = await queryDatabase<{ path: string }>(
+      `select file.path
+       from harhub_project_inventory_files as file
+       join harhub_project_inventory_snapshots as snapshot on snapshot.id = file.snapshot_id
+       where snapshot.workspace_id = $1 and snapshot.project_id = $2 and snapshot.id = $3
+         and file.artifact_id = $4
+       order by file.path`,
+      [workspaceId, projectId, snapshotId, artifactId]
+    );
+    return rows.map((row) => row.path);
+  }
+  const state = await loadState();
+  const snapshot = state.projectInventorySnapshots.find((item) =>
+    item.id === snapshotId && item.workspaceId === workspaceId && item.projectId === projectId
+  );
+  if (!snapshot) return [];
+  return state.projectInventoryFiles
+    .filter((item) => item.snapshotId === snapshotId && item.artifactId === artifactId)
+    .map((item) => item.path)
+    .sort((left, right) => left.localeCompare(right));
+}
+
 export async function upsertProjectBindingPolicy(
   policy: ProjectBindingPolicy
 ): Promise<void> {

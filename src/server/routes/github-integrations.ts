@@ -10,6 +10,7 @@ import {
   getProjectInventoryStateInternal,
   getProjectChangeProposal,
   getProjectRepositoryConnectionInternal,
+  listProjectInventoryFilePaths,
   listGitHubInstallations,
   upsertGitHubInstallation,
   upsertProjectBindingPolicy,
@@ -32,9 +33,13 @@ import {
   queueProjectRepositoryScan
 } from "../services/project-repository-inventory.js";
 import {
+  createAddLibrarySkillsProposal,
   createBootstrapProposal,
-  openBootstrapProposal
+  createRemoveSkillProposal,
+  openProjectChangeProposal
 } from "../services/project-repository-proposals.js";
+import { loadStoredSkill } from "../services/skill-packages.js";
+import { loadOrCreateWorkspaceAssetCatalog } from "../services/workspace-catalogs.js";
 import { sendError, setPrivateNoStore } from "../utils/http.js";
 
 export function registerGitHubIntegrationRoutes(app: Express): void {
@@ -250,7 +255,6 @@ export function registerGitHubIntegrationRoutes(app: Express): void {
     if (!context) return;
     setPrivateNoStore(res);
     try {
-      if (req.body?.kind !== "bootstrap") throw new Error("Only bootstrap proposals are supported.");
       const projectId = requiredParam(req.params.projectId, "projectId");
       const [project, inventory, connection] = await Promise.all([
         getProject(context.account.id, context.workspace.id, projectId),
@@ -263,14 +267,66 @@ export function registerGitHubIntegrationRoutes(app: Express): void {
       if (!inventory.latestSnapshot) throw new Error("Run the initial repository scan first.");
       const installation = await getGitHubInstallationInternal(context.workspace.id, connection.installationId);
       if (!installation) throw new Error("GitHub installation is unavailable.");
-      const proposal = createBootstrapProposal({
-        project,
-        connection,
-        installation,
-        snapshot: inventory.latestSnapshot,
-        policies: inventory.policies,
-        accountId: context.account.id
-      });
+      const kind = req.body?.kind;
+      let proposal;
+      if (kind === "bootstrap") {
+        proposal = createBootstrapProposal({
+          project,
+          connection,
+          installation,
+          snapshot: inventory.latestSnapshot,
+          policies: inventory.policies,
+          accountId: context.account.id
+        });
+      } else if (kind === "add-library-skills") {
+        const assetIds = readStringArray(req.body?.assetIds, "assetIds", 20);
+        const catalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
+        const assetsById = new Map(catalog.assets.map((asset) => [asset.id, asset]));
+        const assets = assetIds.map((assetId) => {
+          const asset = assetsById.get(assetId);
+          if (!asset) throw new Error(`Library Skill ${assetId} was not found.`);
+          if (!asset.storage) throw new Error(`Library Skill ${asset.displayName} has no stored package.`);
+          return asset;
+        });
+        const skills = await Promise.all(assets.map(async (asset) => ({
+          asset,
+          files: (await loadStoredSkill(asset.storage!)).files
+        })));
+        proposal = createAddLibrarySkillsProposal({
+          project,
+          connection,
+          installation,
+          snapshot: inventory.latestSnapshot,
+          skills,
+          accountId: context.account.id
+        });
+      } else if (kind === "remove-skill") {
+        const bindingId = requiredBodyString(req.body, "bindingId");
+        const binding = project.bindings.find((candidate) => candidate.id === bindingId);
+        if (!binding) throw new Error("Project Skill binding was not found.");
+        const artifact = inventory.latestSnapshot.artifacts.find((candidate) =>
+          candidate.kind === "skill" &&
+          (candidate.bindingId === binding.id || candidate.path === binding.path)
+        );
+        if (!artifact) throw new Error("Project Skill is not present in the latest repository inventory.");
+        const filePaths = await listProjectInventoryFilePaths(
+          context.workspace.id,
+          projectId,
+          inventory.latestSnapshot.id,
+          artifact.id
+        );
+        proposal = createRemoveSkillProposal({
+          project,
+          connection,
+          installation,
+          snapshot: inventory.latestSnapshot,
+          binding,
+          filePaths,
+          accountId: context.account.id
+        });
+      } else {
+        throw new Error("Proposal kind must be bootstrap, add-library-skills, or remove-skill.");
+      }
       await saveProjectChangeProposal(proposal);
       await recordWorkspaceAuditEvent({
         workspaceId: context.workspace.id,
@@ -308,7 +364,7 @@ export function registerGitHubIntegrationRoutes(app: Express): void {
       const creating = { ...proposal, status: "creating" as const, updatedAt: new Date().toISOString() };
       await saveProjectChangeProposal(creating);
       try {
-        const opened = await openBootstrapProposal({ proposal, connection, installation });
+        const opened = await openProjectChangeProposal({ proposal, connection, installation });
         await saveProjectChangeProposal(opened);
         res.json(opened);
       } catch (error) {
@@ -361,6 +417,20 @@ function optionalBodyString(body: unknown, key: string): string | undefined {
   if (!body || typeof body !== "object" || Array.isArray(body)) return undefined;
   const value = (body as Record<string, unknown>)[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readStringArray(value: unknown, label: string, maximum: number): string[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > maximum) {
+    throw new Error(`${label} must include between 1 and ${maximum} values.`);
+  }
+  const values = value.map((candidate) => {
+    if (typeof candidate !== "string" || !candidate.trim()) {
+      throw new Error(`${label} values must be non-empty strings.`);
+    }
+    return candidate.trim();
+  });
+  if (new Set(values).size !== values.length) throw new Error(`${label} values must be unique.`);
+  return values;
 }
 
 function redirectUrl(req: Request, path: string, query: string): string {
