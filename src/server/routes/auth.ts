@@ -4,6 +4,7 @@ import {
   changeAccountPassword,
   consumeOAuthState,
   createEmailLoginCode,
+  createOAuthEmailVerification,
   createOAuthState,
   deleteSession,
   getInvitationByToken,
@@ -29,6 +30,7 @@ import {
 import {
   buildOAuthAuthorizationUrl,
   exchangeOAuthCode,
+  OAuthEmailVerificationRequiredError,
   oauthProviderConfigured,
   oauthRedirectUri
 } from "../services/oauth.js";
@@ -110,7 +112,11 @@ export function registerAuthRoutes(app: Express): void {
       const result = await createEmailLoginCode({
         email: String(req.body?.email ?? ""),
         inviteToken:
-          typeof req.body?.inviteToken === "string" ? req.body.inviteToken : undefined
+          typeof req.body?.inviteToken === "string" ? req.body.inviteToken : undefined,
+        oauthEmailVerificationToken:
+          typeof req.body?.oauthEmailVerificationToken === "string"
+            ? req.body.oauthEmailVerificationToken
+            : undefined
       });
       await sendLoginCodeEmail({
         email: result.email,
@@ -161,8 +167,9 @@ export function registerAuthRoutes(app: Express): void {
       return;
     }
 
+    let oauthState: Awaited<ReturnType<typeof consumeOAuthState>> | undefined;
     try {
-      const oauthState = await consumeOAuthState(provider, String(req.query.state ?? ""));
+      oauthState = await consumeOAuthState(provider, String(req.query.state ?? ""));
       const profile = await exchangeOAuthCode({
         provider,
         code: String(req.query.code ?? ""),
@@ -177,6 +184,31 @@ export function registerAuthRoutes(app: Express): void {
         redirectPath: oauthState.redirectPath
       }));
     } catch (error) {
+      if (error instanceof OAuthEmailVerificationRequiredError && oauthState) {
+        try {
+          if (!isEmailDeliveryConfigured()) {
+            throw new Error(
+              "GitHub did not share a verified email, and email verification is not configured."
+            );
+          }
+          const pending = await createOAuthEmailVerification({
+            ...error.proof,
+            redirectPath: oauthState.redirectPath,
+            inviteToken: oauthState.inviteToken
+          });
+          res.type("html").send(authCallbackHtml({
+            oauthEmailVerification: {
+              token: pending.token,
+              provider: error.proof.provider,
+              expiresAt: pending.expiresAt
+            },
+            redirectPath: pending.redirectPath
+          }));
+          return;
+        } catch (pendingError) {
+          error = pendingError;
+        }
+      }
       res.status(400).type("html").send(authCallbackHtml({
         error: error instanceof Error ? error.message : String(error),
         redirectPath: "/"
@@ -246,6 +278,10 @@ async function verifyEmailLoginCodeRoute(body: unknown) {
     inviteToken:
       typeof (body as { inviteToken?: unknown })?.inviteToken === "string"
         ? (body as { inviteToken: string }).inviteToken
+        : undefined,
+    oauthEmailVerificationToken:
+      typeof (body as { oauthEmailVerificationToken?: unknown })?.oauthEmailVerificationToken === "string"
+        ? (body as { oauthEmailVerificationToken: string }).oauthEmailVerificationToken
         : undefined
   }, true);
 }
@@ -257,6 +293,11 @@ function readProvider(value: string): AuthProvider | undefined {
 function authCallbackHtml(input: {
   token?: string;
   error?: string;
+  oauthEmailVerification?: {
+    token: string;
+    provider: AuthProvider;
+    expiresAt: string;
+  };
   redirectPath: string;
 }): string {
   const payload = JSON.stringify(input).replace(/</g, "\\u003c");
@@ -272,6 +313,14 @@ function authCallbackHtml(input: {
       const payload = ${payload};
       if (payload.token) {
         localStorage.setItem("harhub.token", payload.token);
+        sessionStorage.removeItem("harhub.oauth_email_verification");
+      }
+      if (payload.oauthEmailVerification) {
+        sessionStorage.setItem(
+          "harhub.oauth_email_verification",
+          JSON.stringify(payload.oauthEmailVerification)
+        );
+        sessionStorage.removeItem("harhub.auth_error");
       }
       if (payload.error) {
         sessionStorage.setItem("harhub.auth_error", payload.error);

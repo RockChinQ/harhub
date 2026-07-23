@@ -157,6 +157,7 @@ function createSeedState(): AppState {
     assetShares: [],
     emailLoginCodes: [],
     oauthStates: [],
+    oauthEmailVerifications: [],
     deviceAuthorizations: [],
     sessions: [],
     workspaceAiConfigurations: [],
@@ -184,6 +185,7 @@ function normalizeState(state: AppState): AppState {
   state.assetShares ??= [];
   state.emailLoginCodes ??= [];
   state.oauthStates ??= [];
+  state.oauthEmailVerifications ??= [];
   state.deviceAuthorizations ??= [];
   state.sessions ??= [];
   state.workspaceAiConfigurations ??= [];
@@ -275,6 +277,7 @@ function needsStateMigration(state: AppState): boolean {
     !Array.isArray(state.projectChangeProposals) ||
     !Array.isArray(state.githubWebhookDeliveries) ||
     !Array.isArray(state.githubInstallationAuthorizations) ||
+    !Array.isArray(state.oauthEmailVerifications) ||
     !Array.isArray(state.auditEvents) ||
     hasLegacyForgeResponses(state) ||
     hasLegacyForgeSessionPersistence(state) ||

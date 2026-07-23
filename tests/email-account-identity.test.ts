@@ -64,6 +64,61 @@ test("uses verified normalized email as the Account identity across auth provide
   });
 });
 
+test("GitHub proof without email requires email-code proof before binding an Account", async () => {
+  await withIsolatedState("github-email-proof", async (state) => {
+    const pending = await state.createOAuthEmailVerification({
+      provider: "github",
+      providerAccountId: "github-private-email-subject",
+      name: "Private GitHub User",
+      redirectPath: "/skills"
+    });
+
+    let snapshot = await state.loadState();
+    assert.equal(
+      snapshot.identities.some(
+        (identity) => identity.providerAccountId === "github-private-email-subject"
+      ),
+      false
+    );
+
+    const challenge = await state.createEmailLoginCode({
+      email: " Owner@Example.com ",
+      oauthEmailVerificationToken: pending.token
+    });
+    await assert.rejects(
+      state.verifyEmailLoginCode(
+        {
+          email: challenge.email,
+          code: challenge.code,
+          oauthEmailVerificationToken: "wrong-token"
+        },
+        true
+      ),
+      /OAuth email verification is invalid or expired/i
+    );
+
+    const signedIn = await state.verifyEmailLoginCode(
+      {
+        email: challenge.email,
+        code: challenge.code,
+        oauthEmailVerificationToken: pending.token
+      },
+      true
+    );
+
+    assert.equal(signedIn.account.email, "owner@example.com");
+    assert.ok(await state.authenticate(signedIn.token));
+    snapshot = await state.loadState();
+    assert.equal(
+      snapshot.identities.find(
+        (identity) => identity.providerAccountId === "github-private-email-subject"
+      )?.accountId,
+      signedIn.account.id
+    );
+    assert.equal(snapshot.oauthEmailVerifications.length, 0);
+  });
+});
+
 test("provider subject metadata cannot override email Account identity", async () => {
   await withIsolatedState("email-over-subject", async (state) => {
     const oldEmailAccount = await state.signInWithOAuthProfile({

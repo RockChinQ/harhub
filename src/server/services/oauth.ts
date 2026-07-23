@@ -7,7 +7,11 @@ import {
   GOOGLE_CLIENT_SECRET,
   PUBLIC_APP_URL
 } from "../config.js";
-import { resolveGitHubEmail } from "./github-email.js";
+import {
+  resolveGitHubEmail,
+  type GitHubEmailRecordSource,
+  type GitHubProfileEmailSource
+} from "./github-email.js";
 
 export interface OAuthProfile {
   provider: AuthProvider;
@@ -15,6 +19,53 @@ export interface OAuthProfile {
   email: string;
   emailVerified: boolean;
   name: string;
+}
+
+export interface OAuthEmailVerificationProof {
+  provider: AuthProvider;
+  providerAccountId: string;
+  name: string;
+}
+
+export class OAuthEmailVerificationRequiredError extends Error {
+  constructor(readonly proof: OAuthEmailVerificationProof) {
+    super("GitHub requires email verification to finish signing in.");
+    this.name = "OAuthEmailVerificationRequiredError";
+  }
+}
+
+export function buildGitHubOAuthProfile(
+  profile: GitHubProfileEmailSource,
+  emailRecords: GitHubEmailRecordSource[]
+): OAuthProfile {
+  const providerAccountId =
+    typeof profile.id === "number" || typeof profile.id === "string"
+      ? String(profile.id).trim()
+      : "";
+  if (!providerAccountId) throw new Error("GitHub profile did not include a stable account ID.");
+  const fallbackName = typeof profile.login === "string" && profile.login.trim()
+    ? profile.login.trim()
+    : "GitHub User";
+  const name = typeof profile.name === "string" && profile.name.trim()
+    ? profile.name.trim()
+    : fallbackName;
+  let resolvedEmail;
+  try {
+    resolvedEmail = resolveGitHubEmail(profile, emailRecords);
+  } catch {
+    throw new OAuthEmailVerificationRequiredError({
+      provider: "github",
+      providerAccountId,
+      name
+    });
+  }
+  return {
+    provider: "github",
+    providerAccountId,
+    email: resolvedEmail.email,
+    emailVerified: resolvedEmail.emailVerified,
+    name
+  };
 }
 
 export function oauthProviderConfigured(provider: AuthProvider): boolean {
@@ -152,21 +203,8 @@ async function exchangeGitHubCode(code: string, redirectUri: string): Promise<OA
 
   const emailsResponse = await fetch("https://api.github.com/user/emails", { headers });
   const emails = await emailsResponse.json().catch(() => undefined);
-  const resolvedEmail = resolveGitHubEmail(
+  return buildGitHubOAuthProfile(
     profile,
     emailsResponse.ok && Array.isArray(emails) ? emails : []
   );
-
-  return {
-    provider: "github",
-    providerAccountId: String(profile.id),
-    email: resolvedEmail.email,
-    emailVerified: resolvedEmail.emailVerified,
-    name:
-      typeof profile.name === "string" && profile.name.trim()
-        ? profile.name
-        : typeof profile.login === "string"
-          ? profile.login
-          : resolvedEmail.email
-  };
 }

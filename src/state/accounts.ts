@@ -22,6 +22,7 @@ import type {
 
 const EMAIL_CODE_TTL_MS = 10 * 60 * 1000;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const OAUTH_EMAIL_VERIFICATION_TTL_MS = 10 * 60 * 1000;
 
 interface AuthenticatedSignInResult {
   account: AccountProfile;
@@ -42,6 +43,15 @@ interface DevelopmentSignInInput {
 interface EmailCodeVerificationInput {
   email: string;
   code: string;
+  inviteToken?: string;
+  oauthEmailVerificationToken?: string;
+}
+
+interface OAuthEmailVerificationInput {
+  provider: AuthProvider;
+  providerAccountId: string;
+  name: string;
+  redirectPath: string;
   inviteToken?: string;
 }
 
@@ -204,14 +214,50 @@ export async function signInForDevelopment(
   });
 }
 
+export async function createOAuthEmailVerification(
+  input: OAuthEmailVerificationInput
+): Promise<{ token: string; expiresAt: string; redirectPath: string }> {
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    const now = Date.now();
+    const token = randomBytes(32).toString("base64url");
+    const expiresAt = new Date(now + OAUTH_EMAIL_VERIFICATION_TTL_MS).toISOString();
+    const redirectPath = normalizeRedirectPath(input.redirectPath);
+    state.oauthEmailVerifications = state.oauthEmailVerifications.filter(
+      (item) => new Date(item.expiresAt).getTime() > now
+    );
+    state.oauthEmailVerifications.push({
+      id: randomUUID(),
+      tokenHash: hashOAuthEmailVerificationToken(token),
+      provider: input.provider,
+      providerAccountId: input.providerAccountId,
+      name: input.name,
+      redirectPath,
+      inviteToken: input.inviteToken,
+      createdAt: new Date(now).toISOString(),
+      expiresAt
+    });
+    await saveState(state);
+    return { token, expiresAt, redirectPath };
+  });
+}
+
 export async function createEmailLoginCode(input: {
   email: string;
   inviteToken?: string;
+  oauthEmailVerificationToken?: string;
 }): Promise<{ email: string; code: string; expiresAt: string }> {
   return serializeStateAccess(async () => {
     const state = await loadState();
     const email = normalizeEmail(input.email);
     if (!email) throw new Error("A valid email is required.");
+
+    const oauthEmailVerification = input.oauthEmailVerificationToken
+      ? findOAuthEmailVerification(state, input.oauthEmailVerificationToken)
+      : undefined;
+    if (input.oauthEmailVerificationToken && !oauthEmailVerification) {
+      throw new Error("OAuth email verification is invalid or expired.");
+    }
 
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
     const expiresAt = new Date(Date.now() + EMAIL_CODE_TTL_MS).toISOString();
@@ -223,6 +269,7 @@ export async function createEmailLoginCode(input: {
       email,
       codeHash: hashCode(email, code),
       inviteToken: input.inviteToken,
+      oauthEmailVerificationId: oauthEmailVerification?.id,
       attempts: 0,
       createdAt: new Date().toISOString(),
       expiresAt
@@ -255,6 +302,18 @@ export async function verifyEmailLoginCode(
   if (!record || new Date(record.expiresAt).getTime() <= Date.now()) {
     throw new Error("Verification code is invalid or expired.");
   }
+  const oauthEmailVerification = input.oauthEmailVerificationToken
+    ? findOAuthEmailVerification(state, input.oauthEmailVerificationToken)
+    : undefined;
+  if (
+    record.oauthEmailVerificationId &&
+    (!oauthEmailVerification || oauthEmailVerification.id !== record.oauthEmailVerificationId)
+  ) {
+    throw new Error("OAuth email verification is invalid or expired.");
+  }
+  if (input.oauthEmailVerificationToken && !record.oauthEmailVerificationId) {
+    throw new Error("OAuth email verification is invalid or expired.");
+  }
   if (record.attempts >= 5) {
     throw new Error("Verification code has too many failed attempts.");
   }
@@ -265,11 +324,27 @@ export async function verifyEmailLoginCode(
   }
 
   record.consumedAt = new Date().toISOString();
+  const now = new Date().toISOString();
   const { account, mergedAccountIds } = resolveAccountByEmail(state, {
     email,
-    name: email.split("@")[0] ?? "User"
-  }, true);
-  acceptMatchingPendingInvitations(state, account, input.inviteToken ?? record.inviteToken);
+    name: oauthEmailVerification?.name || email.split("@")[0] || "User"
+  }, true, now);
+  if (oauthEmailVerification) {
+    upsertOAuthIdentity(state, account, {
+      provider: oauthEmailVerification.provider,
+      providerAccountId: oauthEmailVerification.providerAccountId,
+      email,
+      name: oauthEmailVerification.name
+    }, now);
+    state.oauthEmailVerifications = state.oauthEmailVerifications.filter(
+      (item) => item.id !== oauthEmailVerification.id
+    );
+  }
+  acceptMatchingPendingInvitations(
+    state,
+    account,
+    input.inviteToken ?? oauthEmailVerification?.inviteToken ?? record.inviteToken
+  );
   ensureAccountHasWorkspace(state, account);
   account.updatedAt = new Date().toISOString();
   const profile = toPublicAccount(account);
@@ -341,32 +416,13 @@ export async function signInWithOAuthProfile(
     throw new Error("OAuth provider did not return a verified email.");
   }
 
-  const existingIdentity = state.identities.find(
-    (identity) =>
-      identity.provider === input.provider &&
-      identity.providerAccountId === input.providerAccountId
-  );
   const now = new Date().toISOString();
   const { account, mergedAccountIds } = resolveAccountByEmail(state, {
     email,
     name: input.name
   }, true, now);
 
-  if (!existingIdentity) {
-    state.identities.push({
-      id: randomUUID(),
-      accountId: account.id,
-      provider: input.provider,
-      providerAccountId: input.providerAccountId,
-      email,
-      createdAt: now,
-      updatedAt: now
-    });
-  } else {
-    existingIdentity.accountId = account.id;
-    existingIdentity.email = email;
-    existingIdentity.updatedAt = now;
-  }
+  upsertOAuthIdentity(state, account, input, now);
 
   account.email = email;
   account.name = input.name.trim() || account.name;
@@ -378,6 +434,34 @@ export async function signInWithOAuthProfile(
   await saveState(state, accountReferenceReplacement(mergedAccountIds, account.id));
   return token ? { account: profile, token } : profile;
   });
+}
+
+function upsertOAuthIdentity(
+  state: AppState,
+  account: AccountRecord,
+  input: Pick<OAuthProfileSignInInput, "provider" | "providerAccountId" | "email" | "name">,
+  now: string
+): void {
+  const existingIdentity = state.identities.find(
+    (identity) =>
+      identity.provider === input.provider &&
+      identity.providerAccountId === input.providerAccountId
+  );
+  if (!existingIdentity) {
+    state.identities.push({
+      id: randomUUID(),
+      accountId: account.id,
+      provider: input.provider,
+      providerAccountId: input.providerAccountId,
+      email: input.email,
+      createdAt: now,
+      updatedAt: now
+    });
+    return;
+  }
+  existingIdentity.accountId = account.id;
+  existingIdentity.email = input.email;
+  existingIdentity.updatedAt = now;
 }
 
 function mergeAccountInto(
@@ -622,6 +706,19 @@ function randomInt(min: number, max: number): number {
   const range = max - min;
   const value = Number.parseInt(randomBytes(4).toString("hex"), 16);
   return min + (value % range);
+}
+
+function findOAuthEmailVerification(state: AppState, token: string) {
+  const tokenHash = hashOAuthEmailVerificationToken(token);
+  return state.oauthEmailVerifications.find(
+    (item) =>
+      item.tokenHash === tokenHash &&
+      new Date(item.expiresAt).getTime() > Date.now()
+  );
+}
+
+function hashOAuthEmailVerificationToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
 }
 
 function hashCode(email: string, code: string): string {

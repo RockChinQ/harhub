@@ -58,6 +58,56 @@ export function AuthScreen({
     resendAt: number;
   }>();
   const [currentTime, setCurrentTime] = useState(() => Date.now());
+  const [oauthEmailVerification, setOAuthEmailVerification] = useState<{
+    token: string;
+    provider: "github" | "google";
+    expiresAt: string;
+  }>();
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem("harhub.oauth_email_verification");
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as {
+        token?: unknown;
+        provider?: unknown;
+        expiresAt?: unknown;
+      };
+      if (
+        typeof parsed.token === "string" &&
+        (parsed.provider === "github" || parsed.provider === "google") &&
+        typeof parsed.expiresAt === "string" &&
+        Date.parse(parsed.expiresAt) > Date.now()
+      ) {
+        setOAuthEmailVerification({
+          token: parsed.token,
+          provider: parsed.provider,
+          expiresAt: parsed.expiresAt
+        });
+        return;
+      }
+    } catch {
+      // Remove malformed or expired callback state below.
+    }
+    sessionStorage.removeItem("harhub.oauth_email_verification");
+  }, []);
+
+  useEffect(() => {
+    if (!oauthEmailVerification) return;
+    const expiresAt = Date.parse(oauthEmailVerification.expiresAt);
+    const clearPending = () => {
+      sessionStorage.removeItem("harhub.oauth_email_verification");
+      setOAuthEmailVerification(undefined);
+      setEmailCodeRequest(undefined);
+      setEmailCode("");
+    };
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      clearPending();
+      return;
+    }
+    const timer = window.setTimeout(clearPending, expiresAt - Date.now());
+    return () => window.clearTimeout(timer);
+  }, [oauthEmailVerification?.token, oauthEmailVerification?.expiresAt]);
 
   useEffect(() => {
     const callbackError = sessionStorage.getItem("harhub.auth_error");
@@ -138,7 +188,11 @@ export function AuthScreen({
     setIsSendingCode(true);
     setErrorMessage(undefined);
     try {
-      const result = await requestEmailCode({ email, inviteToken });
+      const result = await requestEmailCode({
+        email,
+        inviteToken,
+        oauthEmailVerificationToken: oauthEmailVerification?.token
+      });
       const sentAt = Date.now();
       setCurrentTime(sentAt);
       setEmailCodeRequest({
@@ -159,13 +213,27 @@ export function AuthScreen({
     setIsVerifyingCode(true);
     setErrorMessage(undefined);
     try {
-      const response = await verifyEmailCode({ email, code: emailCode, inviteToken });
+      const response = await verifyEmailCode({
+        email,
+        code: emailCode,
+        inviteToken,
+        oauthEmailVerificationToken: oauthEmailVerification?.token
+      });
+      clearOAuthEmailVerification();
       onAuthenticated(response);
     } catch (caught) {
       setErrorMessage(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setIsVerifyingCode(false);
     }
+  }
+
+  function clearOAuthEmailVerification() {
+    sessionStorage.removeItem("harhub.oauth_email_verification");
+    setOAuthEmailVerification(undefined);
+    setEmailCodeRequest(undefined);
+    setEmailCode("");
+    setErrorMessage(undefined);
   }
 
   function startOAuth(provider: "google" | "github") {
@@ -176,9 +244,13 @@ export function AuthScreen({
   }
 
   const hasOAuth = Boolean(authConfig?.oauth.google || authConfig?.oauth.github);
+  const isOAuthEmailVerification = Boolean(oauthEmailVerification);
   const hasEmailAuth = Boolean(
     authConfig?.developmentLogin || authConfig?.password || authConfig?.emailCode
   );
+  const hasUsableEmailAuth = isOAuthEmailVerification
+    ? Boolean(authConfig?.emailCode)
+    : hasEmailAuth;
   const hasAnyAuth = Boolean(hasOAuth || hasEmailAuth);
   const hasBothOAuthProviders = Boolean(authConfig?.oauth.google && authConfig?.oauth.github);
   const normalizedEmail = email.trim().toLowerCase();
@@ -207,9 +279,11 @@ export function AuthScreen({
         <CardHeader>
           <CardTitle>Harhub</CardTitle>
           <CardDescription>
-            {inviteToken
-              ? "Continue to accept your workspace invitation."
-              : "Continue to your workspace. New accounts are created automatically."}
+            {isOAuthEmailVerification
+              ? "GitHub is connected. Verify your email to finish signing in."
+              : inviteToken
+                ? "Continue to accept your workspace invitation."
+                : "Continue to your workspace. New accounts are created automatically."}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
@@ -220,7 +294,25 @@ export function AuthScreen({
             </div>
           ) : authConfig ? (
             <>
-              {hasOAuth ? (
+              {isOAuthEmailVerification ? (
+                <div className="grid gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                  <p>
+                    GitHub did not expose a verified email to Harhub. Enter your email and verify the
+                    code we send; your GitHub identity will be linked only after verification.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-fit px-0 text-blue-900 hover:bg-transparent"
+                    onClick={clearOAuthEmailVerification}
+                  >
+                    Start over
+                  </Button>
+                </div>
+              ) : null}
+
+              {hasOAuth && !isOAuthEmailVerification ? (
                 <div className={`grid gap-2 ${hasBothOAuthProviders ? "sm:grid-cols-2" : ""}`}>
                   {authConfig.oauth.google ? (
                     <Button type="button" variant="outline" onClick={() => startOAuth("google")}>
@@ -239,9 +331,9 @@ export function AuthScreen({
                 </div>
               ) : null}
 
-              {hasOAuth && hasEmailAuth ? <Separator /> : null}
+              {hasOAuth && hasEmailAuth && !isOAuthEmailVerification ? <Separator /> : null}
 
-              {hasEmailAuth ? (
+              {hasUsableEmailAuth ? (
                 <label className="grid gap-2 text-sm font-medium">
                   Email
                   <Input
@@ -255,7 +347,7 @@ export function AuthScreen({
                 </label>
               ) : null}
 
-              {authConfig.developmentLogin ? (
+              {authConfig.developmentLogin && !isOAuthEmailVerification ? (
                 <div className="grid gap-3 rounded-lg border border-amber-200 bg-amber-50/70 p-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge
@@ -284,11 +376,13 @@ export function AuthScreen({
                 </div>
               ) : null}
 
-              {authConfig.developmentLogin && (authConfig.password || authConfig.emailCode) ? (
+              {authConfig.developmentLogin &&
+              !isOAuthEmailVerification &&
+              (authConfig.password || authConfig.emailCode) ? (
                 <Separator />
               ) : null}
 
-              {authConfig.password ? (
+              {authConfig.password && !isOAuthEmailVerification ? (
                 <form className="grid gap-4" onSubmit={submitPassword}>
                   <label className="grid gap-2 text-sm font-medium">
                     Password
@@ -318,7 +412,9 @@ export function AuthScreen({
                 </form>
               ) : null}
 
-              {authConfig.password && authConfig.emailCode ? <Separator /> : null}
+              {authConfig.password && authConfig.emailCode && !isOAuthEmailVerification ? (
+                <Separator />
+              ) : null}
 
               {authConfig.emailCode ? (
                 <form className="grid gap-3" onSubmit={submitEmailCode}>

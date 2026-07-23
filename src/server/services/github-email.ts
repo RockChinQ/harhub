@@ -1,10 +1,11 @@
-interface GitHubProfileEmailSource {
+export interface GitHubProfileEmailSource {
   id?: unknown;
   login?: unknown;
+  name?: unknown;
   email?: unknown;
 }
 
-interface GitHubEmailRecordSource {
+export interface GitHubEmailRecordSource {
   email?: unknown;
   primary?: unknown;
   verified?: unknown;
