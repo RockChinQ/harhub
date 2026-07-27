@@ -54,7 +54,7 @@ Harhub 应管理被其他工具消费的 harness assets。它不应变成通用 
 
 ## MVP 切入点
 
-当前 MVP 应继续保持 Skills-first：
+当前 Library 应继续保持 Skills-first：
 
 - Skills 有具体的包结构。
 - Skills 可以被上传、解析、校验、预览和安装。
@@ -65,9 +65,9 @@ Harhub 应管理被其他工具消费的 harness assets。它不应变成通用 
 
 ## 扩展路径
 
-当 Skills 闭环被验证后，按以下顺序扩展：
+第一步只读 harness inventory 已经以 Project repository inventory 的形式落地；后续按以下顺序扩展：
 
-1. **只读 harness inventory**：发现仓库中的 `.cursor/rules`、`AGENTS.md`、Copilot instructions、prompt 文件和 MCP 配置文件。
+1. **扩大只读 inventory**：把 Project 中已能发现的 Skills、rules、instructions 和 MCP 配置扩展成跨仓库查询与报告。
 2. **治理元数据**：为所有资产类型补充 owner、lifecycle、compatibility、risk、review status 和 approval history。
 3. **MCP governance**：server registry、tool scopes、required env vars、risk labels 和 policy checks。
 4. **跨工具分发**：将已批准的 harness assets 渲染到 Codex、Claude Code、Cursor、Copilot、CI 和仓库目标。

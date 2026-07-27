@@ -58,8 +58,12 @@ storage addresses in `.env.production` must be reachable from inside the
 container; containerized deployments normally cannot use `127.0.0.1` to reach
 services running in another container.
 
-The `Build Docker Image` GitHub workflow is configured to publish
-`rockchin/harhub:latest` and a commit-SHA tag from `main`.
+The `Build and Deploy Docker Image` workflow first reuses the repository quality
+workflow (`npm ci`, typecheck, tests, and build). A `main` push publishes
+`rockchin/harhub:latest` plus a commit-SHA tag. A `deploy/dev` push publishes
+`rockchin/harhub:deploy-dev` plus a commit-SHA tag and, after the image revision
+is verified, redeploys the configured Portainer stack and checks the public
+health endpoint.
 
 ## State And Storage
 
@@ -77,8 +81,10 @@ AWS_SECRET_ACCESS_KEY=...
 
 Without `HARHUB_DATABASE_URL`, runtime state falls back to `.harhub/state.json`
 and `.harhub/workspaces/<workspace-id>/assets.json`. This fallback is intended
-for local development and small self-managed demos. Skill uploads still require
-S3-compatible object storage.
+for local development and small self-managed demos. With Postgres, Asset
+versions, audit events, and GitHub repository inventory/scan/policy/proposal
+records use queryable tables while lower-frequency state retains a compatibility
+JSONB snapshot. Skill uploads still require S3-compatible object storage.
 
 ## Forge AI
 

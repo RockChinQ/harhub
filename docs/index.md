@@ -4,7 +4,7 @@ layout: home
 hero:
   name: Harhub
   text: Asset control for agent teams.
-  tagline: Upload, validate, preview, and govern reusable Agent Skills from one workspace.
+  tagline: Manage reusable Agent Skills and connect them to the repositories that use them.
   image:
     src: /harhub-icon.svg
     alt: Harhub
@@ -20,9 +20,11 @@ features:
   - title: Standard Agent Skills
     details: Harhub manages zip packages containing SKILL.md without inventing a competing format.
   - title: Workspace Governance
-    details: Accounts, workspace tenants, roles, and invitations keep shared assets under team control.
-  - title: CLI and Web UI
-    details: Scan local repositories, upload packages, and browse Skill contents from either surface.
+    details: Accounts, roles, invitations, retained versions, audit events, and explicit sharing keep assets under team control.
+  - title: Forge and Projects
+    details: Turn a project brief into a harness, import existing GitHub repositories, and track Skill forks and harness drift.
+  - title: Web, CLI, and MCP
+    details: Operate Library assets, Projects, repository integrations, and persistent Forge sessions from the right surface.
   - title: Cloud-Ready Storage
     details: Use Postgres-compatible state and S3-compatible object storage for hosted or self-managed deployments.
 ---

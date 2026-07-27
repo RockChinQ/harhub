@@ -5,9 +5,12 @@ Read it before making changes.
 
 ## Product Boundary
 
-Harhub is a tenant-aware control plane for agent harness assets. The current MVP
-only manages Agent Skills, and Skills are treated as one Asset kind. Keep the
-implementation ready for more asset kinds later.
+Harhub is a tenant-aware control plane for agent harness assets. The workspace
+Library currently manages Agent Skills as its only mutable Asset kind. Projects
+can also inventory repository-owned Skills, MCP configuration, rules, and agent
+instructions, but those non-Skill artifacts do not yet have a Library
+publish/version lifecycle. Keep that boundary explicit and keep the Library
+ready for more managed asset kinds later.
 
 Do not invent a Harhub-only Skill format. Harhub manages the external Agent
 Skills contract:
@@ -16,9 +19,10 @@ Skills contract:
 - `SKILL.md` follows the fields and constraints documented by agentskills.io:
   required `name` and `description`, plus the official optional fields.
 - Harhub must not define competing Skill files or frontmatter conventions.
-- The MVP catalog keeps only runtime state needed to manage standard Skills:
-  extracted standard metadata, validation status/issues, and storage references.
-  File previews are derived from the stored S3 file prefix on demand.
+- The Library catalog keeps only runtime state needed to manage standard Skills:
+  extracted standard metadata, validation status/issues, retained version
+  references, and sharing state. File previews are derived from the stored S3
+  file prefix on demand.
 - Source uploads may be arbitrary zip layouts containing one or more nested
   Skills. After selection, each Skill is stored as its own file prefix in S3 or
   S3-compatible object storage; the source zip is not retained. Standard
@@ -36,13 +40,17 @@ src/
   cli/                 CLI entrypoints, argument parsing, and command handlers.
   features/
     assets/            Asset catalog, upload, update, delete, and runtime indexing logic.
+    projects/          Generated project framework and repository binding helpers.
+    repository-inventory/
+                       Repository harness discovery and classification.
     skills/            Agent Skill discovery, parsing, validation, and creation.
+  mcp/                 Agent Operations MCP server and tool registration.
   server/
     routes/            Express route registration by domain.
     services/          Server-side orchestration for assets, skills, uploads.
     utils/             Server helpers.
   shared/              Types shared by CLI, server, and frontend.
-  state/               Local-first accounts, sessions, workspaces, memberships.
+  state/               Accounts, workspaces, Forge sessions, Projects, and persistence.
   storage/             S3/S3-compatible storage integration.
   web/src/
     app/               App state, routing, layout wiring, formatting helpers.

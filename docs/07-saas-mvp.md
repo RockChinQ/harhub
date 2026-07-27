@@ -15,7 +15,12 @@ Harhub 的 SaaS MVP 采用云原生持久化优先，同时保留本地 JSON fal
 - **Email Login Code**：短期一次性登录验证码，保存在 runtime state 中并限制尝试次数。
 - **OAuth State**：Google/GitHub OAuth 跳转期间使用的短期 state、redirect path 和可选 invitation token。
 - **Device Authorization**：CLI 使用的 RFC 8628 短期设备授权记录，只保存 device code hash、user code、轮询状态和批准账号。
-- **Asset Share**：workspace member 为 uploaded Asset 创建的可撤销 public bearer link；当前引用 logical asset，后续应引用 immutable release。
+- **Workspace AI Settings**：workspace-scoped OpenAI-compatible base URL、model 和加密 API key；只有 owner/admin 可修改或测试。
+- **Forge Session**：account/workspace-scoped、URL-bound 的需求访谈与 framework generation 状态，包含可恢复 operation checkpoint 和 view state。
+- **Project**：由 Forge freeze 或 GitHub import 创建的持久化 repository harness 锚点。
+- **Repository Connection / Scan / Inventory**：GitHub App installation、repository connection、scan jobs、immutable snapshots、artifact files 和 push webhook delivery。
+- **Project Binding Policy / Proposal**：repository artifact 的 Library/repository/ignored ownership，以及需要人工确认的 bootstrap/add/remove pull request proposal。
+- **Asset Share**：workspace owner/admin 为 uploaded Asset 创建的可撤销 public bearer link；当前引用 logical asset，后续应引用 immutable release。
 
 ## 云原生持久化
 
@@ -41,9 +46,19 @@ harhub_audit_events
   workspace_id + event_type + entity_type + entity_id
   actor_account_id + source + occurred_at
   metadata jsonb + deduplication_key
+
+harhub_github_installations
+harhub_project_repository_connections
+harhub_project_scan_jobs
+harhub_project_inventory_snapshots
+harhub_project_inventory_artifacts
+harhub_project_inventory_files
+harhub_project_binding_policies
+harhub_project_change_proposals
+harhub_github_webhook_deliveries
 ```
 
-`harhub_state` 继续作为兼容快照保存 accounts、sessions、workspaces、memberships、invitations、device authorization 和 asset shares。`harhub_workspace_catalogs` 只保存当前 workspace asset 摘要；版本历史写入 `harhub_asset_versions`，关键 Asset、Project、share 和 repository sync 变更写入 append-only `harhub_audit_events`。历史 JSONB catalog 会在启动时自动回填并瘦身。
+`harhub_state` 继续作为兼容快照保存 accounts、sessions、workspaces、memberships、invitations、device authorization、Forge sessions、Projects 和 asset shares。`harhub_workspace_catalogs` 只保存当前 workspace asset 摘要；版本历史写入 `harhub_asset_versions`，关键 Asset、Project、share 和 repository sync 变更写入 append-only `harhub_audit_events`。GitHub installations、repository connections、scan jobs、inventory snapshots/files、binding policies、change proposals 和 webhook deliveries 使用独立可查询 tables。历史 JSONB catalog 会在启动时自动回填并瘦身。
 
 上传源 zip 不进数据库，也不会保留在对象存储中；每个导入后的 Skill 版本都以独立 S3 prefix 逐文件存储。每个 Skill 最多保留当前版本和最近四个旧版本，超出窗口的版本行和对象会在 catalog 成功更新后清理。查询 `GET /api/workspaces/:workspaceId/events` 支持 `limit`（1–200）与 ISO-8601 `before` cursor，并始终执行 workspace membership 校验。
 
@@ -142,6 +157,9 @@ GET  /api/invitations/:token
 GET  /api/workspaces
 POST /api/workspaces
 PATCH /api/workspaces/:workspaceId
+GET  /api/workspaces/:workspaceId/ai-settings
+PUT  /api/workspaces/:workspaceId/ai-settings
+POST /api/workspaces/:workspaceId/ai-settings/test
 GET  /api/workspaces/:workspaceId/events?limit=50&before=<timestamp>
 GET  /api/workspaces/:workspaceId/members
 POST /api/workspaces/:workspaceId/members
@@ -165,8 +183,43 @@ POST /api/workspaces/:workspaceId/assets/:query/share
 DELETE /api/workspaces/:workspaceId/assets/:query/share
 
 GET  /api/public/shares/:token
+GET  /api/public/shares/:token/preview?path=<file>
 GET  /api/public/shares/:token/download
 GET  /s/:token/.well-known/agent-skills/index.json
+
+GET    /api/workspaces/:workspaceId/forge/sessions
+POST   /api/workspaces/:workspaceId/forge/sessions
+GET    /api/workspaces/:workspaceId/forge/sessions/:sessionId
+DELETE /api/workspaces/:workspaceId/forge/sessions/:sessionId
+PATCH  /api/workspaces/:workspaceId/forge/sessions/:sessionId/view-state
+POST   /api/workspaces/:workspaceId/forge/sessions/:sessionId/follow-up
+POST   /api/workspaces/:workspaceId/forge/sessions/:sessionId/generate
+POST   /api/workspaces/:workspaceId/forge/sessions/:sessionId/freeze
+POST   /api/workspaces/:workspaceId/forge/archive
+
+GET    /api/workspaces/:workspaceId/projects
+POST   /api/workspaces/:workspaceId/projects
+GET    /api/workspaces/:workspaceId/projects/:projectId
+DELETE /api/workspaces/:workspaceId/projects/:projectId
+PUT    /api/workspaces/:workspaceId/projects/:projectId/repository
+POST   /api/workspaces/:workspaceId/projects/:projectId/rotate-sync-token
+GET    /api/workspaces/:workspaceId/projects/:projectId/bindings/:bindingId/diff
+POST   /api/workspaces/:workspaceId/projects/:projectId/bindings/:bindingId/publish
+POST   /api/projects/:projectId/sync
+
+GET  /api/workspaces/:workspaceId/github/status
+POST /api/workspaces/:workspaceId/github/installations/authorize
+GET  /api/github/installations/callback
+GET  /api/workspaces/:workspaceId/github/installations
+GET  /api/workspaces/:workspaceId/github/installations/:installationId/repositories
+POST /api/workspaces/:workspaceId/github/repositories/import
+POST /api/workspaces/:workspaceId/projects/:projectId/github/connect
+GET  /api/workspaces/:workspaceId/projects/:projectId/inventory
+POST /api/workspaces/:workspaceId/projects/:projectId/scans
+PUT  /api/workspaces/:workspaceId/projects/:projectId/inventory/policies
+POST /api/workspaces/:workspaceId/projects/:projectId/proposals
+POST /api/workspaces/:workspaceId/projects/:projectId/proposals/:proposalId/open
+POST /api/github/webhooks
 
 GET  /api/workspaces/:workspaceId/skills
 GET  /api/workspaces/:workspaceId/skills/:query
@@ -181,6 +234,6 @@ GET  /api/skills
 
 当前 share 通过 `assetId` 查找 workspace catalog 中的当前对象，还没有 immutable release snapshot。闭环完成前需要让 share pin 到具体 upload release，避免同名重新上传改变旧链接内容。详细设计见 [Agent Skill 发布、分享与安装闭环](./10-sharing-and-installation-loop.md)。
 
-服务端已经移除 path-based scan、create 和 patch routes。Uploaded packages 不支持原地 patch，修改后应重新上传 zip。
+服务端已经移除 workspace path-based scan、create 和 in-place patch routes。Uploaded package 版本不可覆盖；Web/CLI 修改会重新上传完整校验包并创建新版本。GitHub repository scanner 只读取已授权 repository，不接收客户端本地路径。
 
-当前采用简化 workspace RBAC：owner/admin 可以执行 Asset upload、validate、share、delete、历史版本回滚以及 Project create、freeze、repository connection、sync-token rotation 和 Library publish；member/viewer 可以读取 workspace 资源。Project GitHub Action 继续使用单个 Project 的专用 sync token。
+当前采用简化 workspace RBAC：owner/admin 可以执行 Workspace/AI setting、成员、Asset upload/validate/share/delete/历史版本回滚、Project create/freeze/repository connection/scan/policy/proposal/sync-token rotation 和 Library publish；member/viewer 可以读取 workspace 资源并维护自己的 Forge sessions。Project GitHub Action 使用单个 Project 的专用 sync token；GitHub webhook 使用 deployment-level signing secret。

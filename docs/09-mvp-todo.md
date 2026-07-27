@@ -2,13 +2,13 @@
 
 Harhub 的 MVP 策略是 **开源分发加 hosted SaaS 运营**。产品品类应是 **团队 AI harness 管理**：管理团队用来让 agents 可靠运行的 Skills、MCP servers、rules、project instructions 和 governance metadata。
 
-第一版实现应继续聚焦 Agent Skills，但这是切入点，不是最终品类。Skills 有价值，是因为它们有具体包结构、可以校验、可以上传和预览，并能形成可衡量的复用闭环。只有在 Skills 闭环被验证后，更大的产品才应扩展到 rules、MCP governance、bundle composition、PR automation 和 cross-tool distribution。
+Library 实现应继续聚焦 Agent Skills，但这是切入点，不是最终品类。Skills 有价值，是因为它们有具体包结构、可以校验、可以上传和预览，并能形成可衡量的复用闭环。Project 层已经开始盘点 rules、MCP 配置和 instructions，并为 Skills 提供 repository drift/PR workflow；这些能力尚未扩展为完整的多资产 Library、bundle composition 和 cross-tool distribution。
 
 ## 目标形态
 
 Harhub 应以两个互相关联的表面发布：
 
-- **开源项目**：一个 self-hostable TypeScript app 和 CLI，用于校验、编目并管理 harness assets，同时不发明自定义格式。MVP 实现只管理 Agent Skills。
+- **开源项目**：一个 self-hostable TypeScript app、CLI 和 MCP server，用于校验、编目并管理 harness assets，同时不发明自定义格式。Library 只发布 Agent Skills；Projects 可以盘点多类 repository harness files。
 - **Hosted SaaS**：面向不想自行运维 storage、auth、catalog 和 governance infrastructure 的团队，提供免费 cloud workspace。
 
 Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的使用限制控制运营成本，并将超限状态作为未来 paid plan 的需求信号。
@@ -21,14 +21,17 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 - **Authentication**：可配置的 email/password 自动注册登录、Google/GitHub OAuth、邮件验证码登录、bearer-token sessions、profile updates、password changes 和 logout。
 - **Tenant model**：workspaces、memberships、workspace roles 和 workspace-scoped asset catalogs。
 - **Workspace invitations**：owner/admin 可邀请邮箱加入 workspace、Resend 发送邀请邮件、pending invitation 可撤销、invite token 可用于登录/注册/OAuth 后进入 workspace。
-- **Skill asset flow**：S3-compatible zip upload、`SKILL.md` extraction、runtime indexing、search/filter、table view、detail view、file tree preview 和 deletion。
-- **Validation foundation**：local scan 和 uploaded zip 共用官方 frontmatter、name、description 和 optional-field checks；upload 还会拒绝多个 `SKILL.md`、path traversal、absolute paths、drive-letter paths 和 null-byte paths。
-- **CLI foundation**：local scan、validate、list、show、create、asset scan、asset validate、asset create、interactive TUI upload、local Skill directory packaging 和 API-backed zip upload。
+- **Skill asset flow**：zip import、`SKILL.md` candidate selection、独立 S3 file-prefix storage、runtime indexing、search/filter、detail/file preview、validation、sharing、deletion、最近五版下载和 rollback。
+- **Validation foundation**：local scan 和 uploaded zip 共用官方 frontmatter、name、description 和 optional-field checks；任意 zip 可以发现多个 nested Skills，同时拒绝 path traversal、absolute paths、drive-letter paths、null-byte paths 和非法候选。
+- **Forge**：workspace-scoped OpenAI-compatible provider 配置与测试、适应式问题批次、NDJSON 流式 operation、自动/手动 retry、持久化 URL-bound session、framework download 和 Project freeze。
+- **Projects and GitHub**：GitHub App authorization/import、repository scan snapshots、push webhook refresh、Skills/MCP/rules/instructions inventory、ownership policy、Skill fork diff/Library publish 和显式 PR proposal。
+- **CLI**：覆盖 local Skills、remote Library/version/share/install、Projects、GitHub repositories 和 persistent Forge sessions，并支持 JSON/NDJSON 与 proxy environment。
+- **Agent Operations MCP**：`harhub-mcp` 复用 CLI 登录，暴露 Library、Project、GitHub 和 Forge remote tools；本地路径受 allowed roots 约束，高影响操作要求显式确认。
 - **Distribution foundation**：`upload --share`、share/unshare、无需登录的 `/s/:token`、标准化 zip download、Agent Skills discovery、`harhub install` 和 `npx skills add` 已形成基础协作路径。
-- **Open-source release path**：GitHub Release 触发 npm publish workflow，使用 `NPM_TOKEN` 发布；`0.1.0-beta.3` 是当前 npm beta 版本。
-- **Cloud-native persistence**：`HARHUB_DATABASE_URL` 存在时，accounts、sessions、workspace metadata、memberships 和 workspace asset summaries 存入 Postgres-compatible database；Asset 版本与 workspace 审计事件拥有独立可查询 projection tables。每个 imported Skill 的文件存入独立 S3-compatible prefix，源 zip 不保留。本地 `.harhub` JSON 只作为 fallback。
-- **Deployment surface**：production build 由单一 Express process 提供 Web、API 和 docs；仓库包含 multi-stage Dockerfile、Docker image workflow 和 VitePress 文档站。
-- **Cloud catalog boundary**：服务端已经移除 local path scan/create/update。Local directory discovery 只在 CLI 中执行，hosted workspace catalog 只管理 uploaded immutable zip packages。
+- **Open-source release path**：Apache-2.0 license；GitHub Release 触发 npm publish workflow，使用 `NPM_TOKEN` 发布；当前 package version 为 `0.1.0-beta.5`。
+- **Cloud-native persistence**：`HARHUB_DATABASE_URL` 存在时，低频状态使用兼容 JSONB snapshot；Asset versions、audit events、GitHub installations、repository connections/scans/inventory/policies/proposals 使用独立可查询 tables。每个 imported Skill version 的文件存入独立 S3-compatible prefix，源 zip 不保留。本地 `.harhub` JSON 只作为 fallback。
+- **Deployment surface**：production build 由单一 Express process 提供 Web、API 和 docs；CI 强制 `npm ci → check → test → build`，image deployment 依赖 quality job 通过。
+- **Cloud catalog boundary**：服务端已经移除 workspace local-path scan/create/update。Local directory discovery 只在 CLI 中执行；Library 管理 uploaded immutable Skill versions，Project scanner 则通过已授权 GitHub repository 建立独立 inventory。
 
 如何理解当前实现：
 
@@ -44,13 +47,12 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 - **没有 activation/distribution event**：产品已有 public share、verified download、Harhub install 和通用 Agent Skills CLI install，但还没有 usage event 来证明实际复用。
 - **SaaS persistence 仍需产品化**：Postgres backend 已有 Asset version 与 audit event projections，但还缺 explicit migration runner、其余 domain reporting projections、backup/export policy 和 production readiness checks。
 - **没有 operations dashboard**：缺少 signups、activated workspaces、asset counts、storage usage、failed uploads、quota hits 或 over-limit users 的 admin view。
-- **Role enforcement 不完整**：很多 asset actions 只要求 workspace access；hosted SaaS 应按角色显式限制 mutation。
 - **没有 hosted onboarding funnel**：signup 还没有引导用户完成上传或导入 3 个有效 Skills 并安装 1 个的激活路径。
-- **开源发布表面仍需补齐**：README、CLI quickstart、deployment guide、`.env.example`、Dockerfile、release workflows 和 npm beta 已存在；仍缺 license、`CONTRIBUTING.md`、`SECURITY.md`、完整 production runbook 和更清晰的 OSS/SaaS 边界说明。
+- **开源发布表面仍需补齐**：README、Apache-2.0 license、CLI/MCP guides、deployment guide、`.env.example`、Dockerfile、release workflows 和 npm beta 已存在；仍缺 `CONTRIBUTING.md`、`SECURITY.md` 和完整 production runbook。
 
 ## 近期已完成
 
-- [x] 将 Skills 统一作为 Asset kind 管理，并保留 MCPs、Rules 为 disabled roadmap entries。
+- [x] 将 Skills 统一作为 Library Asset kind 管理；Project inventory 同时识别 MCP、Rules 和 instructions，但不为它们提供 Library mutation lifecycle。
 - [x] 将前端固定到 `127.0.0.1:5176`，API 固定到 `127.0.0.1:3310`。
 - [x] 支持任意 zip 多 Skill 发现与勾选导入；每个 Skill 逐文件写入独立 S3 prefix，并提供本地 MinIO 开发路径。
 - [x] 将 Skill detail 做成 URL-addressable 页面，支持 file tree 和 file preview。
@@ -64,15 +66,21 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 - [x] 添加 Postgres-compatible runtime state backend：accounts、sessions、workspaces、memberships 和 asset catalogs 不再必须依赖本地 JSON。
 - [x] 更新本地云原生开发栈：Docker Compose 启动 Postgres + MinIO，`npm run dev:cloud` 使用同一套环境变量形态。
 - [x] 添加 multi-stage Dockerfile，并通过 GitHub Actions 构建 `latest` 和 commit-SHA image tags。
-- [x] 移除 server-local Skill paths 和 path-based workspace scan/create/update；cloud catalog 只保留 uploaded assets。
+- [x] 移除 server-local Skill paths 和 path-based workspace scan/create/update；Library 只保留 uploaded assets，GitHub inventory 通过独立 Project connection 获取。
 - [x] 统一 password sign-in 与 registration：新邮箱通过同一个 login flow 创建账号和初始 workspace。
 - [x] 添加可撤销 public share 页面、标准化 zip download、Agent Skills discovery、CLI `--share` 和目标 Agent 安装。
+- [x] 添加真实 Skill version packages：当前版和最近四个旧版可下载，rollback 会创建新版本。
+- [x] 添加持久化 Forge sessions、workspace AI connection test、适应式 discovery、streaming/retry 和 Project freeze。
+- [x] 添加 GitHub App repository import、multi-artifact Project inventory、push refresh、Skill fork diff/人工回流和 pull request delivery。
+- [x] 添加覆盖 Library、Projects、GitHub 和 Forge 的 CLI commands 与 Agent Operations MCP tools。
+- [x] 添加 simplified owner/admin mutation RBAC、normalized audit events 和 repository projections。
+- [x] 采用 Apache-2.0 license，并让 image deployment 依赖 `check → test → build` quality workflow。
 
 更广义 team-harness 产品的重要缺口：
 
-- **没有 multi-artifact inventory**：当前 scanner 是 Skills-first，不会盘点 `.cursor/rules`、`AGENTS.md`、Copilot instructions、MCP definitions、prompt files 或 workflow docs。
+- **Multi-artifact inventory 还停留在 Project scope**：scanner 能盘点 repository Skills、MCP 配置、rules 和 agent instructions，但没有跨 Project 查询、全局 catalog 或 non-Skill publish lifecycle。
 - **没有 cross-tool target model**：缺少 Codex、Claude Code、Cursor、GitHub Copilot、ChatGPT、CI 或 repo materialization 的 target abstraction。
-- **没有 governance workflow**：缺少 harness changes 的 review、approval、audit、rollout、rollback 或 policy exception model。
+- **Governance workflow 仍是局部能力**：Asset/Project mutation 有 audit events，Project Skill forks 有人工 diff/publish，repository changes 有 proposal/PR confirmation；仍缺通用 review、approval、rollout 和 policy exception model。
 - **没有 MCP risk model**：尚未表示 MCP servers、tools、scopes、environment requirements 和 secret boundaries。
 - **没有 composition contract**：还不能解析 org baseline 加 team-specific 和 repo-specific harness packs，也没有 precedence 与 conflict handling。
 
@@ -203,7 +211,8 @@ Distribution action 可以是：
 - [x] 为 SaaS deployments 用 Postgres-compatible hosted database 替换 local JSON state。
 - [x] 保留 local JSON 作为 self-host/dev adapter。
 - [x] 在数据库中存储 accounts、sessions、workspaces、memberships、asset runtime records 和 validation issues。
-- [ ] 将 usage counters 和 events 从 catalog JSONB 中拆出为可查询的 normalized tables。
+- [x] 将 Asset version history 与关键 Asset/Project/repository audit events 从 catalog JSONB 中拆出为可查询的 normalized tables。
+- [ ] 添加 activation/distribution usage counters 与 reporting projections。
 - [ ] 添加 explicit migration runner；当前应用启动时会创建所需 runtime tables。
 - [ ] 添加 workspace metadata 的 backups 或 export path。
 
@@ -214,13 +223,13 @@ Distribution action 可以是：
 - [x] 根据真实 validation results 将 uploaded assets 标记为 `error`、`warning` 或 `valid`；新上传中的 error 会直接拒绝。
 - [x] 拒绝 path traversal、absolute path、drive-letter path 和 null-byte zip entries。
 - [ ] 添加 zip-entry count 和 uncompressed-size limits，降低 zip-bomb 风险。
-- [ ] 存储对象默认私有，并通过 authorized API routes 提供 downloads。
+- [x] 存储对象默认私有，并通过 workspace authorization 或可撤销 public share route 提供 downloads。
 - [x] 当 S3 object 已经缺失时，单次 delete 仍可完成 object cleanup 和 catalog removal。
 
 ### 5. 授权与 SaaS 安全
 
-- [ ] Workspace settings、member changes、uploads 和 deletes 均要求 owner/admin 权限。
-- [ ] 按角色允许 member/viewer read-only access。
+- [x] Workspace settings、member changes、Asset mutations、Project/GitHub mutations 和 Library publish 均要求 owner/admin 权限。
+- [x] 按角色允许 member/viewer read-only access；账号只能维护自己的 Forge sessions。
 - [ ] 为 auth 和 upload endpoints 添加 rate limiting。
 - [x] 添加邮件验证码登录，使用 Resend 发送一次性 code。
 - [x] 添加 Google/GitHub OAuth 登录，并绑定 provider identity。
@@ -239,7 +248,7 @@ Distribution action 可以是：
 
 ### 7. 开源发布准备
 
-- [ ] 添加 license file 并确认预期 OSS license。
+- [x] 添加 Apache-2.0 license，并在 package metadata 与 README 中声明。
 - [x] 添加 `.env.example`，包含 local API、Postgres、S3/R2/MinIO、max upload bytes 和 state adapter。
 - [x] 添加 production Dockerfile、image build workflow 和基本 Docker deployment 文档。
 - [ ] 将 README 拆分为 quickstart、self-hosting、hosted SaaS、CLI 和 development sections。
@@ -254,24 +263,26 @@ Distribution action 可以是：
 
 ### 1. Skills 之外的 Harness 盘点
 
-- [ ] 扫描配置仓库中的 `.cursor/rules`、`AGENTS.md`、`.github/copilot-instructions.md`、prompt files、MCP config files 和 known harness directories。
-- [ ] 按 artifact type、owner、source repo 和 compatibility target 对发现的文件分类。
-- [ ] 在添加 mutation workflows 前，为 rules、instructions 和 MCP definitions 添加 read-only catalog views。
+- [x] 扫描 connected repository 中任意位置的 `SKILL.md`、`AGENTS.md`、`CLAUDE.md`、Copilot instructions、Cursor/Windsurf rules、`.harness` rules/MCP 和常见 MCP JSON。
+- [x] 按 Skill、MCP、rule、instruction、format、source repository/branch/commit/path 与 ownership policy 对发现项分类。
+- [x] 在 Project detail 中为 rules、instructions 和 MCP definitions 添加 read-only inventory views。
+- [ ] 将 non-Skill inventory 提升为跨 Project 查询与独立 Library asset lifecycle。
 - [ ] 检测 duplicate 或 near-duplicate rules 和 instructions。
 - [ ] 在实现完整 composition 前追踪每种 artifact type 的需求。
 
 ### 2. 导入来源
 
-- [ ] 从 GitHub repository path 导入 Skill。
+- [x] 通过 GitHub App installation 导入 existing repository 并建立 Project。
 - [ ] 从 zip URL 通过 server-side fetch 和 validation 导入。
-- [ ] 扫描 connected repository，寻找 candidate `SKILL.md` files。
-- [ ] 在 imported assets 上保留 source repo、branch、commit 和 path。
+- [x] 扫描 connected repository，寻找任意目录下的 candidate `SKILL.md` packages。
+- [x] 在 Project inventory 上保留 source repository、branch、commit、path 和 digest；从 Project publish 到 Library 时记录来源。
 
 ### 3. 版本化与发布
 
-- [ ] 添加 asset version records，而不是覆盖同一个 logical asset。
+- [x] 添加 retained asset version records 和独立 S3 file snapshots，而不是覆盖旧对象。
 - [ ] 添加 release notes 和 changelog fields。
 - [ ] 展示 versions 之间的 diff。
+- [x] 展示 Project Skill fork 与当前 Library version 的 file-level diff，并要求人工确认回流。
 - [ ] 当 distribution actions 存在后，追踪 pinned 到某个 version 的 consumers。
 
 ### 4. 评审工作流
@@ -283,10 +294,10 @@ Distribution action 可以是：
 
 ### 5. 更好的分发
 
-- [ ] 添加 CLI command，将 hosted Skill 安装到本地 Codex skills directory。
-- [ ] 添加 signed short-lived download URLs 或基于 API-token 的 download。
-- [ ] 添加 Codex 和 Claude-compatible installation paths 的 copy snippets。
-- [ ] 添加用于 CI 或 automation 的 workspace API tokens。
+- [x] 添加 CLI command，将 hosted public Skill 安装到 Codex、Claude Code、Cursor 等 Agent 目录。
+- [x] 添加 authenticated current/retained-version download API；signed short-lived object URL 尚未提供。
+- [x] 添加 Codex、Claude Code 等兼容 installation targets 与 `npx skills add` copy snippets。
+- [x] 添加 Project-scoped GitHub Action sync token；通用 workspace automation token 尚未提供。
 
 ### 6. MCP 与 Rules 治理
 
@@ -310,8 +321,7 @@ Distribution action 可以是：
 
 ### 工程
 
-- [ ] `npm run check` passes。
-- [ ] `npm run build` passes。
+- [x] CI 执行 `npm ci`、`npm run check`、`npm test` 和 `npm run build`，deployment job 必须依赖 quality job。
 - [ ] 上传测试覆盖缺失 `SKILL.md`、invalid official frontmatter、too-large zip、path traversal、quota exceeded 和 S3 failure rollback。
 - [ ] 认证测试覆盖 password login 自动注册、禁用 password login、logout、role-gated reads、role-gated writes，以及 password change 后 session invalidation。
 - [ ] 删除测试覆盖 asset index removal、S3 deletion 和 missing-object recovery。
@@ -328,7 +338,8 @@ Distribution action 可以是：
 
 ### 开源
 
-- [ ] 仓库具备 license、contribution guide、security policy 和清晰 roadmap。
+- [x] 仓库具备 Apache-2.0 license 和清晰 roadmap。
+- [ ] 添加 contribution guide 和 security policy。
 - [ ] README 解释 self-hosted OSS 和 hosted SaaS 的区别。
 - [ ] 本地 self-host quickstart 能从 clean checkout 跑通。
 - [ ] 示例 Skills 只展示 agentskills.io 官方 `SKILL.md` 标准。
@@ -344,7 +355,7 @@ MVP 满足以下条件时，可以公开免费发布：
 3. 团队能看到 activated workspaces、storage usage、quota hits、upload failures 和 distribution actions。
 4. 开源 repo 能根据文档步骤在没有私有基础设施的情况下 self-host。
 5. Imported Skill 文件默认私有；只有 workspace authorization 可预览，或通过有效且可撤销的 share token 下载动态生成的标准 zip。
-6. 已实现产品保持 Skills-only，同时 positioning 清楚解释更大的 team AI harness management 品类。
+6. 已实现 Library 保持 Skills-only，Project inventory 可以发现其他 harness 类型，同时 positioning 清楚解释更大的 team AI harness management 品类。
 7. 在使用或评审 Skills MVP 后，至少 5 个团队明确请求支持 rules、MCP、`AGENTS.md`、Copilot instructions 或 cross-tool distribution。
 
 ## 前四周里程碑
@@ -369,10 +380,9 @@ MVP 满足以下条件时，可以公开免费发布：
 ## 待决策事项
 
 - [ ] 最终 free-plan limits。
-- [ ] Hosted database 选择。
-- [ ] Hosted object storage provider 选择。
-- [ ] MVP 使用 auth provider 还是 built-in auth。
-- [ ] OSS license。
+- [x] Hosted persistence interface 采用 Postgres-compatible database 与 S3-compatible object storage，具体 provider 由部署选择。
+- [x] MVP 使用 built-in password/email-code auth，并支持 Google/GitHub OAuth identity。
+- [x] OSS license 采用 Apache-2.0。
 - [ ] Public signup 时机：open signup、invite code 或 waitlist。
 - [ ] Immutable release model：share pin 到 Harhub release snapshot，还是映射到 Git tag/commit。
-- [ ] 第一个 non-Skill expansion target：Cursor rules、`AGENTS.md`、Copilot instructions 或 MCP registry/governance。
+- [ ] 第一个 non-Skill **Library lifecycle** target：rules/instructions publishing，还是 MCP registry/governance。
