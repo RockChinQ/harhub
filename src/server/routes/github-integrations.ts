@@ -4,7 +4,7 @@ import type { ProjectBindingOwnership } from "../../shared/types.js";
 import {
   consumeGitHubInstallationAuthorization,
   createGitHubInstallationAuthorization,
-  getGitHubInstallationInternal,
+  getGitHubInstallationForAccount,
   getProject,
   getProjectInventoryState,
   getProjectInventoryStateInternal,
@@ -115,7 +115,7 @@ export function registerGitHubIntegrationRoutes(app: Express): void {
     setPrivateNoStore(res);
     try {
       const installationId = requiredParam(req.params.installationId, "installationId");
-      const installation = await getGitHubInstallationInternal(context.workspace.id, installationId);
+      const installation = await getGitHubInstallationForAccount(context.account.id, context.workspace.id, installationId);
       if (!installation || installation.suspendedAt) throw new Error("GitHub installation is unavailable.");
       res.json({ repositories: await listInstallationRepositories(installationId) });
     } catch (error) {
@@ -130,7 +130,7 @@ export function registerGitHubIntegrationRoutes(app: Express): void {
     try {
       const installationId = requiredBodyString(req.body, "installationId");
       const repositoryId = requiredBodyString(req.body, "repositoryId");
-      const installation = await getGitHubInstallationInternal(context.workspace.id, installationId);
+      const installation = await getGitHubInstallationForAccount(context.account.id, context.workspace.id, installationId);
       if (!installation || installation.suspendedAt) throw new Error("GitHub installation is unavailable.");
       const repository = (await listInstallationRepositories(installationId))
         .find((candidate) => candidate.id === repositoryId);
@@ -159,7 +159,7 @@ export function registerGitHubIntegrationRoutes(app: Express): void {
       const project = await getProject(context.account.id, context.workspace.id, projectId);
       const installationId = requiredBodyString(req.body, "installationId");
       const repositoryId = requiredBodyString(req.body, "repositoryId");
-      const installation = await getGitHubInstallationInternal(context.workspace.id, installationId);
+      const installation = await getGitHubInstallationForAccount(context.account.id, context.workspace.id, installationId);
       if (!installation || installation.suspendedAt) throw new Error("GitHub installation is unavailable.");
       const repository = (await listInstallationRepositories(installationId))
         .find((candidate) => candidate.id === repositoryId);
@@ -265,7 +265,7 @@ export function registerGitHubIntegrationRoutes(app: Express): void {
         throw new Error("Project GitHub repository connection is unavailable.");
       }
       if (!inventory.latestSnapshot) throw new Error("Run the initial repository scan first.");
-      const installation = await getGitHubInstallationInternal(context.workspace.id, connection.installationId);
+      const installation = await getGitHubInstallationForAccount(context.account.id, context.workspace.id, connection.installationId);
       if (!installation) throw new Error("GitHub installation is unavailable.");
       const kind = req.body?.kind;
       let proposal;
@@ -359,7 +359,7 @@ export function registerGitHubIntegrationRoutes(app: Express): void {
       if (!connection || connection.workspaceId !== context.workspace.id || !connection.installationId) {
         throw new Error("Project GitHub repository connection is unavailable.");
       }
-      const installation = await getGitHubInstallationInternal(context.workspace.id, connection.installationId);
+      const installation = await getGitHubInstallationForAccount(context.account.id, context.workspace.id, connection.installationId);
       if (!installation) throw new Error("GitHub installation is unavailable.");
       const creating = { ...proposal, status: "creating" as const, updatedAt: new Date().toISOString() };
       await saveProjectChangeProposal(creating);

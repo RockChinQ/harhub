@@ -1,10 +1,11 @@
-interface GitHubProfileEmailSource {
+export interface GitHubProfileEmailSource {
   id?: unknown;
   login?: unknown;
+  name?: unknown;
   email?: unknown;
 }
 
-interface GitHubEmailRecordSource {
+export interface GitHubEmailRecordSource {
   email?: unknown;
   primary?: unknown;
   verified?: unknown;
@@ -19,11 +20,15 @@ export function resolveGitHubEmail(
   profile: GitHubProfileEmailSource,
   emailRecords: GitHubEmailRecordSource[]
 ): ResolvedGitHubEmail {
+  const publicEmail = typeof profile.email === "string" ? profile.email.trim() : "";
+  if (publicEmail) {
+    return { email: publicEmail, emailVerified: true };
+  }
+
   const verifiedRecords = emailRecords.filter(
     (record): record is GitHubEmailRecordSource & { email: string; verified: true } =>
       record.verified === true && typeof record.email === "string" && Boolean(record.email.trim())
   );
-  const publicEmail = typeof profile.email === "string" ? profile.email.trim() : "";
   const selected =
     verifiedRecords.find(
       (record) => record.email.trim().toLowerCase() === publicEmail.toLowerCase()
@@ -34,14 +39,5 @@ export function resolveGitHubEmail(
     return { email: selected.email.trim(), emailVerified: true };
   }
 
-  const providerAccountId =
-    typeof profile.id === "number" || typeof profile.id === "string"
-      ? String(profile.id).trim()
-      : "";
-  if (!providerAccountId) throw new Error("GitHub profile did not include a stable account ID.");
-  const login = typeof profile.login === "string" ? profile.login.trim().toLowerCase() : "";
-  return {
-    email: `${providerAccountId}${login ? `+${login}` : ""}@users.noreply.github.com`,
-    emailVerified: false
-  };
+  throw new Error("GitHub did not return a verified email.");
 }

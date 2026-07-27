@@ -120,6 +120,9 @@ export async function acceptWorkspaceInvitation(
 ): Promise<WorkspaceRecord> {
   const state = await loadState();
   const account = requireAccount(state, accountId);
+  if (!account.emailVerifiedAt) {
+    throw new Error("Verify your account email before accepting this invitation.");
+  }
   const invitation = findInvitationByToken(state, token);
   if (!invitation) throw new Error("Invitation is invalid or expired.");
 
@@ -144,6 +147,8 @@ export function acceptMatchingPendingInvitations(
   account: AccountRecord,
   token?: string
 ): WorkspaceRecord | undefined {
+  if (!account.emailVerifiedAt) return undefined;
+
   let acceptedWorkspace: WorkspaceRecord | undefined;
 
   if (token) {

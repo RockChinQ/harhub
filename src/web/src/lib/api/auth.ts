@@ -36,6 +36,7 @@ export async function developmentLogin(input: {
 export async function requestEmailCode(input: {
   email: string;
   inviteToken?: string;
+  oauthEmailVerificationToken?: string;
 }): Promise<{ sent: boolean; expiresAt: string }> {
   return request<{ sent: boolean; expiresAt: string }>("/api/auth/email-code/request", {
     method: "POST",
@@ -48,6 +49,7 @@ export async function verifyEmailCode(input: {
   email: string;
   code: string;
   inviteToken?: string;
+  oauthEmailVerificationToken?: string;
 }): Promise<AuthResponse> {
   return request<AuthResponse>("/api/auth/email-code/verify", {
     method: "POST",
