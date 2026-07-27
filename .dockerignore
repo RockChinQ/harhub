@@ -1,4 +1,10 @@
 node_modules
+docs-site/node_modules
+docs-site/.next
+docs-site/.source
+docs-site/out
+docs-site/next-env.d.ts
+docs-site/tsconfig.tsbuildinfo
 dist
 .harhub
 .env

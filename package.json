@@ -30,7 +30,7 @@
     "build": "npm run build:server && npm run build:web && npm run build:docs",
     "build:server": "tsc -p tsconfig.node.json",
     "build:web": "vite build",
-    "build:docs": "npm --prefix docs-site run build && node scripts/stage-docs.mjs",
+    "build:docs": "HARHUB_DOCS_BASE_PATH=/docs npm --prefix docs-site run build && node scripts/stage-docs.mjs",
     "check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && npm --prefix docs-site run typecheck",
     "test": "node --import tsx --test tests/*.test.ts",
     "start": "node dist/server.js",
@@ -42,7 +42,7 @@
     "dev:api": "tsx watch src/server.ts",
     "dev:web": "vite --host 127.0.0.1",
     "docs:dev": "npm --prefix docs-site run dev",
-    "docs:build": "npm run build:docs",
+    "docs:build": "npm --prefix docs-site run build",
     "docs:preview": "npm --prefix docs-site run dev",
     "cli": "tsx src/cli.ts",
     "mcp": "tsx src/mcp.ts"
