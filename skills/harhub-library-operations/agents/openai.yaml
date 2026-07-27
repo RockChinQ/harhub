@@ -1,0 +1,11 @@
+interface:
+  display_name: "Harhub Library Operations"
+  short_description: "Manage Harhub Skills and Library assets safely"
+  default_prompt: "Use $harhub-library-operations to inspect and manage the relevant Harhub Library assets."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "harhub"
+      description: "Harhub workspace operations MCP server"
+      transport: "stdio"

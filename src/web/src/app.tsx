@@ -10,6 +10,7 @@ import { AppContent } from "./app/app-content";
 import { AppLayout } from "./app/app-layout";
 import { findUiAsset, routeQueryForAsset } from "./app/asset-utils";
 import { TOKEN_KEY, WORKSPACE_KEY } from "./app/constants";
+import { appPageTitle, useDocumentTitle } from "./app/document-title";
 import {
   normalizeRoute,
   pathForRoute,
@@ -87,6 +88,15 @@ export function App() {
     () => routedAsset ?? assets.find((asset) => asset.id === selectedId),
     [assets, routedAsset, selectedId]
   );
+  const pageTitle = appPageTitle({
+    route,
+    authenticated: Boolean(token && session),
+    inviteToken,
+    assetName: routedAsset?.displayName,
+    workspaceName: activeWorkspace?.name,
+    accountName: session?.account.name
+  });
+  useDocumentTitle(pageTitle);
 
   useEffect(() => {
     if (!activeWorkspace || !token || route.view === "device" || route.view === "share") return;

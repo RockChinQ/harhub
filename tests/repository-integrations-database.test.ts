@@ -83,6 +83,10 @@ test("Postgres keeps repository scans queryable outside the JSONB application sn
       (await state.readProjectInventoryFile("ws_demo", project.id, "snapshot-1", "artifact-1", "AGENTS.md"))?.toString(),
       "# Agents\n"
     );
+    assert.deepEqual(
+      await state.listProjectInventoryFilePaths("ws_demo", project.id, "snapshot-1", "artifact-1"),
+      ["AGENTS.md"]
+    );
     const rows = await adminPool.query<{ connections: string; snapshots: string; json_snapshots: number }>(
       `select
          (select count(*)::text from ${schema}.harhub_project_repository_connections) as connections,

@@ -1,6 +1,6 @@
 {
   "name": "harhub",
-  "version": "0.1.0-beta.3",
+  "version": "0.1.0-beta.5",
   "license": "Apache-2.0",
   "description": "Team AI harness management for skills, MCP, rules, and agent instructions.",
   "type": "module",
@@ -16,13 +16,15 @@
     "dist",
     "docs",
     "examples",
+    "skills",
     "README.md"
   ],
   "publishConfig": {
     "access": "public"
   },
   "bin": {
-    "harhub": "./dist/cli.js"
+    "harhub": "./dist/cli.js",
+    "harhub-mcp": "./dist/mcp.js"
   },
   "scripts": {
     "build": "npm run build:server && npm run build:web && npm run build:docs",
@@ -33,6 +35,7 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "start": "node dist/server.js",
     "start:cli": "node dist/cli.js",
+    "start:mcp": "node dist/mcp.js",
     "dev": "node scripts/dev.mjs",
     "dev:cloud": "node scripts/dev-minio.mjs",
     "dev:minio": "node scripts/dev-minio.mjs",
@@ -41,10 +44,12 @@
     "docs:dev": "vitepress dev docs --host 127.0.0.1 --port 5177",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs --host 127.0.0.1 --port 4177",
-    "cli": "tsx src/cli.ts"
+    "cli": "tsx src/cli.ts",
+    "mcp": "tsx src/mcp.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1075.0",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@radix-ui/react-alert-dialog": "^1.1.18",
     "@radix-ui/react-avatar": "^1.2.0",
     "@radix-ui/react-checkbox": "^1.3.6",
@@ -73,7 +78,8 @@
     "skills": "1.5.18",
     "tailwind-merge": "^3.3.1",
     "undici": "^7.28.0",
-    "yaml": "^2.8.1"
+    "yaml": "^2.8.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
@@ -92,6 +98,11 @@
     "typescript": "^5.8.3",
     "vite": "^5.4.21",
     "vitepress": "^1.6.4"
+  },
+  "overrides": {
+    "@modelcontextprotocol/sdk": {
+      "@hono/node-server": "2.0.12"
+    }
   },
   "engines": {
     "node": ">=20.18.1"

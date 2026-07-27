@@ -30,15 +30,23 @@ and `pull_request` events.
 Harhub verifies every webhook with `X-Hub-Signature-256` and deduplicates the
 GitHub delivery ID before queueing a scan.
 
-Optional managed configuration pull requests additionally require:
+Optional managed change pull requests additionally require:
 
 - Contents: write
 - Pull requests: write
 
 These write permissions are not needed to import or continuously observe a
 repository. Harhub never writes during initial onboarding. When write access is
-available, an administrator can preview the exact `.harhub/project.json` change
-and explicitly open a pull request.
+available, an administrator can preview and explicitly open pull requests that:
+
+- add `.harhub/project.json`;
+- copy selected complete Skill packages from the workspace Library into the
+  Project repository;
+- remove a Project Skill package without deleting its workspace Library asset.
+
+Harhub creates a branch from the latest scanned commit and shows the exact file
+additions or deletions before opening the pull request. It never writes directly
+to the default branch.
 
 ## Server configuration
 
@@ -69,9 +77,21 @@ From **Projects**, choose **Import repository**:
 4. Review each detected Skill, MCP configuration, Rule, or agent instruction.
 5. Keep it repository-owned, bind a matched Skill to the Library, or ignore it.
 
+Skill discovery is directory-agnostic: every exact `SKILL.md` is treated as a
+Skill package root, including a repository-root Skill, conventional tool folders
+such as `.agents/skills` or `.claude/skills`, and arbitrary monorepo paths.
+Nested Skill roots remain separate packages. Dependency, cache, VCS, and generated
+output directories such as `node_modules`, `.venv`, `dist`, `build`, and `target`
+are excluded from discovery and package contents.
+
 Repository Skills are stored as Project-local forks. A changed fork can be
 reviewed file by file and only reaches the workspace Library after an explicit
 **Sync to Library** confirmation.
+
+The **Project Skills** section supports searching the current repository Skills,
+adding one or more valid Library Skills, and removing a current Project Skill.
+Add and remove actions always remain pending until their GitHub pull request is
+merged; the subsequent push webhook and inventory scan reconcile Project state.
 
 ## Limits and retention
 

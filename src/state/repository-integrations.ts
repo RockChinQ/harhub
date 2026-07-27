@@ -209,12 +209,13 @@ export async function upsertGitHubInstallation(
          installation_id, workspace_id, account_login, account_type,
          repository_selection, permissions, linked_by_account_id, linked_at, suspended_at
        ) values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
-       on conflict (linked_by_account_id, installation_id) do update set
+       on conflict on constraint harhub_github_installations_pkey do update set
          workspace_id = excluded.workspace_id,
          account_login = excluded.account_login,
          account_type = excluded.account_type,
          repository_selection = excluded.repository_selection,
          permissions = excluded.permissions,
+         linked_by_account_id = excluded.linked_by_account_id,
          linked_at = excluded.linked_at,
          suspended_at = excluded.suspended_at`,
       [
@@ -670,6 +671,36 @@ export async function readProjectInventoryFile(
     item.snapshotId === snapshotId && item.artifactId === artifactId && item.path === filePath
   );
   return file ? Buffer.from(file.contentBase64, "base64") : undefined;
+}
+
+export async function listProjectInventoryFilePaths(
+  workspaceId: string,
+  projectId: string,
+  snapshotId: string,
+  artifactId: string
+): Promise<string[]> {
+  if (isDatabaseStateEnabled()) {
+    await ensureRepositoryDatabase();
+    const rows = await queryDatabase<{ path: string }>(
+      `select file.path
+       from harhub_project_inventory_files as file
+       join harhub_project_inventory_snapshots as snapshot on snapshot.id = file.snapshot_id
+       where snapshot.workspace_id = $1 and snapshot.project_id = $2 and snapshot.id = $3
+         and file.artifact_id = $4
+       order by file.path`,
+      [workspaceId, projectId, snapshotId, artifactId]
+    );
+    return rows.map((row) => row.path);
+  }
+  const state = await loadState();
+  const snapshot = state.projectInventorySnapshots.find((item) =>
+    item.id === snapshotId && item.workspaceId === workspaceId && item.projectId === projectId
+  );
+  if (!snapshot) return [];
+  return state.projectInventoryFiles
+    .filter((item) => item.snapshotId === snapshotId && item.artifactId === artifactId)
+    .map((item) => item.path)
+    .sort((left, right) => left.localeCompare(right));
 }
 
 export async function upsertProjectBindingPolicy(

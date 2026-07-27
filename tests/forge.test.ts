@@ -427,9 +427,26 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
         ? {
             sessionTitle: "Documentation Site",
             ready: false,
+            discovery: {
+              briefDetail: "sparse",
+              unknownEssentialAreas: [
+                "audience-context",
+                "outcome-evidence",
+                "primary-workflow",
+                "scope-priorities"
+              ]
+            },
+            appliedLenses: [
+              "working-backwards",
+              "delivery-reality",
+              "not-a-real-lens"
+            ],
             questions: [
               {
                 question: "Which outcome is most important for the first release?",
+                lens: "working-backwards",
+                gap: "first-release promise",
+                intent: "The promised outcome determines the framework goals and workflow.",
                 component: {
                   type: "single-select",
                   options: [
@@ -441,6 +458,9 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
               },
               {
                 question: "Which surfaces must the first release support?",
+                lens: "delivery-reality",
+                gap: "delivery surfaces",
+                intent: "The required surfaces determine implementation and verification constraints.",
                 component: {
                   type: "multi-select",
                   options: [
@@ -455,6 +475,7 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
               },
               {
                 question: "Which success signals should be tracked?",
+                lens: "not-a-real-lens",
                 component: {
                   type: "multi-select",
                   options: [
@@ -487,10 +508,21 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
             ]
           }
         : requestCount === 1
-          ? { sessionTitle: "Documentation Site", ready: true }
+          ? {
+              sessionTitle: "Documentation Site",
+              ready: true,
+              discovery: {
+                briefDetail: "detailed",
+                unknownEssentialAreas: []
+              }
+            }
           : {
             sessionTitle: "Documentation Site",
             ready: false,
+            discovery: {
+              briefDetail: "partial",
+              unknownEssentialAreas: ["constraints-boundaries"]
+            },
             questions: [{
               question: "Which deployment constraint matters most?",
               component: {
@@ -532,16 +564,54 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
   assert.equal(requiredQuestion.questions?.length, 5);
   assert.equal(requiredQuestion.questions?.[1]?.component.maxSelections, 4);
   assert.equal(requiredQuestion.questions?.[2]?.component.maxSelections, undefined);
+  assert.deepEqual(requiredQuestion.appliedLenses, [
+    "working-backwards",
+    "delivery-reality"
+  ]);
+  assert.deepEqual(
+    {
+      lens: requiredQuestion.questions?.[0]?.lens,
+      gap: requiredQuestion.questions?.[0]?.gap,
+      intent: requiredQuestion.questions?.[0]?.intent
+    },
+    {
+      lens: "working-backwards",
+      gap: "first-release promise",
+      intent: "The promised outcome determines the framework goals and workflow."
+    }
+  );
+  assert.equal(requiredQuestion.questions?.[2]?.lens, undefined);
+  assert.equal(requiredQuestion.discovery?.briefDetail, "sparse");
+  assert.deepEqual(requiredQuestion.discovery?.unknownEssentialAreas, [
+    "audience-context",
+    "outcome-evidence",
+    "primary-workflow",
+    "scope-priorities"
+  ]);
   assert.match(receivedSystemPrompts[0] ?? "", /Required questions must be essential/);
   assert.match(receivedSystemPrompts[0] ?? "", /Always return sessionTitle/);
   assert.match(receivedSystemPrompts[0] ?? "", /Put the highest-impact unresolved questions first/);
   assert.match(receivedSystemPrompts[0] ?? "", /Derive the question count/);
   assert.match(receivedSystemPrompts[0] ?? "", /no preferred or fixed batch size/);
   assert.match(receivedSystemPrompts[0] ?? "", /do not default to 2, 3, or 4 questions/);
+  assert.match(receivedSystemPrompts[0] ?? "", /Less initial evidence requires more discovery, not less/);
+  assert.match(receivedSystemPrompts[0] ?? "", /sparse brief normally leaves several essential areas unknown/);
+  assert.match(receivedSystemPrompts[0] ?? "", /unknownEssentialAreas/);
+  assert.match(receivedSystemPrompts[0] ?? "", /every project-essential discovery area is known/);
+  assert.match(receivedSystemPrompts[0] ?? "", /not exhaustively specify the product/);
+  assert.match(receivedSystemPrompts[0] ?? "", /open decisions in the generated framework/);
+  assert.match(receivedSystemPrompts[0] ?? "", /not merely make the generated brief more detailed/);
   assert.match(receivedSystemPrompts[0] ?? "", /Prefer single-select and multi-select/);
   assert.match(receivedSystemPrompts[0] ?? "", /phrase, one sentence, or a short list/);
   assert.match(receivedSystemPrompts[0] ?? "", /Never ask for an essay/);
   assert.match(receivedSystemPrompts[0] ?? "", /Never use a fixed default such as 3/);
+  assert.match(receivedSystemPrompts[0] ?? "", /smallest useful set of discovery lenses/);
+  assert.match(receivedSystemPrompts[0] ?? "", /not a proxy research participant/);
+  assert.match(receivedSystemPrompts[0] ?? "", /job-to-be-done/);
+  assert.match(receivedSystemPrompts[0] ?? "", /service-blueprint/);
+  assert.match(receivedSystemPrompts[0] ?? "", /delivery-reality/);
+  assert.match(receivedSystemPrompts[0] ?? "", /Never ask the user to complete an entire canvas/);
+  assert.match(receivedSystemPrompts[0] ?? "", /question, component, lens, gap, and intent/);
   assert.equal("workspaceSkills" in (receivedInputs[0] ?? {}), false);
 
   const twoAnswers = Array.from({ length: 2 }, (_, index) => ({
@@ -554,6 +624,7 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
     configuration
   );
   assert.equal(readyAfterMinimum.ready, true);
+  assert.deepEqual(readyAfterMinimum.discovery?.unknownEssentialAreas, []);
 
   const fourAnswers = Array.from({ length: 4 }, (_, index) => ({
     question: `Question ${index + 1}`,
@@ -588,6 +659,55 @@ test("lets Forge AI decide when discovery has enough context", async (context) =
   );
   assert.deepEqual(receivedInputs[3]?.answers, thirteenAnswers);
   assert.equal(requestCount, 4);
+});
+
+test("retries premature readiness without complete discovery coverage", async (context) => {
+  let attempts = 0;
+  const provider = createServer((_request, response) => {
+    attempts += 1;
+    const content = attempts === 1
+      ? {
+          sessionTitle: "Project Workspace",
+          ready: true
+        }
+      : {
+          sessionTitle: "Project Workspace",
+          ready: true,
+          discovery: {
+            briefDetail: "detailed",
+            unknownEssentialAreas: []
+          }
+        };
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify(content) } }]
+    }));
+  });
+  await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
+  context.after(() => new Promise<void>((resolve, reject) => {
+    provider.close((error) => error ? reject(error) : resolve());
+  }));
+  const address = provider.address() as AddressInfo;
+
+  const followUp = await createHarnessFollowUp(
+    {
+      requirement: "Build a project workspace",
+      answers: [
+        { question: "Who is it for?", answer: "Small teams" },
+        { question: "What must work?", answer: "Plan and deliver tasks" }
+      ]
+    },
+    [],
+    {
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      model: "coverage-model",
+      apiKey: "coverage-key"
+    }
+  );
+
+  assert.equal(attempts, 2);
+  assert.equal(followUp.ready, true);
+  assert.deepEqual(followUp.discovery?.unknownEssentialAreas, []);
 });
 
 test("generates a blueprint with project-driven Skill selection", async (context) => {

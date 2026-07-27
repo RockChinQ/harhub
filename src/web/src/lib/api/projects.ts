@@ -259,7 +259,43 @@ export function createProjectBootstrapProposal(
   );
 }
 
-export function openProjectBootstrapProposal(
+export function createProjectSkillAddProposal(
+  token: string,
+  workspaceId: string,
+  projectId: string,
+  assetIds: string[]
+): Promise<ProjectChangeProposal> {
+  return request(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/projects/${encodeURIComponent(projectId)}/proposals`,
+    {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ kind: "add-library-skills", assetIds }),
+      cache: "no-store",
+      token
+    }
+  );
+}
+
+export function createProjectSkillRemoveProposal(
+  token: string,
+  workspaceId: string,
+  projectId: string,
+  bindingId: string
+): Promise<ProjectChangeProposal> {
+  return request(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/projects/${encodeURIComponent(projectId)}/proposals`,
+    {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ kind: "remove-skill", bindingId }),
+      cache: "no-store",
+      token
+    }
+  );
+}
+
+export function openProjectProposal(
   token: string,
   workspaceId: string,
   projectId: string,

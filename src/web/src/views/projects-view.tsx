@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   Archive,
   ArrowLeft,
   Check,
+  ChevronDown,
   Copy,
   ExternalLink,
   FileDiff,
@@ -12,16 +13,20 @@ import {
   GitBranch,
   GitPullRequest,
   Loader2,
+  PackagePlus,
+  Plus,
   RefreshCw,
   RotateCcw,
   Search,
   ScanSearch,
   ShieldCheck,
   Sparkles,
+  Trash2,
   Upload
 } from "lucide-react";
 
 import type {
+  AssetRecord,
   HarhubProject,
   GitHubInstallation,
   GitHubIntegrationStatus,
@@ -48,6 +53,12 @@ import {
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Checkbox } from "../components/ui/checkbox";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger
+} from "../components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -56,12 +67,21 @@ import {
   DialogTitle
 } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "../components/ui/tooltip";
 import {
   archiveProject,
   authorizeGitHubInstallation,
   connectProjectRepository,
   connectProjectGitHubApp,
   createProjectBootstrapProposal,
+  createProjectSkillAddProposal,
+  createProjectSkillRemoveProposal,
   getGitHubIntegrationStatus,
   getProjectInventory,
   getProjectSkillDiff,
@@ -69,12 +89,14 @@ import {
   listGitHubInstallations,
   listGitHubRepositories,
   listProjects,
-  openProjectBootstrapProposal,
+  getWorkspaceAssets,
+  openProjectProposal,
   publishProjectSkillFork,
   rescanProjectRepository,
   rotateProjectSyncToken,
   updateProjectBindingPolicy
 } from "../lib/api";
+import { useDocumentTitle } from "../app/document-title";
 import { cn } from "../lib/utils";
 import {
   buildProjectSkillLineDiff,
@@ -129,10 +151,29 @@ export function ProjectsView({
   const [isCreatingProposal, setIsCreatingProposal] = useState(false);
   const [isOpeningProposal, setIsOpeningProposal] = useState(false);
   const [connectingExistingProject, setConnectingExistingProject] = useState(false);
+  const [projectSkillSearch, setProjectSkillSearch] = useState("");
+  const [librarySkillOpen, setLibrarySkillOpen] = useState(false);
+  const [librarySkills, setLibrarySkills] = useState<AssetRecord[]>([]);
+  const [librarySkillSearch, setLibrarySkillSearch] = useState("");
+  const [selectedLibrarySkillIds, setSelectedLibrarySkillIds] = useState<string[]>([]);
+  const [isLoadingLibrarySkills, setIsLoadingLibrarySkills] = useState(false);
+  const [removeSkillOpen, setRemoveSkillOpen] = useState(false);
+  const [removeSkillBinding, setRemoveSkillBinding] = useState<ProjectBinding>();
+  const [projectDetailTab, setProjectDetailTab] = useState("skills");
+  const [scanHistoryOpen, setScanHistoryOpen] = useState(false);
+  useDocumentTitle(
+    routedProjectId
+      ? project?.id === routedProjectId
+        ? `${project.name} · Project`
+        : "Project"
+      : "Projects"
+  );
 
   useEffect(() => {
     setSyncToken(undefined);
     setCopied(false);
+    setProjectDetailTab("skills");
+    setScanHistoryOpen(false);
     void refresh();
   }, [routedProjectId, token, workspace.id]);
 
@@ -146,6 +187,52 @@ export function ProjectsView({
     () => countBindings(project?.bindings ?? []),
     [project?.bindings]
   );
+  const projectSkills = useMemo(
+    () => (project?.bindings ?? []).filter((binding) =>
+      binding.kind === "skill" && binding.status !== "missing"
+    ),
+    [project?.bindings]
+  );
+  const filteredProjectSkills = useMemo(() => {
+    const query = projectSkillSearch.trim().toLowerCase();
+    if (!query) return projectSkills;
+    return projectSkills.filter((binding) =>
+      `${binding.name} ${binding.path}`.toLowerCase().includes(query)
+    );
+  }, [projectSkillSearch, projectSkills]);
+  const otherBindings = useMemo(
+    () => (project?.bindings ?? []).filter((binding) => binding.kind !== "skill"),
+    [project?.bindings]
+  );
+  const existingLibrarySkillIds = useMemo(() => new Set([
+    ...projectSkills.flatMap((binding) => binding.assetId ? [binding.assetId] : []),
+    ...(inventory?.latestSnapshot?.artifacts ?? []).flatMap((artifact) =>
+      artifact.kind === "skill" && artifact.libraryAssetId ? [artifact.libraryAssetId] : []
+    )
+  ]), [inventory?.latestSnapshot?.artifacts, projectSkills]);
+  const filteredLibrarySkills = useMemo(() => {
+    const query = librarySkillSearch.trim().toLowerCase();
+    return librarySkills.filter((asset) =>
+      !existingLibrarySkillIds.has(asset.id) &&
+      (!query || `${asset.displayName} ${asset.slug} ${asset.description}`.toLowerCase().includes(query))
+    );
+  }, [existingLibrarySkillIds, librarySkillSearch, librarySkills]);
+  const bootstrapProposal = inventory?.proposals.find((candidate) => candidate.kind === "bootstrap");
+  const activeSkillProposal = inventory?.proposals.find((candidate) =>
+    candidate.kind !== "bootstrap" &&
+    (candidate.status === "preview" || candidate.status === "creating" || candidate.status === "open")
+  );
+  const projectSkillManagementDisabledReason = getProjectSkillManagementDisabledReason(
+    project,
+    inventory
+  );
+  const projectSkillMutationDisabledReason = isCreatingProposal
+    ? "A Skill change is being prepared."
+    : activeSkillProposal?.status === "open"
+      ? "Merge or close the current Skill change before starting another."
+      : activeSkillProposal
+        ? "Finish the current Skill change before starting another."
+        : projectSkillManagementDisabledReason;
 
   async function refresh() {
     setIsLoading(true);
@@ -303,17 +390,92 @@ export function ProjectsView({
     }
   }
 
-  async function openBootstrapPullRequest() {
+  async function openProposalPullRequest() {
     if (!project || !proposal) return;
     setIsOpeningProposal(true);
     try {
-      const opened = await openProjectBootstrapProposal(token, workspace.id, project.id, proposal.id);
+      const opened = await openProjectProposal(token, workspace.id, project.id, proposal.id);
       setProposal(opened);
       await refreshInventory();
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
       setIsOpeningProposal(false);
+    }
+  }
+
+  async function openLibrarySkillPicker() {
+    setLibrarySkillOpen(true);
+    setLibrarySkillSearch("");
+    setSelectedLibrarySkillIds([]);
+    setIsLoadingLibrarySkills(true);
+    setError(undefined);
+    try {
+      const result = await getWorkspaceAssets(token, workspace.id, { kind: "skill" });
+      setLibrarySkills(result.assets.filter((asset) => asset.health !== "error" && Boolean(asset.storage)));
+    } catch (caught) {
+      setError(errorMessage(caught));
+      setLibrarySkillOpen(false);
+    } finally {
+      setIsLoadingLibrarySkills(false);
+    }
+  }
+
+  function toggleLibrarySkill(assetId: string, checked: boolean) {
+    setSelectedLibrarySkillIds((current) => {
+      if (!checked) return current.filter((candidate) => candidate !== assetId);
+      if (current.includes(assetId) || current.length >= 20) return current;
+      return [...current, assetId];
+    });
+  }
+
+  async function previewAddLibrarySkills() {
+    if (!project || selectedLibrarySkillIds.length === 0) return;
+    setIsCreatingProposal(true);
+    setError(undefined);
+    try {
+      const created = await createProjectSkillAddProposal(
+        token,
+        workspace.id,
+        project.id,
+        selectedLibrarySkillIds
+      );
+      setProposal(created);
+      setLibrarySkillOpen(false);
+      setProposalOpen(true);
+      await refreshInventory();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setIsCreatingProposal(false);
+    }
+  }
+
+  function confirmRemoveSkill(binding: ProjectBinding) {
+    setRemoveSkillBinding(binding);
+    setRemoveSkillOpen(true);
+  }
+
+  async function previewRemoveSkill() {
+    if (!project || !removeSkillBinding) return;
+    setIsCreatingProposal(true);
+    setError(undefined);
+    try {
+      const created = await createProjectSkillRemoveProposal(
+        token,
+        workspace.id,
+        project.id,
+        removeSkillBinding.id
+      );
+      setProposal(created);
+      setRemoveSkillOpen(false);
+      setRemoveSkillBinding(undefined);
+      setProposalOpen(true);
+      await refreshInventory();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setIsCreatingProposal(false);
     }
   }
 
@@ -460,7 +622,7 @@ export function ProjectsView({
                       <CardTitle className="text-xl">{project.name}</CardTitle>
                       <ProjectStatusBadge project={project} />
                     </div>
-                    <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                    <p className="mt-2 line-clamp-2 max-w-3xl text-sm leading-6 text-muted-foreground">
                       {project.description}
                     </p>
                   </div>
@@ -469,10 +631,10 @@ export function ProjectsView({
                       href={project.repository.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-accent"
+                      className="inline-flex h-9 max-w-full shrink-0 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-accent sm:max-w-xs"
                     >
                       <FolderGit2 className="h-4 w-4" aria-hidden="true" />
-                      {project.repository.owner}/{project.repository.name}
+                      <span className="truncate">{project.repository.owner}/{project.repository.name}</span>
                       <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                     </a>
                   ) : (
@@ -480,7 +642,7 @@ export function ProjectsView({
                   )}
                 </div>
               </CardHeader>
-              <CardContent className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4">
+              <CardContent className="flex flex-wrap gap-x-10 gap-y-4 p-5">
                 <Metric label="Bindings" value={String(project.bindings.length)} />
                 <Metric label="Synced" value={String(bindingCounts.synced)} />
                 <Metric label="Changed" value={String(bindingCounts.added + bindingCounts.modified)} />
@@ -495,8 +657,37 @@ export function ProjectsView({
               </CardContent>
             </Card>
 
-            {inventory?.connection?.mode === "github-app" ? (
-              <Card className="shadow-sm">
+            <Tabs value={projectDetailTab} onValueChange={setProjectDetailTab}>
+              <TabsList className="h-auto w-full justify-start gap-6 overflow-x-auto rounded-none border-b bg-transparent p-0">
+                <TabsTrigger
+                  value="skills"
+                  className="gap-2 rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:border-blue-700 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                >
+                  Skills
+                  <Badge variant="secondary" className="h-5 min-w-5 justify-center px-1.5 text-[10px]">
+                    {projectSkills.length}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="inventory"
+                  className="gap-2 rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:border-blue-700 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                >
+                  Inventory
+                  <Badge variant="secondary" className="h-5 min-w-5 justify-center px-1.5 text-[10px]">
+                    {inventory?.latestSnapshot?.artifacts.length ?? 0}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="settings"
+                  className="rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:border-blue-700 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                >
+                  Settings
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="inventory" className="mt-4">
+                {inventory?.connection?.mode === "github-app" ? (
+                  <Card className="shadow-sm">
                 <CardHeader className="border-b">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <CardTitle className="flex items-center gap-2 text-base">
@@ -553,7 +744,7 @@ export function ProjectsView({
                     </div>
                   ) : null}
                   {inventory.latestSnapshot?.artifacts.length ? (
-                    <div className="divide-y">
+                    <div className="max-h-[56vh] divide-y overflow-y-auto">
                       {inventory.latestSnapshot.artifacts.map((artifact) => (
                         <div
                           key={artifact.id}
@@ -595,15 +786,15 @@ export function ProjectsView({
                       Read-only tracking requires no workflow and no repository secret.
                     </p>
                     {inventory.connection.permissionMode === "write" && inventory.latestSnapshot ? (
-                      proposal?.status === "open" && proposal.pullUrl ? (
+                      bootstrapProposal?.status === "open" && bootstrapProposal.pullUrl ? (
                         <a
-                          href={proposal.pullUrl}
+                          href={bootstrapProposal.pullUrl}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-accent"
                         >
                           <GitPullRequest className="h-4 w-4" />
-                          Pull request #{proposal.pullNumber}
+                          Pull request #{bootstrapProposal.pullNumber}
                         </a>
                       ) : (
                         <Button
@@ -620,68 +811,189 @@ export function ProjectsView({
                     ) : null}
                   </div>
                   {inventory.jobs.length > 0 ? (
-                    <div className="border-t px-5 py-4">
-                      <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent scans</p>
-                      <div className="space-y-2">
-                        {inventory.jobs.slice(0, 5).map((job) => (
-                          <div key={job.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                            <span>{job.trigger} · {formatTime(job.completedAt ?? job.startedAt ?? job.createdAt)}</span>
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                job.status === "succeeded" && "border-emerald-300 text-emerald-800",
-                                job.status === "failed" && "border-red-300 text-red-700"
-                              )}
-                            >
-                              {job.status}
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    <Collapsible
+                      open={scanHistoryOpen}
+                      onOpenChange={setScanHistoryOpen}
+                      className="border-t"
+                    >
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="h-auto w-full justify-between rounded-none px-5 py-4 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                        >
+                          <span>Recent scans · {inventory.jobs.length}</span>
+                          <ChevronDown
+                            className={cn("h-4 w-4 transition-transform", scanHistoryOpen && "rotate-180")}
+                            aria-hidden="true"
+                          />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="space-y-2 border-t px-5 py-4">
+                          {inventory.jobs.slice(0, 5).map((job) => (
+                            <div key={job.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                              <span>{job.trigger} · {formatTime(job.completedAt ?? job.startedAt ?? job.createdAt)}</span>
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  job.status === "succeeded" && "border-emerald-300 text-emerald-800",
+                                  job.status === "failed" && "border-red-300 text-red-700"
+                                )}
+                              >
+                                {job.status}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
                   ) : null}
                 </CardContent>
               </Card>
-            ) : null}
+                ) : (
+                  <Card className="shadow-sm">
+                    <CardContent className="flex min-h-56 flex-col items-center justify-center p-8 text-center">
+                      <ScanSearch className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+                      <p className="mt-4 text-sm font-medium">Repository inventory is not available yet</p>
+                      <p className="mt-1 max-w-md text-sm leading-6 text-muted-foreground">
+                        Connect this Project through the GitHub App to scan and classify repository assets.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="mt-4"
+                        onClick={() => setProjectDetailTab("settings")}
+                      >
+                        Open settings
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
 
-            <Card className="shadow-sm">
-              <CardHeader className="border-b">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <GitBranch className="h-4 w-4 text-blue-700" aria-hidden="true" />
-                  Harness bindings
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {project.bindings.length ? (
-                  <div className="divide-y">
-                    {project.bindings.map((binding) => (
+              <TabsContent value="skills" className="mt-4 space-y-4">
+
+            <TooltipProvider delayDuration={250}>
+              <Card className="shadow-sm">
+                <CardHeader className="border-b">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <PackagePlus className="h-4 w-4 text-blue-700" aria-hidden="true" />
+                        Project Skills
+                      </CardTitle>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Search and manage the Skills included in this Project.
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <div className="relative min-w-0 sm:w-64">
+                        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                        <Input
+                          value={projectSkillSearch}
+                          onChange={(event) => setProjectSkillSearch(event.target.value)}
+                          className="pl-9"
+                          placeholder="Search Project Skills"
+                        />
+                      </div>
+                      {activeSkillProposal?.status === "open" && activeSkillProposal.pullUrl ? (
+                        <a
+                          href={activeSkillProposal.pullUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-accent"
+                        >
+                          <GitPullRequest className="h-4 w-4" aria-hidden="true" />
+                          PR #{activeSkillProposal.pullNumber}
+                        </a>
+                      ) : activeSkillProposal?.status === "preview" ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setProposal(activeSkillProposal);
+                            setProposalOpen(true);
+                          }}
+                        >
+                          <FileDiff className="h-4 w-4" aria-hidden="true" />
+                          Review pending change
+                        </Button>
+                      ) : (
+                        <DisabledControlTooltip
+                          label="Add Skills from Library"
+                          reason={projectSkillMutationDisabledReason}
+                        >
+                          <Button
+                            type="button"
+                            disabled={Boolean(projectSkillMutationDisabledReason)}
+                            onClick={() => void openLibrarySkillPicker()}
+                          >
+                            <Plus className="h-4 w-4" aria-hidden="true" />
+                            Add from Library
+                          </Button>
+                        </DisabledControlTooltip>
+                      )}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {filteredProjectSkills.length ? (
+                    <div className="max-h-[56vh] divide-y overflow-y-auto">
+                      {filteredProjectSkills.map((binding) => (
+                        <ProjectSkillRow
+                          key={binding.id}
+                          binding={binding}
+                          onReview={() => void openSkillDiff(binding)}
+                          onRemove={() => confirmRemoveSkill(binding)}
+                          removeDisabledReason={binding.path === "."
+                            ? "Repository-root Skills cannot be removed through Harhub."
+                            : projectSkillMutationDisabledReason}
+                        />
+                      ))}
+                    </div>
+                  ) : projectSkills.length ? (
+                    <p className="p-6 text-sm text-muted-foreground">
+                      No Project Skills match “{projectSkillSearch}”.
+                    </p>
+                  ) : (
+                    <p className="p-6 text-sm text-muted-foreground">
+                      No Skills are present in the latest Project state.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </TooltipProvider>
+
+                {otherBindings.length ? (
+                  <Card className="shadow-sm">
+                    <CardHeader className="border-b">
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <GitBranch className="h-4 w-4 text-blue-700" aria-hidden="true" />
+                        Other harness bindings
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <div className="max-h-80 divide-y overflow-y-auto">
+                    {otherBindings.map((binding) => (
                       <BindingRow
                         key={binding.id}
                         binding={binding}
                         onReview={() => void openSkillDiff(binding)}
                       />
                     ))}
-                  </div>
-                ) : inventory?.connection?.mode === "github-app" ? (
-                  <p className="text-sm leading-6 text-muted-foreground">
-                    Harhub reads this repository through the workspace GitHub App installation.
-                    Push webhooks update the inventory automatically; no repository secret is used.
-                  </p>
-                ) : (
-                  <p className="p-6 text-sm text-muted-foreground">
-                    No bindings have been reported by this repository yet.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : null}
+              </TabsContent>
 
-            <Card className="shadow-sm">
+              <TabsContent value="settings" className="mt-4">
+                <Card className="shadow-sm">
               <CardHeader className="border-b">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <ShieldCheck className="h-4 w-4 text-blue-700" aria-hidden="true" />
-                  {inventory?.connection?.mode === "github-app"
-                    ? "GitHub App connection"
-                    : "GitHub Actions connection (self-hosted mode)"}
+                  Repository connection
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4 p-5">
@@ -732,9 +1044,24 @@ export function ProjectsView({
                       Connect repository
                     </Button>
                   </div>
+                ) : inventory?.connection?.mode === "github-app" ? (
+                  <div className="space-y-3">
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      Harhub tracks this repository through the GitHub App. No repository secret is required.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="outline">
+                        {inventory.connection.status === "active" ? "Connected" : inventory.connection.status}
+                      </Badge>
+                      <Badge variant="outline">
+                        {inventory.connection.permissionMode === "write" ? "Managed changes" : "Read only"}
+                      </Badge>
+                      <Badge variant="outline">{inventory.connection.defaultBranch}</Badge>
+                    </div>
+                  </div>
                 ) : (
                   <p className="text-sm leading-6 text-muted-foreground">
-                    The generated framework watches harness Skills, MCP definitions, and Rules.
+                    Repository synchronization is handled by the generated GitHub Actions workflow.
                     Add the sync token as the repository secret
                     {" "}<code>HARHUB_PROJECT_TOKEN</code>.
                   </p>
@@ -756,7 +1083,11 @@ export function ProjectsView({
                     </div>
                   </div>
                 ) : null}
-                <div className="flex flex-wrap gap-2">
+                {project.repository && (
+                  inventory?.connection?.mode !== "github-app" ||
+                  inventory.connection.status !== "active"
+                ) ? (
+                  <div className="flex flex-wrap gap-2">
                   {project.repository && inventory?.connection?.mode !== "github-app" ? (
                     <Button
                       type="button"
@@ -780,9 +1111,29 @@ export function ProjectsView({
                       Rotate sync token
                     </Button>
                   ) : null}
+                    {inventory?.connection?.mode === "github-app" && inventory.connection.status !== "active" ? (
+                      <Button
+                        type="button"
+                        disabled={project.status === "archived"}
+                        onClick={() => void openRepositoryImport(true)}
+                      >
+                        <Github className="h-4 w-4" />
+                        Reconnect GitHub App
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+                <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Project lifecycle</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Archiving makes this Project read-only while preserving its history.
+                    </p>
+                  </div>
                   <Button
                     type="button"
                     variant="outline"
+                    className="shrink-0"
                     disabled={project.status === "archived"}
                     onClick={() => setArchiveOpen(true)}
                   >
@@ -792,6 +1143,8 @@ export function ProjectsView({
                 </div>
               </CardContent>
             </Card>
+              </TabsContent>
+            </Tabs>
           </>
         ) : null}
 
@@ -889,20 +1242,132 @@ export function ProjectsView({
           </AlertDialogContent>
         </AlertDialog>
 
+        <Dialog open={librarySkillOpen} onOpenChange={setLibrarySkillOpen}>
+          <DialogContent className="flex max-h-[80vh] max-w-3xl flex-col overflow-hidden">
+            <DialogHeader>
+              <DialogTitle>Add Skills from the Library</DialogTitle>
+              <DialogDescription>
+                Select one or more workspace Skills to add to this Project.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <Input
+                value={librarySkillSearch}
+                onChange={(event) => setLibrarySkillSearch(event.target.value)}
+                className="pl-9"
+                placeholder="Search Library Skills"
+              />
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto rounded-lg border">
+              {isLoadingLibrarySkills ? (
+                <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  Loading Library Skills…
+                </div>
+              ) : filteredLibrarySkills.length ? (
+                <div className="divide-y">
+                  {filteredLibrarySkills.map((asset) => (
+                    <label key={asset.id} className="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-muted/30">
+                      <Checkbox
+                        checked={selectedLibrarySkillIds.includes(asset.id)}
+                        disabled={
+                          selectedLibrarySkillIds.length >= 20 &&
+                          !selectedLibrarySkillIds.includes(asset.id)
+                        }
+                        onCheckedChange={(checked) => toggleLibrarySkill(asset.id, checked === true)}
+                        className="mt-0.5"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-medium">{asset.displayName}</span>
+                          <Badge variant="outline">v{asset.version ?? 1}</Badge>
+                        </span>
+                        <span className="mt-1 block line-clamp-2 text-xs leading-5 text-muted-foreground">
+                          {asset.description}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <p className="p-6 text-center text-sm text-muted-foreground">
+                  {librarySkills.length
+                    ? "No available Library Skills match this search."
+                    : "Every available Library Skill is already linked to this Project."}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                {selectedLibrarySkillIds.length}/20 selected
+              </p>
+              <Button
+                type="button"
+                disabled={selectedLibrarySkillIds.length === 0 || isCreatingProposal}
+                onClick={() => void previewAddLibrarySkills()}
+              >
+                {isCreatingProposal ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitPullRequest className="h-4 w-4" />}
+                Review addition
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <AlertDialog open={removeSkillOpen} onOpenChange={setRemoveSkillOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove {removeSkillBinding?.name} from this Project?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This removes the Skill package from the Project through a GitHub pull request.
+                The workspace Library Skill, if any, is not deleted.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isCreatingProposal}>Cancel</AlertDialogCancel>
+              <AlertDialogAction disabled={isCreatingProposal} onClick={() => void previewRemoveSkill()}>
+                {isCreatingProposal ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Review removal
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         <Dialog open={proposalOpen} onOpenChange={setProposalOpen}>
           <DialogContent className="max-w-3xl">
             <DialogHeader>
-              <DialogTitle>Managed repository configuration</DialogTitle>
+              <DialogTitle>{proposalDialogTitle(proposal)}</DialogTitle>
               <DialogDescription>
-                Review the exact file Harhub will place on a new branch. Nothing is written until you open the pull request.
+                Review the exact repository changes. Nothing is written until you open the pull request, and the default branch changes only after merge.
               </DialogDescription>
             </DialogHeader>
-            {proposal?.files.map((file) => (
+            {proposal?.kind === "bootstrap" ? proposal.files.map((file) => (
               <div key={file.path} className="overflow-hidden rounded-lg border">
                 <div className="border-b bg-muted/30 px-4 py-2 font-mono text-xs font-medium">{file.path}</div>
                 <pre className="max-h-[48vh] overflow-auto whitespace-pre-wrap break-words bg-background p-4 text-xs leading-5">{file.content}</pre>
               </div>
-            ))}
+            )) : (
+              <div className="max-h-[52vh] overflow-auto rounded-lg border">
+                <div className="divide-y">
+                  {proposal?.files.map((file) => (
+                    <div key={file.path} className="flex items-center gap-3 px-4 py-3">
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "w-16 shrink-0 justify-center",
+                          file.status === "added" && "border-emerald-300 text-emerald-800",
+                          file.status === "deleted" && "border-red-300 text-red-700"
+                        )}
+                      >
+                        {file.status}
+                      </Badge>
+                      <span className="min-w-0 flex-1 break-all font-mono text-xs">{file.path}</span>
+                      {file.encoding === "base64" ? <Badge variant="secondary">binary</Badge> : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="flex flex-wrap items-center justify-between gap-3">
               {proposal?.status === "open" && proposal.pullUrl ? (
                 <a href={proposal.pullUrl} target="_blank" rel="noreferrer" className="text-sm font-medium text-blue-700 hover:underline">
@@ -911,8 +1376,8 @@ export function ProjectsView({
               ) : <span />}
               <Button
                 type="button"
-                disabled={!proposal || proposal.status === "open" || isOpeningProposal}
-                onClick={() => void openBootstrapPullRequest()}
+                disabled={!proposal || proposal.status === "open" || proposal.status === "creating" || isOpeningProposal}
+                onClick={() => void openProposalPullRequest()}
               >
                 {isOpeningProposal ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitPullRequest className="h-4 w-4" />}
                 {proposal?.status === "open" ? "Pull request opened" : "Open pull request"}
@@ -1218,6 +1683,154 @@ function BindingRow({
   );
 }
 
+function ProjectSkillRow({
+  binding,
+  onReview,
+  onRemove,
+  removeDisabledReason
+}: {
+  binding: ProjectBinding;
+  onReview: () => void;
+  onRemove: () => void;
+  removeDisabledReason?: string;
+}) {
+  const reviewable = Boolean(binding.fork) &&
+    (binding.status === "added" || binding.status === "modified");
+  return (
+    <div className="grid gap-3 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="truncate text-sm font-medium">{binding.name}</p>
+          <Badge variant="outline" className="text-[10px]">
+            {binding.assetId ? "Library linked" : "Repository owned"}
+          </Badge>
+        </div>
+        <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{binding.path}</p>
+      </div>
+      <div className="flex items-center justify-self-end gap-1.5">
+        <BindingStatusBadge status={binding.status} />
+        {reviewable ? (
+          <ProjectSkillIconAction label="Review changes" onClick={onReview}>
+            <FileDiff className="h-4 w-4" aria-hidden="true" />
+          </ProjectSkillIconAction>
+        ) : null}
+        <ProjectSkillIconAction
+          label="Remove Skill"
+          disabledReason={removeDisabledReason}
+          className="hover:text-destructive"
+          onClick={onRemove}
+        >
+          <Trash2 className="h-4 w-4" aria-hidden="true" />
+        </ProjectSkillIconAction>
+      </div>
+    </div>
+  );
+}
+
+function ProjectSkillIconAction({
+  label,
+  disabledReason,
+  className,
+  onClick,
+  children
+}: {
+  label: string;
+  disabledReason?: string;
+  className?: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  const button = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className={cn("h-8 w-8 text-muted-foreground", className)}
+      aria-label={label}
+      disabled={Boolean(disabledReason)}
+      onClick={onClick}
+    >
+      {children}
+    </Button>
+  );
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {disabledReason ? (
+          <span
+            className="inline-flex"
+            tabIndex={0}
+            aria-label={`${label} unavailable: ${disabledReason}`}
+          >
+            {button}
+          </span>
+        ) : button}
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-72 text-center">
+        {disabledReason ? `${label} unavailable: ${disabledReason}` : label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function DisabledControlTooltip({
+  label,
+  reason,
+  children
+}: {
+  label: string;
+  reason?: string;
+  children: ReactNode;
+}) {
+  if (!reason) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className="inline-flex"
+          tabIndex={0}
+          aria-label={`${label} unavailable: ${reason}`}
+        >
+          {children}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-72 text-center">
+        {reason}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function getProjectSkillManagementDisabledReason(
+  project?: HarhubProject,
+  inventory?: ProjectInventoryResponse
+): string | undefined {
+  if (!project) return "Open a Project before managing its Skills.";
+  if (project.status === "archived") return "Archived Projects cannot be changed.";
+  if (!inventory?.connection || inventory.connection.mode !== "github-app") {
+    return "Connect this Project with the GitHub App to manage its Skills.";
+  }
+  if (inventory.connection.status === "permission-lost") {
+    return "Restore the GitHub App permissions before changing Project Skills.";
+  }
+  if (inventory.connection.status === "disconnected") {
+    return "Reconnect the GitHub App before changing Project Skills.";
+  }
+  if (inventory.connection.permissionMode !== "write") {
+    return "Grant managed change permissions before changing Project Skills.";
+  }
+  if (!inventory.latestSnapshot) {
+    return "Wait for the first repository scan before changing Project Skills.";
+  }
+  return undefined;
+}
+
+function proposalDialogTitle(proposal?: ProjectChangeProposal): string {
+  if (proposal?.kind === "add-library-skills") return "Add Library Skills";
+  if (proposal?.kind === "remove-skill") return "Remove Project Skill";
+  return "Managed repository configuration";
+}
+
 function ProjectStatusBadge({ project }: { project: HarhubProject }) {
   if (project.status === "archived") return <Badge variant="secondary">Archived</Badge>;
   if (!project.repository) return <Badge variant="outline">Unlinked</Badge>;
@@ -1499,9 +2112,9 @@ function ChangedLineText({
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border bg-muted/20 p-4">
+    <div className="min-w-28">
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-2 text-sm font-semibold">{value}</p>
+      <p className="mt-1 truncate text-sm font-semibold" title={value}>{value}</p>
     </div>
   );
 }

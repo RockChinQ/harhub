@@ -1,5 +1,6 @@
 import type { Express, Request, RequestHandler } from "express";
 
+import { repositorySkillRoot } from "../../features/repository-inventory/index.js";
 import { PUBLIC_APP_URL } from "../config.js";
 import {
   SKILL_FILES_CHECKSUM_ALGORITHM,
@@ -350,7 +351,10 @@ function readRepositoryBinding(value: unknown): ProjectRepositoryBindingInput {
 }
 
 function pathMatchesKind(kind: ProjectBindingKind, path: string): boolean {
-  if (kind === "skill") return /^\.harness\/skills\/[^/]+(?:\/[^/]+)*$/.test(path);
+  if (kind === "skill") {
+    const skillPath = path === "." ? "SKILL.md" : `${path}/SKILL.md`;
+    return repositorySkillRoot(skillPath) === path;
+  }
   if (kind === "mcp") return path.startsWith(".harness/mcp/");
   return path.startsWith(".harness/rules/");
 }

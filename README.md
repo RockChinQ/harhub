@@ -3,7 +3,7 @@
   <h1>Harhub</h1>
   <p><strong>Asset control for agent teams.</strong></p>
   <p>
-    Upload, validate, preview, and govern reusable Agent Skills from one workspace.
+    Manage reusable Agent Skills and connect them to the repositories that use them.
   </p>
   <p>
     <a href="https://harhub.rcpd.cc">Hosted Demo</a>
@@ -16,19 +16,22 @@
   </p>
 </div>
 
-![Harhub abstract city marketing illustration](./docs/public/harhub-social-preview.png)
+<!--
+![Harhub abstract city marketing illustration](./docs/public/harhub-social-preview.png) -->
 
 ## Overview
 
-Harhub is a workspace for managing reusable Agent Skills.
+Harhub is an open-source control plane for a team's agent harness.
 
-It helps teams upload, validate, preview, and organize Skill packages so coding
-agents can use a shared set of workspace-managed capabilities instead of
-scattered local files.
+The workspace Library manages reusable Agent Skills: teams can upload, validate,
+preview, version, share, and install standard Skill packages. Forge turns a
+project brief into a repository-ready harness using those Skills. Projects then
+connect that harness to an existing GitHub repository, inventory its Skills,
+MCP configuration, rules, and agent instructions, and track repository drift.
 
-Harhub currently focuses on Agent Skills as the first supported asset type.
-MCPs, rules, and other agent assets are planned, but the current product surface
-is intentionally Skills-first.
+The managed Library remains intentionally Skills-first. Non-Skill artifacts are
+currently visible and classifiable inside Projects, but they do not yet have the
+same Library publishing and version lifecycle as Skills.
 
 ## What You Can Do
 
@@ -36,13 +39,18 @@ is intentionally Skills-first.
 - Validate packages against the Agent Skills `SKILL.md` format.
 - Search and browse Skills in a workspace.
 - Preview Skill metadata and package files.
-- Use Forge's AI-guided interview to compose a downloadable project harness
-- Freeze completed Forge sessions as Projects that track repository Skill, MCP, and Rule bindings
-  from the current workspace's Skills, with workspace-scoped provider settings
-  managed by owners and admins, plus private bounded session history.
+- Download or restore any of the five retained immutable Skill versions.
+- Use Forge's adaptive AI interview to compose a downloadable project harness
+  from the current workspace's Skills.
+- Resume URL-bound Forge sessions after navigation or restart, then freeze a
+  completed session as a durable Project.
+- Import an existing repository through a GitHub App, inventory supported
+  harness files, review Skill-fork diffs, and deliver approved add/remove
+  changes through pull requests.
 - Publish revocable public share pages with verified zip downloads and Harhub or
   Agent Skills CLI install commands.
-- Manage Skills from the web UI or CLI.
+- Manage Harhub from the Web UI, CLI, or the authenticated Agent Operations MCP
+  server.
 - Run Harhub locally with S3-compatible object storage and optional Postgres
   persistence.
 
@@ -162,8 +170,9 @@ harhub login --url http://127.0.0.1:3310
 
 Without `--url`, every CLI command targets `https://harhub.rcpd.cc`. For a
 self-hosted login, keep passing the same `--url`; the saved token and workspace
-are reused only when they belong to that exact URL. `HARHUB_WORKSPACE_ID` and
-`HARHUB_TOKEN` remain available as temporary overrides for CI and automation.
+are reused only when they belong to that exact URL. `HARHUB_API_URL`,
+`HARHUB_WORKSPACE_ID`, and `HARHUB_TOKEN` remain available as temporary
+overrides for CI and automation.
 
 Scan the current directory and choose which discovered Skills to upload:
 
@@ -230,24 +239,64 @@ harhub whoami
 harhub skills scan [paths...]
 harhub skills validate [paths...]
 harhub skills create <name>
-harhub skills upload [paths...]
 harhub skills upload [paths...] --share
-harhub install <share-url|token>
+harhub skills list --remote
+harhub skills show <id|name|slug> --remote
+harhub skills edit <id|name|slug> [--file SKILL.md]
+harhub assets list --remote
+harhub download <id|name|slug> [-v 2] [-o skill.zip]
+harhub projects list
+harhub repositories status
+harhub forge list
+harhub install <share-url|token> -g -y
 harhub share <id|name|slug>
 harhub unshare <id|name|slug>
-harhub assets list
-harhub assets show <id|name|slug>
 harhub logout
 ```
 
-`scan`, `validate`, `list`, and `show` operate on local paths and local
-`.harhub` indexes. `skills upload` packages valid local Skills and sends them to
-the configured hosted or self-managed workspace. During import, Harhub stores
-each Skill as an independent S3 file prefix and does not retain the source zip.
-Preview reads those objects directly; download and discovery generate a standard
-root-level Skill zip on demand. Uploaded Skills are immutable; edit the local
-Skill and upload it again instead of patching it in place. Harhub retains the
-current package and four previous versions for authenticated download or restore.
+Common short options include `-y`/`--yes`, `-g`/`--global`, `-j`/`--json`,
+`-r`/`--remote`, `-o`/`--output`, and `-w`/`--workspace`. Run
+`harhub <assets|skills|projects|repositories|forge> help` for each command group.
+
+`scan`, `validate`, local `list`, and local `show` operate on paths and `.harhub`
+indexes. Add `--remote` to `assets/skills list` or `show` to query the workspace.
+`skills upload` packages valid local Skills and sends them to the configured
+hosted or self-managed workspace. During import, Harhub stores each Skill as an
+independent S3 file prefix and does not retain the source zip. Preview reads
+those objects directly; download and discovery generate a standard root-level
+Skill zip on demand. Uploaded versions are immutable. `skills edit` downloads
+the current package, edits and validates it, then uploads a new version. Harhub
+retains the current package and four previous versions for authenticated
+download or restore.
+
+See the [CLI guide](./docs/guide/cli.md) for Project, GitHub Repository, Forge,
+remote edit, download, streaming, and automation examples.
+
+## Agent Operations MCP
+
+The npm package also installs `harhub-mcp`, a stdio MCP server that exposes the
+CLI's authenticated Library, Project, GitHub, and Forge operations to agents.
+It reuses the login saved by `harhub login`:
+
+```json
+{
+  "mcpServers": {
+    "harhub": {
+      "command": "harhub-mcp"
+    }
+  }
+}
+```
+
+Three supporting Agent Skills live under [`skills/`](./skills/). Install one or
+all of them directly from the repository:
+
+```bash
+npx skills add RockChinQ/harhub --skill harhub-library-operations harhub-project-operations harhub-forge-operations
+```
+
+See the [Agent Operations MCP guide](./docs/guide/mcp.md) for environment
+configuration, filesystem boundaries, tool groups, and confirmation rules.
 
 ## Configuration
 
@@ -279,7 +328,16 @@ export HARHUB_PASSWORD_LOGIN_ENABLED=false
 
 Detailed documentation lives in [`docs/`](./docs/).
 
-For Skill package details, see [`docs/06-skill-standard.md`](./docs/06-skill-standard.md).
+Start with:
+
+- [Getting Started](./docs/guide/getting-started.md)
+- [Agent Skills](./docs/guide/agent-skills.md)
+- [Forge](./docs/guide/forge.md)
+- [Projects](./docs/guide/projects.md)
+- [GitHub Integration](./docs/guide/github-integration.md)
+- [CLI](./docs/guide/cli.md)
+- [Agent Operations MCP](./docs/guide/mcp.md)
+- [Deployment](./docs/guide/deployment.md)
 
 ## License
 

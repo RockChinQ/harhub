@@ -367,6 +367,10 @@ export type HarnessBuilderMode = "llm";
 export interface HarnessInterviewAnswer {
   question: string;
   answer: string;
+  /** Server-captured discovery trace from the question that produced this answer. */
+  lens?: string;
+  gap?: string;
+  intent?: string;
 }
 
 export type HarnessFollowUpComponentType = "single-select" | "multi-select" | "text";
@@ -387,6 +391,20 @@ export interface HarnessFollowUpComponent {
 export interface HarnessFollowUpQuestion {
   question: string;
   component: HarnessFollowUpComponent;
+  /** Internal discovery-method trace used for observability, not required for legacy sessions. */
+  lens?: string;
+  /** The unresolved project fact or decision this question is intended to close. */
+  gap?: string;
+  /** Concise reason this question materially affects the generated framework. */
+  intent?: string;
+}
+
+export type HarnessDiscoveryBriefDetail = "sparse" | "partial" | "detailed";
+
+export interface HarnessDiscoveryAssessment {
+  briefDetail: HarnessDiscoveryBriefDetail;
+  /** Exact coverage-area ids that still materially affect the framework. */
+  unknownEssentialAreas: string[];
 }
 
 export interface HarnessFollowUpRequest {
@@ -400,6 +418,10 @@ export interface HarnessFollowUpResponse {
   /** AI-generated semantic name for the session. Optional for legacy persisted sessions. */
   sessionTitle?: string;
   ready: boolean;
+  /** Compact discovery methods selected for this round. */
+  appliedLenses?: string[];
+  /** Compact coverage trace used to prevent premature readiness. */
+  discovery?: HarnessDiscoveryAssessment;
   questions?: HarnessFollowUpQuestion[];
   /** Legacy single-question fields retained for persisted sessions created before question batches. */
   question?: string;
@@ -746,7 +768,10 @@ export interface GitHubRepositorySummary {
   };
 }
 
-export type ProjectChangeProposalKind = "bootstrap" | "adopt-library";
+export type ProjectChangeProposalKind =
+  | "bootstrap"
+  | "add-library-skills"
+  | "remove-skill";
 export type ProjectChangeProposalStatus =
   | "preview"
   | "creating"
@@ -757,8 +782,10 @@ export type ProjectChangeProposalStatus =
 
 export interface ProjectChangeProposalFile {
   path: string;
-  status: "added" | "modified";
-  content: string;
+  status: "added" | "modified" | "deleted";
+  /** Text or base64-encoded file body. Deleted files do not include content. */
+  content?: string;
+  encoding?: "utf-8" | "base64";
 }
 
 export interface ProjectChangeProposal {

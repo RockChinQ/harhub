@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import type { AssetRecord } from "../../shared/types.js";
 import {
   createAssetCatalog,
   filterAssets,
@@ -23,6 +24,7 @@ import {
   uploadSkillZip
 } from "../api.js";
 import {
+  hasBooleanOption,
   optionString,
   resolveAssetCatalogPath
 } from "../args.js";
@@ -32,6 +34,7 @@ import {
   printIssues
 } from "../format.js";
 import type { ParsedArgs } from "../types.js";
+import { requestWorkspaceJson } from "../remote.js";
 
 export function runAssetsScan(parsed: ParsedArgs): number {
   const catalogPath = resolveAssetCatalogPath(parsed);
@@ -70,10 +73,25 @@ export function runAssetsValidate(parsed: ParsedArgs): number {
   return hasErrors(issues) ? 1 : 0;
 }
 
-export function runAssetsList(parsed: ParsedArgs): number {
-  const assets = filterAssets(readAssetCatalog(resolveAssetCatalogPath(parsed)), {
-    kind: optionString(parsed, "kind")
-  });
+export async function runAssetsList(parsed: ParsedArgs): Promise<number> {
+  let assets;
+  try {
+    if (isRemote(parsed)) {
+      const kind = optionString(parsed, "kind");
+      const payload = await requestWorkspaceJson<{ assets: AssetRecord[] }>(
+        parsed,
+        `/assets${kind ? `?kind=${encodeURIComponent(kind)}` : ""}`
+      );
+      assets = payload.assets;
+    } else {
+      assets = filterAssets(readAssetCatalog(resolveAssetCatalogPath(parsed)), {
+        kind: optionString(parsed, "kind")
+      });
+    }
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
 
   if (parsed.options.json) {
     console.log(JSON.stringify(assets, null, 2));
@@ -89,14 +107,22 @@ export function runAssetsList(parsed: ParsedArgs): number {
   return 0;
 }
 
-export function runAssetsShow(parsed: ParsedArgs): number {
+export async function runAssetsShow(parsed: ParsedArgs): Promise<number> {
   const query = parsed.positionals[0];
   if (!query) {
     console.error("Usage: harhub assets show <id|name|slug>");
     return 1;
   }
 
-  const asset = findAsset(readAssetCatalog(resolveAssetCatalogPath(parsed)), query);
+  let asset;
+  try {
+    asset = isRemote(parsed)
+      ? await requestWorkspaceJson<AssetRecord>(parsed, `/assets/${encodeURIComponent(query)}`)
+      : findAsset(readAssetCatalog(resolveAssetCatalogPath(parsed)), query);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
   if (!asset) {
     console.error(`Asset not found: ${query}`);
     return 1;
@@ -290,9 +316,8 @@ export async function runAssetsRevalidate(parsed: ParsedArgs): Promise<number> {
   );
 }
 
-function hasBooleanOption(parsed: ParsedArgs, name: string): boolean {
-  const value = parsed.options[name];
-  return value === true || value === "true";
+function isRemote(parsed: ParsedArgs): boolean {
+  return Boolean(optionString(parsed, "workspace")) || hasBooleanOption(parsed, "remote");
 }
 
 function readAssetUpdateInput(parsed: ParsedArgs) {

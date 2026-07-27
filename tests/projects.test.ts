@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync
 } from "node:fs";
@@ -207,6 +208,28 @@ test("freezes Forge sessions before connecting repository-synchronized Projects"
       mkdirSync(path.dirname(targetPath), { recursive: true });
       writeFileSync(targetPath, file.content);
     }
+    const arbitrarySkillPath = "packages/platform/skills/api-review";
+    const arbitrarySkillRoot = path.join(checkout, arbitrarySkillPath);
+    mkdirSync(path.join(arbitrarySkillRoot, "references"), { recursive: true });
+    writeFileSync(
+      path.join(arbitrarySkillRoot, "SKILL.md"),
+      "---\nname: api-review\ndescription: Review API changes.\n---\n"
+    );
+    writeFileSync(path.join(arbitrarySkillRoot, "references", "checklist.md"), "Review compatibility.\n");
+    const ruleSkillPath = ".harness/rules/review";
+    const ruleSkillRoot = path.join(checkout, ruleSkillPath);
+    mkdirSync(ruleSkillRoot, { recursive: true });
+    writeFileSync(
+      path.join(ruleSkillRoot, "SKILL.md"),
+      "---\nname: rule-review\ndescription: Review repository rules.\n---\n"
+    );
+    const ignoredSkillRoot = path.join(checkout, "dist", "dependency-skill");
+    mkdirSync(ignoredSkillRoot, { recursive: true });
+    writeFileSync(
+      path.join(ignoredSkillRoot, "SKILL.md"),
+      "---\nname: dependency-skill\ndescription: Ignore generated Skills.\n---\n"
+    );
+    const skillFileListPath = path.join(temporaryDirectory, "harhub-skill-files.txt");
 
     const collector = spawnSync(
       process.execPath,
@@ -219,16 +242,45 @@ test("freezes Forge sessions before connecting repository-synchronized Projects"
           HARHUB_REPOSITORY: "RockChinQ/release-control",
           HARHUB_COMMIT_SHA: "a".repeat(40),
           HARHUB_REF: "main",
-          HARHUB_RUN_ID: "12345"
+          HARHUB_RUN_ID: "12345",
+          HARHUB_SKILL_FILES: skillFileListPath
         }
       }
     );
     assert.equal(collector.status, 0, collector.stderr);
-    const payload = JSON.parse(collector.stdout) as ProjectSyncRequest;
-    const collectedSkill = payload.bindings.find((item) => item.kind === "skill");
+    const collectedPayload = JSON.parse(collector.stdout) as ProjectSyncRequest;
+    const collectedSkill = collectedPayload.bindings.find(
+      (item) => item.kind === "skill" && item.path === ".harness/skills/release-notes"
+    );
     assert.equal(collectedSkill?.digest, skillDigest);
     assert.equal(collectedSkill?.digestAlgorithm, SKILL_FILES_CHECKSUM_ALGORITHM);
-    assert.ok(payload.bindings.some((item) => item.kind === "rule"));
+    assert.ok(collectedPayload.bindings.some((item) => item.kind === "rule"));
+    assert.equal(
+      collectedPayload.bindings.find((item) => item.path === arbitrarySkillPath)?.name,
+      "api-review"
+    );
+    assert.equal(
+      collectedPayload.bindings.find((item) => item.path === ruleSkillPath)?.kind,
+      "skill"
+    );
+    assert.equal(
+      collectedPayload.bindings.some((item) => item.kind === "rule" && item.path.startsWith(`${ruleSkillPath}/`)),
+      false
+    );
+    assert.equal(collectedPayload.bindings.some((item) => item.path.startsWith("dist/")), false);
+    assert.deepEqual(readFileSync(skillFileListPath, "utf8").trim().split("\n"), [
+      ".harness/rules/review/SKILL.md",
+      ".harness/skills/release-notes/SKILL.md",
+      ".harness/skills/release-notes/scripts/helper.js",
+      "packages/platform/skills/api-review/SKILL.md",
+      "packages/platform/skills/api-review/references/checklist.md"
+    ]);
+    const payload: ProjectSyncRequest = {
+      ...collectedPayload,
+      bindings: collectedPayload.bindings.filter((binding) =>
+        binding.path !== arbitrarySkillPath && binding.path !== ruleSkillPath
+      )
+    };
     const oldCollectorPayload: ProjectSyncRequest = {
       ...payload,
       bindings: payload.bindings.map((binding) => binding.kind === "skill"
@@ -294,10 +346,30 @@ test("freezes Forge sessions before connecting repository-synchronized Projects"
         Authorization: "Bearer wrong-token",
         "Content-Type": "application/json"
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(collectedPayload)
     });
     assert.equal(rejectedSync.status, 401);
     assertPrivateNoStore(rejectedSync);
+
+    const rejectedRootSync = await fetch(`${baseUrl}/api/projects/${frozen.project.id}/sync`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer wrong-token",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        ...collectedPayload,
+        bindings: [{
+          kind: "skill",
+          name: "Repository root",
+          path: ".",
+          digest: "d".repeat(64),
+          digestAlgorithm: SKILL_FILES_CHECKSUM_ALGORITHM
+        }]
+      })
+    });
+    assert.equal(rejectedRootSync.status, 401);
+    assertPrivateNoStore(rejectedRootSync);
 
     const skillArchive = new JSZip();
     for (const file of repositorySkillFiles) {
@@ -320,7 +392,7 @@ test("freezes Forge sessions before connecting repository-synchronized Projects"
       },
       body: syncBody
     });
-    assert.equal(syncResponse.status, 200);
+    assert.equal(syncResponse.status, 200, await syncResponse.clone().text());
     assertPrivateNoStore(syncResponse);
     const firstSync = await syncResponse.json() as {
       revision: number;
@@ -422,7 +494,9 @@ function assertFrameworkIntegration(template: HarnessTemplateResponse): void {
   const workflow = fileContent(template, ".github/workflows/harhub-sync.yml");
   assert.match(workflow, /actions\/checkout@v6/);
   assert.match(workflow, /HARHUB_PROJECT_TOKEN/);
-  assert.match(workflow, /\.harness\/skills\/\*\*/);
+  assert.match(workflow, /HARHUB_SKILL_FILES/);
+  assert.match(workflow, /harhub-skill-files\.txt/);
+  assert.match(workflow, /zip -q .* -@/);
   assert.match(workflow, /harhub-skills\.zip/);
   assert.match(workflow, /manifest=</);
   assert.match(workflow, /skills=@/);

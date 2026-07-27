@@ -1,6 +1,6 @@
 # 需求
 
-> 状态说明：本章描述长期产品需求，不代表所有能力都已实现。当前 beta 只管理 Agent Skills；已实现范围和近期缺口以 [SaaS MVP](./07-saas-mvp.md) 与 [MVP 指标与 TODO](./09-mvp-todo.md) 为准。
+> 状态说明：本章描述长期产品需求，不代表所有能力都已实现。当前 Library 只管理 Agent Skills；Projects 已能只读盘点 repository Skills、MCP 配置、rules 和 agent instructions，并对 Skill forks 提供 diff 与人工回流。已实现范围和近期缺口以 [SaaS MVP](./07-saas-mvp.md) 与 [MVP 指标与 TODO](./09-mvp-todo.md) 为准。
 
 ## 目标
 

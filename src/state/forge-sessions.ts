@@ -297,6 +297,7 @@ async function beginForgeSessionOperationImpl(
 
   if (answers?.length) {
     const expectedQuestions = currentForgeQuestions(current.followUp);
+    const questionTrace = currentForgeQuestionTrace(current.followUp);
     const submitted = new Map<string, HarnessInterviewAnswer>();
     for (const answer of answers) {
       const question = answer.question.trim();
@@ -304,9 +305,13 @@ async function beginForgeSessionOperationImpl(
       if (!expectedQuestions.includes(question)) {
         throw new Error("Forge answer does not match the current session questions.");
       }
+      const trace = questionTrace.get(question);
       submitted.set(question, {
         question,
-        answer: answer.answer.trim()
+        answer: answer.answer.trim(),
+        ...(trace?.lens ? { lens: trace.lens } : {}),
+        ...(trace?.gap ? { gap: trace.gap } : {}),
+        ...(trace?.intent ? { intent: trace.intent } : {})
       });
     }
     if (expectedQuestions.some((question) => !submitted.has(question))) {
@@ -366,6 +371,22 @@ function currentForgeQuestions(followUp: ForgeSessionDetail["followUp"]): string
   if (questions.length > 0) return Array.from(new Set(questions));
   const legacyQuestion = followUp.question?.trim();
   return legacyQuestion ? [legacyQuestion] : [];
+}
+
+function currentForgeQuestionTrace(
+  followUp: ForgeSessionDetail["followUp"]
+): Map<string, Pick<HarnessInterviewAnswer, "lens" | "gap" | "intent">> {
+  const result = new Map<string, Pick<HarnessInterviewAnswer, "lens" | "gap" | "intent">>();
+  for (const item of followUp?.questions ?? []) {
+    const question = item.question.trim();
+    if (!question) continue;
+    result.set(question, {
+      ...(item.lens ? { lens: item.lens } : {}),
+      ...(item.gap ? { gap: item.gap } : {}),
+      ...(item.intent ? { intent: item.intent } : {})
+    });
+  }
+  return result;
 }
 
 async function recordForgeSessionAttemptImpl(

@@ -24,7 +24,10 @@ export default defineConfig({
         items: [
           { text: "Getting Started", link: "/guide/getting-started" },
           { text: "Agent Skills", link: "/guide/agent-skills" },
+          { text: "Forge", link: "/guide/forge" },
+          { text: "Projects", link: "/guide/projects" },
           { text: "CLI", link: "/guide/cli" },
+          { text: "Agent Operations MCP", link: "/guide/mcp" },
           { text: "GitHub Integration", link: "/guide/github-integration" },
           { text: "Deployment", link: "/guide/deployment" }
         ]

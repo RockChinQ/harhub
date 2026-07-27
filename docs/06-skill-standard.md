@@ -42,12 +42,14 @@ Harhub 按 agentskills.io spec 执行：
 
 ## Harhub Runtime State
 
-当前 MVP 不维护 Harhub 自定义 catalog 字段。Harhub 只围绕标准 Skill 保存运行时状态：
+Harhub 不把产品元数据写进 `SKILL.md`。它围绕标准 Skill 单独保存运行时状态：
 
 - 从标准 frontmatter 提取的 name 和 description 等展示信息。
 - validation status 和 validation issues。
-- object storage reference。
+- 当前版本号、checksum、创建时间和 retained object storage reference。
+- 最近五个不可变版本的下载与回滚记录。
+- workspace share、audit event，以及 Project fork 的来源和差异状态。
 
-文件树和内容 preview 在请求时从独立 S3 文件 prefix 中生成，不作为新的 Skill package 数据写回。标准 zip 仅在下载和 discovery 时动态生成。Uploaded workspace Skills 不支持原地 patch；更新源 Skill 后应重新导入。
+文件树和内容 preview 在请求时从独立 S3 文件 prefix 中生成，不作为新的 Skill package 数据写回。标准 zip 仅在下载和 discovery 时动态生成。Uploaded workspace Skills 不支持覆盖旧对象；Web/CLI 更新会校验完整包并创建新版本。`harhub skills edit` 可以修改一个文件后上传新版本，旧版在保留窗口内仍可下载或恢复。
 
 后续如果需要更多 catalog 或治理能力，必须作为 Harhub 的产品数据单独设计，不能修改或包装 Agent Skills 的格式。

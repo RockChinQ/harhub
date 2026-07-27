@@ -18,6 +18,7 @@ import type {
   AssetContentPreview,
   AssetShareResponse
 } from "../../../shared/types";
+import { useDocumentTitle } from "../app/document-title";
 import { healthBadgeClass } from "../app/format";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -45,6 +46,13 @@ export function PublicShareView({ shareToken }: { shareToken: string }) {
   const [preview, setPreview] = useState<AssetContentPreview>();
   const [previewError, setPreviewError] = useState<string>();
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  useDocumentTitle(
+    share?.token === shareToken && share.asset.displayName
+      ? `${share.asset.displayName} · Shared Skill`
+      : error
+        ? "Share unavailable"
+        : "Shared Skill"
+  );
 
   useEffect(() => {
     let active = true;
@@ -235,8 +243,8 @@ export function PublicShareView({ shareToken }: { shareToken: string }) {
             </div>
           ) : null}
           <div className="grid min-h-[520px] min-w-0 md:grid-cols-[260px_minmax(0,1fr)]">
-            <div className="min-h-0 min-w-0 border-b md:border-b-0 md:border-r">
-              <div className="max-h-72 overflow-auto p-2 md:max-h-[520px]">
+            <div className="flex min-h-0 min-w-0 flex-col border-b md:border-b-0 md:border-r">
+              <div className="max-h-72 min-h-0 flex-1 overflow-auto p-2 md:max-h-none">
                 {preview?.tree.length ? (
                   <FileTree
                     nodes={preview.tree}

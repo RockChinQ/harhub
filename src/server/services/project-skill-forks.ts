@@ -7,6 +7,10 @@ import {
   upsertAsset
 } from "../../features/assets/index.js";
 import {
+  discoverRepositorySkillPackages,
+  isRepositoryPathWithinRoot
+} from "../../features/repository-inventory/index.js";
+import {
   canonicalSkillFilesChecksumForStorage,
   discoverSkillsInArchive,
   analyzeStoredSkillFiles,
@@ -42,6 +46,7 @@ import {
   uploadSkillFiles
 } from "../../storage/index.js";
 import { loadStoredSkill } from "./skill-packages.js";
+import { resolveExplicitLibraryAsset } from "./project-repository-ownership.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
 
 const MAX_DIFF_PREVIEW_BYTES = 256 * 1024;
@@ -62,16 +67,10 @@ export async function syncProjectRepositoryFiles(input: {
     input.projectId,
     input.repository
   );
-  const candidates = input.files
-    .filter((file) => file.path.endsWith("/SKILL.md"))
+  const candidates = discoverRepositorySkillPackages(input.files)
     .map((metadata) => {
-      const rootPath = metadata.path.slice(0, -"/SKILL.md".length);
-      const skill = analyzeStoredSkillFiles(
-        input.files
-          .filter((file) => file.path.startsWith(`${rootPath}/`))
-          .map((file) => ({ path: file.path.slice(rootPath.length + 1), content: file.content }))
-      );
-      return { ...skill, rootPath, skillPath: metadata.path };
+      const skill = analyzeStoredSkillFiles(metadata.files);
+      return { ...skill, rootPath: metadata.rootPath, skillPath: metadata.skillPath };
     });
   const request: ProjectSyncRequest = {
     schemaVersion: 1,
@@ -87,7 +86,9 @@ export async function syncProjectRepositoryFiles(input: {
         digestAlgorithm: SKILL_FILES_CHECKSUM_ALGORITHM
       })),
       ...input.files
-        .filter((file) => !candidates.some((candidate) => file.path.startsWith(`${candidate.rootPath}/`)))
+        .filter((file) => !candidates.some((candidate) =>
+          isRepositoryPathWithinRoot(file.path, candidate.rootPath)
+        ))
         .map((file) => ({
           kind: bindingKindForRepositoryPath(file.path),
           name: repositoryBindingName(file.path),
@@ -98,9 +99,6 @@ export async function syncProjectRepositoryFiles(input: {
   };
   const catalog = await loadOrCreateWorkspaceAssetCatalog(workspaceForSync(input.workspaceId));
   const candidatesByPath = validateSkillBundle(request, candidates, true);
-  const bindingsByPath = new Map(
-    authorization.bindings.filter((binding) => binding.kind === "skill").map((binding) => [binding.path, binding])
-  );
   const existingForks = new Map(authorization.skillForks.map((fork) => [fork.path, fork]));
   const newStorage: StoredObject[] = [];
   const forkUpdates: ProjectSkillForkUpdate[] = [];
@@ -108,14 +106,12 @@ export async function syncProjectRepositoryFiles(input: {
 
   try {
     for (const observed of request.bindings.filter((binding) => binding.kind === "skill")) {
-      const existingBinding = bindingsByPath.get(observed.path);
       const candidate = candidatesByPath.get(observed.path);
       const explicitlyBound = input.baselineAssetIds?.[observed.path];
-      const baseAsset = input.repositoryOwnedPaths?.has(observed.path)
-        ? undefined
-        : explicitlyBound
-          ? catalog.assets.find((asset) => asset.id === explicitlyBound)
-          : findBaseAsset(catalog, existingBinding, candidate);
+      const baseAsset = resolveExplicitLibraryAsset(catalog, {
+        libraryAssetId: explicitlyBound,
+        repositoryOwned: input.repositoryOwnedPaths?.has(observed.path)
+      });
       const pinnedVersion = input.baselineVersions?.[observed.path];
       const baseVersion = pinnedVersion
         ? baseAsset?.versionHistory?.find((version) => version.version === pinnedVersion)

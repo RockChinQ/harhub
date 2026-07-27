@@ -1,6 +1,6 @@
 # Agent Skill 发布、分享与安装闭环
 
-> 状态更新时间：2026-07-16。`0.1.0-beta.3` 已经具备基础 share、download 和 install 路径；本章定义这条路径的产品边界、完成标准和下一阶段补齐项。
+> 状态更新时间：2026-07-27。`0.1.0-beta.5` 已经具备 share、preview、download、install、retained version download/rollback 和 owner/admin mutation RBAC；本章定义尚未完成的 release pinning、指标和 public abuse control。
 
 ## 目标
 
@@ -142,7 +142,7 @@ flowchart LR
   Author["User A: Skill author"] --> CLI["Harhub CLI validate / package / upload"]
   CLI --> Catalog["Workspace asset catalog"]
   CLI -- "--share" --> Share["Revocable share token"]
-  Catalog --> Storage["S3-compatible archive"]
+  Catalog --> Storage["Versioned S3-compatible Skill files"]
   Share --> Page["Public /s/:token page"]
   Page --> Download["Download zip"]
   Page --> Install["harhub install / npx skills add"]
@@ -226,7 +226,7 @@ DistributionEvent
 - CLI 解压时必须阻止 absolute paths、`..`、symlinks 和目标目录逃逸。
 - Harhub 不自动执行 Skill 中的 scripts。
 - Public metadata 和 download endpoints 需要 rate limiting、download size limits 和 abuse monitoring。
-- Share mutation 最终应要求 owner/admin 或独立 publisher role；当前只要求 workspace membership 的行为仍需收紧。
+- Share mutation 当前要求 workspace owner/admin；未来如引入独立 publisher role，应继续保持显式最小权限。
 
 ## 事件与指标
 
@@ -269,15 +269,16 @@ share_revoked
 - Local scan、validation、package 和 `upload --share`。
 - 已上传 Asset 的 share/unshare。
 - Revocable `/s/:token` public page。
-- Public metadata 和 zip download。
+- Public metadata、file preview 和 zip download。
 - Agent Skills discovery index 和 archive digest。
 - `harhub install` 和 `npx skills add` 安装路径。
+- 当前版加最近四个旧版的 immutable Skill packages，以及 authenticated download/rollback。
+- Share create/revoke 的 owner/admin enforcement 与 append-only audit events。
 
 仍需补齐：
 
-- Immutable `AssetRelease` 和 version history。
+- 独立于 retained asset versions 的 immutable `AssetRelease`。
 - Share-to-release pinning。
 - Distribution events 和 activation reporting。
 - Public endpoint rate limiting 与 abuse controls。
-- Share mutation 的 publisher role enforcement。
-- 可选 expiry、download limits 和审计记录。
+- 可选 expiry 和 download limits。

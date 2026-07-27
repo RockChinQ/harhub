@@ -50,7 +50,7 @@ test("imports an existing GitHub repository and refreshes it from signed push we
             size: 40,
             url: "https://example.invalid/blob"
           }, {
-            path: ".agents/skills/broken/SKILL.md",
+            path: "teams/platform/skills/broken/SKILL.md",
             mode: "100644",
             type: "blob",
             sha: "broken-skill",
