@@ -7,6 +7,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
+COPY docs-site/package.json docs-site/package-lock.json ./docs-site/
+RUN npm --prefix docs-site ci
+
 COPY . .
 RUN npm run build
 
