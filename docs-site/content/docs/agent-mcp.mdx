@@ -1,0 +1,61 @@
+---
+title: Agent 使用 MCP
+description: 配置 Harhub stdio MCP，并理解工具组、安全确认和路径约束。
+---
+
+## 基础配置
+
+全局安装 npm 包并完成一次 `harhub login` 后：
+
+```json
+{
+  "mcpServers": {
+    "harhub": {
+      "command": "harhub-mcp"
+    }
+  }
+}
+```
+
+对于自托管、容器或无交互运行环境：
+
+```json
+{
+  "mcpServers": {
+    "harhub": {
+      "command": "harhub-mcp",
+      "env": {
+        "HARHUB_API_URL": "https://harhub.example.com",
+        "HARHUB_WORKSPACE_ID": "workspace-id",
+        "HARHUB_TOKEN": "access-token",
+        "HARHUB_MCP_ALLOWED_ROOTS": "/workspace:/tmp/harhub-output"
+      }
+    }
+  }
+}
+```
+
+Windows 用 `;` 分隔 Allowed Roots，Linux/macOS 用 `:`。未设置时只允许 MCP 进程当前工作目录。
+
+## Library tools
+
+- 查询：`harhub_whoami`、`harhub_assets_list`、`harhub_asset_get`
+- 上传：`harhub_skills_upload_paths`、`harhub_asset_upload_archive`
+- 编辑与校验：`harhub_skill_edit_file`、`harhub_asset_revalidate`
+- 下载与安装：`harhub_asset_download`、`harhub_public_skill_install`
+- 分享：`harhub_asset_share`、`harhub_asset_unshare`
+- 删除：`harhub_asset_delete`
+
+## Project 与 GitHub tools
+
+使用 `harhub_projects_list`、`harhub_project_get`、`harhub_project_inventory` 和 `harhub_project_scan` 读取状态；用 `harhub_project_binding_diff` 查看 Library Skill 与仓库分叉的差异。GitHub 授权、Installation、仓库列表、导入和连接也都有对应 `harhub_github_*` tools。
+
+仓库变更先调用 `harhub_project_create_proposal`。只有用户批准后才调用 `harhub_project_open_proposal` 打开 Pull Request。
+
+## Forge tools
+
+`harhub_forge_sessions_list`、`harhub_forge_session_get`、`harhub_forge_session_create`、`harhub_forge_follow_up`、`harhub_forge_generate`、`harhub_forge_archive_download`、`harhub_forge_session_freeze` 和 `harhub_forge_session_delete` 覆盖完整生命周期。
+
+## 确认与恢复
+
+Unshare、Delete、本地安装、Project Archive、同步 Token 轮换、发布 Library、打开 PR 等操作要求 `confirm: true`。下载只有在明确传 `overwrite: true` 时才覆盖文件。Forge 生成中断后先 `get` Session，再判断是否重试。

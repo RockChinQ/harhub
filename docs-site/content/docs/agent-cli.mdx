@@ -1,0 +1,61 @@
+---
+title: Agent 使用 CLI
+description: 让 Shell Agent 或 CI 通过稳定、机器可读的命令操作 Harhub。
+---
+
+## 安装与认证
+
+```bash
+npm install -g harhub@beta
+harhub login --no-browser
+harhub whoami --json
+```
+
+托管端默认为 `https://harhub.rcpd.cc`。自托管环境对每条命令传相同的 `--url`，或配置环境变量。优先级为命令参数，其次 `HARHUB_WORKSPACE_ID` / `HARHUB_TOKEN`，最后是已保存登录。
+
+## Agent 调用约定
+
+1. 远程读取先加 `--remote --json`；
+2. 从 JSON 中保存稳定的 ID，不依赖显示名称；
+3. 写入后重新读取并核对版本、校验状态或 Proposal；
+4. 需要用户确认的命令不要擅自添加 `--yes`。
+
+## Library
+
+```bash
+harhub assets list --remote --json
+harhub assets show <id> --remote --json
+harhub skills upload ./skills --all --json
+harhub skills edit <id> --file SKILL.md --content-file ./SKILL.md --json
+harhub download <id> --version 3 --output ./skill.zip --json
+harhub assets revalidate <id> --remote --json
+harhub share <id> --json
+harhub unshare <id> --json
+```
+
+## Projects 与 GitHub
+
+```bash
+harhub projects list --json
+harhub projects show <project-id> --json
+harhub repositories status --json
+harhub repositories inventory <project-id> --json
+harhub repositories scan <project-id> --json
+harhub projects diff <project-id> <binding-id> --json
+harhub projects propose <project-id> add-library-skills --asset <asset-id> --json
+```
+
+## Forge
+
+Forge 的 `--json` 输出是 NDJSON 流：每行独立解析，不要等待单个巨大 JSON 数组。
+
+```bash
+harhub forge create "需求" --json
+harhub forge follow-up <session-id> --answers-file answers.json --json
+harhub forge generate <session-id> --json
+harhub forge show <session-id> --json
+```
+
+## 常用短参数
+
+`-w` Workspace、`-t` Token、`-u` URL、`-j` JSON、`-y` Yes、`-r` Remote、`-a` All、`-o` Output、`-v` Version。

@@ -1,0 +1,8 @@
+@import "tailwindcss";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+
+:root { --harhub-blue: #2563eb; }
+html { scrollbar-gutter: stable; }
+html > body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scroll-bar-size: 0px !important; }
+.harhub-mark { border-radius: 12px; box-shadow: 0 8px 30px color-mix(in oklab, var(--harhub-blue) 25%, transparent); }

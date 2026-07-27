@@ -1,0 +1,27 @@
+---
+title: Harhub 文档
+description: 让团队和 Agent 共同管理、复用并交付 Agent Skills。
+full: true
+---
+
+import { Cards, Card } from "fumadocs-ui/components/card";
+
+# 团队 Agent Harness 的控制平面
+
+Harhub 把散落在个人电脑、代码仓库和聊天记录里的 Agent 能力，变成团队可治理、可复用、可交付的资产。当前 Library 以标准 **Agent Skills** 为核心；Project 还能盘点仓库中的 MCP 配置、Rules 与 Agent Instructions。
+
+<Cards>
+  <Card title="第一次使用" description="从登录、上传 Skill 到连接 GitHub 项目。" href="/workflow" />
+  <Card title="让 Agent 操作 Harhub" description="选择 CLI、MCP 或配套 Skills。" href="/agent" />
+  <Card title="打开 Harhub" description="进入托管服务。" href="https://harhub.rcpd.cc" external />
+  <Card title="查看源代码" description="Apache-2.0 开源。" href="https://github.com/RockChinQ/harhub" external />
+</Cards>
+
+## 你可以用 Harhub 做什么
+
+- **Library**：上传、校验、预览、搜索、版本化、下载和分享标准 Agent Skills。
+- **Forge**：从需求访谈生成一个可下载、可继续维护的项目 Harness。
+- **Projects**：连接现有 GitHub 仓库，盘点 Skills、MCP、Rules 和 Instructions，查看漂移并通过 PR 交付变更。
+- **Agent Operations**：让 Agent 通过结构化 MCP tools 或可脚本化 CLI 完成同样的工作。
+
+> Harhub 不创造私有 Skill 格式。Skill 仍是包含 `SKILL.md` 的标准目录或 zip 包，遵循 [Agent Skills 规范](https://agentskills.io/specification.md)。

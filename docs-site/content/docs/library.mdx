@@ -1,0 +1,41 @@
+---
+title: Library 与 Skills
+description: 上传、版本化、下载和分享团队的标准 Agent Skills。
+---
+
+## Skill 包要求
+
+一个 Skill 是包含 `SKILL.md` 的目录或 zip。`SKILL.md` 至少包含标准 frontmatter：
+
+```md
+---
+name: code-review
+description: Review a change for correctness, security, and maintainability.
+---
+```
+
+Harhub 遵循 agentskills.io 的字段与约束，不定义额外必需的私有格式。
+
+## 上传与扫描
+
+- **目录扫描**：CLI 递归发现所有 `SKILL.md`。
+- **任意 zip 布局**：Web 和 `assets upload` 可扫描含多个嵌套 Skill 的仓库导出包。
+- **独立存储**：每个选中的 Skill 都拆分到自己的对象存储前缀，原始 zip 被丢弃。
+
+## 版本规则
+
+上传和编辑都会创建不可变版本。Harhub 保留最近五个版本，并允许下载或恢复历史版本。需要改一个文件时，可使用：
+
+```bash
+harhub skills edit <skill> --file SKILL.md --content-file ./SKILL.md
+harhub download <skill> --version 2 --output ./skill-v2.zip
+```
+
+## 分享规则
+
+分享页只公开该 Skill 的公开元数据、文件预览和可验证下载。撤销分享后旧 URL 失效：
+
+```bash
+harhub share <skill>
+harhub unshare <skill>
+```

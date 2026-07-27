@@ -1,0 +1,24 @@
+---
+title: Forge
+description: 通过持久化访谈生成项目 Harness，并下载或固化为 Project。
+---
+
+Forge 把一个初始需求变成结构化、可复用的项目 Harness。会话存储在服务器端，可以跨 Agent 回合恢复。
+
+## 推荐步骤
+
+1. 创建会话并提供目标、用户和约束；
+2. 回答动态追问，直到信息足够生成；
+3. 生成完整 Harness；
+4. 下载归档，或 Freeze 成为长期 Project。
+
+```bash
+harhub forge create "为 TypeScript API 建立安全审查 Agent Harness"
+harhub forge show <session-id>
+harhub forge follow-up <session-id> --answer '问题=答案'
+harhub forge generate <session-id>
+harhub forge download <session-id> --output ./harness.zip
+harhub forge freeze <session-id> my-project
+```
+
+生成是流式过程。发生超时或中断时，先重新读取 Session；不要仅凭对话记忆重建状态，也不要盲目创建重复会话。

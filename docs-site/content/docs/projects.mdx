@@ -1,0 +1,44 @@
+---
+title: Projects 与 GitHub
+description: 盘点仓库 Harness、管理来源关系并通过 Pull Request 交付。
+---
+
+## 导入仓库
+
+Projects 通过 Harhub GitHub App 访问用户明确授权的安装和仓库。Web 端在 Projects 选择“连接 GitHub”；CLI 可先查看授权状态：
+
+```bash
+harhub repositories status
+harhub repositories authorize --open
+harhub repositories installations
+harhub repositories list <installation-id>
+harhub repositories import <installation-id> <repository-id>
+```
+
+## Inventory
+
+扫描后 Harhub 识别：
+
+- 标准 Agent Skills；
+- MCP JSON 与 Harhub MCP 配置；
+- Cursor / Windsurf Rules；
+- `AGENTS.md`、`CLAUDE.md`、Copilot Instructions 等 Agent 指令。
+
+```bash
+harhub projects scan <project-id>
+harhub projects inventory <project-id>
+```
+
+Inventory 会区分 Library 同步、Library 已修改、仓库自有和缺失等关系。只有在来源明确时才修改 Ownership Policy。
+
+## 通过 Proposal 交付
+
+仓库改动先生成可审查 Proposal：
+
+```bash
+harhub projects propose <project-id> bootstrap
+harhub projects propose <project-id> add-library-skills --asset <asset-id>
+harhub projects open <project-id> <proposal-id>
+```
+
+打开 Proposal 会创建 Pull Request；这是外部写操作，应在用户明确批准后执行。
