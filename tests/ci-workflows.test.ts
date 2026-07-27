@@ -17,7 +17,7 @@ test("runs the full quality gate before building a deployable image", () => {
   const qualityCommands = ci.jobs?.quality?.steps
     ?.flatMap((step) => step.run ? [step.run] : []) ?? [];
   assert.deepEqual(qualityCommands, [
-    "npm ci",
+    "npm ci\nnpm --prefix docs-site ci\n",
     "npm run check",
     "npm test",
     "npm run build"

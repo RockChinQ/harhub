@@ -1,0 +1,5 @@
+{
+  "title": "Harhub 文档",
+  "root": true,
+  "pages": ["index", "introduction", "workflow", "library", "projects", "forge", "---Agent 使用---", "agent", "agent-cli", "agent-mcp", "agent-skills", "reference"]
+}

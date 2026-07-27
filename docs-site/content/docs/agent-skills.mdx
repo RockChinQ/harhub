@@ -1,0 +1,38 @@
+---
+title: Agent 使用 Harhub Skills
+description: 安装三个官方操作 Skill，让 Agent 按推荐顺序组合 MCP tools。
+---
+
+Harhub 仓库提供三个标准 Agent Skills：
+
+| Skill | 用途 |
+| --- | --- |
+| `harhub-library-operations` | Library 的查询、上传、编辑、版本、下载、分享和删除。 |
+| `harhub-project-operations` | Project、GitHub、Inventory、Policy、Diff 与 PR Proposal。 |
+| `harhub-forge-operations` | Forge 访谈、生成、恢复、下载和 Freeze。 |
+
+## 安装
+
+```bash
+npx skills add RockChinQ/harhub   --skill harhub-library-operations   harhub-project-operations   harhub-forge-operations
+```
+
+也可以只安装当前 Agent 需要的 Skill。安装后仍需配置 `harhub-mcp`；这些 Skills 提供操作知识，MCP 才提供真实工具。
+
+## Agent 应遵循的工作流
+
+### Library
+
+`whoami` → list → get → mutate → re-read/revalidate → 报告 Asset ID、版本和校验状态。
+
+### Project
+
+list/get → inventory → 必要时 diff → proposal → 用户批准 → open PR。
+
+### Forge
+
+list/get 恢复旧 Session → follow-up → generate → 中断时 get → download 或 freeze。
+
+## 为什么不只给 Agent 一份 API 文档
+
+Skills 把高频但容易出错的操作经验固化下来：稳定 ID、先读后写、高影响确认、不可变版本、Forge 可重入恢复。它们本身仍采用开放 Agent Skills 格式，可以由支持该标准的 Agent 安装和读取。

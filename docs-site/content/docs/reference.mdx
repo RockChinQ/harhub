@@ -1,0 +1,38 @@
+---
+title: 环境变量与自托管入口
+description: CLI/MCP 配置、开发端口和自托管构建参考。
+---
+
+## CLI 与 MCP 环境变量
+
+| 变量 | 作用 |
+| --- | --- |
+| `HARHUB_API_URL` | MCP 使用的 Harhub 服务地址。CLI 使用 `--url` 选择服务器。 |
+| `HARHUB_WORKSPACE_ID` | 无交互环境的默认 Workspace。 |
+| `HARHUB_TOKEN` | 无交互环境 Access Token。不要写入仓库或 Prompt。 |
+| `HARHUB_CONFIG` | 覆盖 CLI 配置文件路径。 |
+| `HARHUB_MCP_ALLOWED_ROOTS` | MCP 允许读写的本地根目录列表。 |
+
+CLI 会自动遵守大小写形式的 `HTTP_PROXY`、`HTTPS_PROXY` 与 `NO_PROXY`。
+
+## 本地开发
+
+```bash
+npm install
+npm run dev
+# 需要真实上传、预览和删除时
+npm run dev:cloud
+```
+
+默认 Web 为 `127.0.0.1:5176`，API 为 `127.0.0.1:3310`，Fumadocs 开发服务器为 `127.0.0.1:5177`。
+
+## 生产构建
+
+```bash
+npm run check
+npm test
+npm run build
+npm run start
+```
+
+生产 Express 在 API 端口同时提供 App、API 和 `/docs/` 静态文档；官方独立文档域名为 [docs.harhub.rcpd.cc](https://docs.harhub.rcpd.cc)。

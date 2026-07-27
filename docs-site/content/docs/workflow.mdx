@@ -1,0 +1,56 @@
+---
+title: 使用流程
+description: 从团队资产入库，到项目连接和 Agent 自动化的完整路径。
+---
+
+## 1. 登录并选择 Workspace
+
+打开 [Harhub](https://harhub.rcpd.cc)，使用 GitHub 或邮箱验证码登录。第一次进入后创建或加入 Workspace。CLI 用户运行：
+
+```bash
+npm install -g harhub@beta
+harhub login
+harhub whoami
+```
+
+`harhub login` 使用 OAuth 2.0 Device Authorization：终端显示短码，浏览器确认后把服务器、Token 和默认 Workspace 保存到本机配置。
+
+## 2. 把 Skill 放入 Library
+
+Web 端在 Library 选择上传 zip。一个 zip 可以包含一个或多个嵌套 Skill，预览扫描结果后再选择导入。
+
+CLI 可以直接扫描仓库：
+
+```bash
+harhub skills validate ./skills
+harhub skills upload ./skills
+# CI / 非交互场景
+harhub skills upload ./skills --all --json
+```
+
+导入后检查校验状态、标准元数据和文件预览。修改 Skill 会创建新的不可变版本，不会原地覆盖历史。
+
+## 3. 分享或安装
+
+```bash
+harhub share <asset-id|name|slug>
+harhub install https://harhub.rcpd.cc/s/<share-token> --agent codex -g -y
+```
+
+公开分享链接可随时撤销。也可使用开放 Agent Skills CLI：
+
+```bash
+npx skills add https://harhub.rcpd.cc/s/<share-token>
+```
+
+## 4. 连接真实项目
+
+在 Projects 中通过 GitHub App 导入或连接仓库，然后执行扫描。Harhub 会盘点 Skills、MCP 配置、Rules 和 Agent Instructions，并标记 Library 同步、仓库自有、修改或缺失状态。
+
+需要改变仓库时，先创建 Proposal，审核差异后再打开 Pull Request。Harhub 不会把尚未确认的提案直接写入默认分支。
+
+## 5. 交给 Agent
+
+- 只需少量命令或 CI：使用 [CLI](agent-cli.md)。
+- 需要结构化工具调用和安全确认：使用 [MCP](agent-mcp.md)。
+- 希望 Agent 遵循 Harhub 的推荐步骤：再安装 [Harhub Skills](agent-skills.md)。

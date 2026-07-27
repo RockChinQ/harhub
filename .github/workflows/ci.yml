@@ -24,9 +24,14 @@ jobs:
         with:
           node-version: "24"
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            docs-site/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          npm ci
+          npm --prefix docs-site ci
 
       - name: Typecheck
         run: npm run check
