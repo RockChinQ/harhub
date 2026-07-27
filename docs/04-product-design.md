@@ -1,6 +1,6 @@
 # 产品设计
 
-> 状态说明：本章主要描述目标产品形态。当前 beta 已实现 Skills catalog、上传、校验、预览、workspace 和认证；Package releases、Bundles、Assignments、Findings、仓库接入和治理工作流仍在规划中。
+> 状态说明：本章主要描述目标产品形态。当前 beta 已实现 Skills Library、五版保留与回滚、Forge、Projects、GitHub App repository inventory、Skill fork diff/人工回流和 PR delivery。通用 Package releases、Bundles、Assignments、Findings、非 Skill Library 生命周期和完整治理工作流仍在规划中。
 
 ## 产品形态
 
@@ -76,7 +76,7 @@ Catalog 列出 harness packages，并展示：
 3. Harhub 校验 zip、提取选中的 Skill，逐个存入独立对象目录，写入 workspace catalog，并创建 revocable public share；源 zip 不保留。
 4. CLI 返回 `/s/:token`；Author 将链接发给协作者。
 5. Collaborator 无需登录即可查看 validation 状态、下载动态生成的标准 zip，或复制 `harhub install` / `npx skills add`。
-6. Collaborator 将 Skill 安装到选定 agent；Harhub 记录 distribution outcome。
+6. Collaborator 将 Skill 安装到选定 agent；distribution outcome 的产品事件仍待补齐。
 7. Author 可以撤销 share，停止 public metadata、discovery 和 download。
 
 Upload 与 share 必须分开：普通 upload 保持 private，只有 `--share` 或显式 Share action 才对外分发。Share 最终应固定到不可变 release，而不是跟随可变 asset record。
@@ -85,12 +85,12 @@ Upload 与 share 必须分开：普通 upload 保持 private，只有 `--share` 
 
 ### 1. 发现已有 Harness
 
-1. Platform owner 连接 Git repositories，或让 Harhub 指向一组 repositories。
-2. Harhub 扫描 Agent Skills 和已知 harness files。
-3. Harhub 将发现的 assets 分组为候选集合。
-4. Owners 评审候选项，补充 metadata，并发布到 catalog。
+1. Workspace owner 通过 GitHub App 选择并导入 repository。
+2. Harhub 扫描 Agent Skills 和已知 harness files，保留 branch、commit、path 和 digest。
+3. Harhub 将发现项按 Skill、MCP、rule 和 instruction 分类，并保存不可变 inventory snapshot。
+4. Owner 为每个 artifact 选择 Library-owned、repository-owned 或 ignored；repository Skill 作为 Project fork 跟踪。
 
-结果：组织获得 inventory，而不需要立即迁移。
+结果：Project 获得持续刷新的 repository inventory，而不需要立即迁移源文件。跨 Project 的组织级 inventory 仍是后续能力。
 
 ### 2. 发布 Harness Package
 
@@ -144,7 +144,7 @@ Upload 与 share 必须分开：普通 upload 保持 private，只有 `--share` 
 
 ## Agent Skills 结构
 
-Harhub 当前只管理 agentskills.io 定义的 Skill 目录或 zip：
+Harhub Library 当前只管理 agentskills.io 定义的 Skill 目录或 zip：
 
 ```text
 skill-name/
@@ -154,7 +154,7 @@ skill-name/
   assets/
 ```
 
-Harhub 当前不定义任何新的 Skill 文件格式。仓库中的其他 harness files 可以作为未来资产类型被发现和治理，但不能被包装成新的 Skill 标准。
+Harhub 当前不定义任何新的 Skill 文件格式。Project repository scanner 已能发现 MCP 配置、rules 和 agent instructions，但它们仍是 repository-owned inventory，不会被包装成 Skill，也没有完整的 Library 发布生命周期。
 
 ## 组合模型
 

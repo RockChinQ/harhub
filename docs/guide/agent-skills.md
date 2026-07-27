@@ -70,14 +70,19 @@ Typical flow:
 1. Scan or upload a Skill package.
 2. Validate the package.
 3. Preview metadata and files.
-4. Keep the uploaded Skill in a workspace catalog.
-5. Explicitly create a revocable public share.
-6. Send the share page to a collaborator.
-7. Let the collaborator download the zip or install it with one command.
+4. Keep immutable versions in the workspace Library; the current version plus
+   four previous versions remain available for download or rollback.
+5. Edit a file through the CLI or upload a replacement package to create the
+   next version.
+6. Explicitly create a revocable public share.
+7. Send the share page to a collaborator.
+8. Let the collaborator download the zip or install it with one command.
 
 The current MVP does not yet implement a draft/reviewed/approved lifecycle.
-Uploaded workspace packages are immutable: update the source directory and
-upload a new zip when the Skill changes.
+Individual uploaded versions are immutable. Updating a Skill always creates a
+new version; retained earlier versions can be downloaded or restored. Public
+shares still resolve the logical asset's current version rather than pinning an
+immutable release.
 
 See [Agent Skill Sharing And Installation Loop](../10-sharing-and-installation-loop.md)
 for the product decisions and remaining release-pinning work.

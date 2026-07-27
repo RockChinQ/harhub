@@ -1,7 +1,10 @@
 # Getting Started
 
-Harhub is a control plane for team-owned agent assets. The current product
-focuses on Agent Skills: zip packages that contain a standard `SKILL.md`.
+Harhub is a control plane for team-owned agent assets. The workspace Library
+manages standard Agent Skills, Forge composes project harnesses from them, and
+Projects connect those harnesses to existing GitHub repositories. Project
+inventory can also identify repository-owned MCP configuration, rules, and agent
+instructions without turning them into a Harhub-specific format.
 
 ## Hosted Demo
 
@@ -80,5 +83,17 @@ Before shipping changes, run:
 
 ```bash
 npm run check
+npm test
 npm run build
 ```
+
+## Next Steps
+
+- Use **Library → Skills** to upload, validate, version, preview, share, or
+  restore Agent Skills.
+- Configure **Workspace Settings → Forge AI**, test the provider, then create a
+  persistent Forge session.
+- Freeze a generated framework as a Project or use **Import repository** to
+  connect an existing GitHub repository.
+- Run `harhub login` for CLI access or start `harhub-mcp` for agent-operated
+  Library, Project, GitHub, and Forge workflows.

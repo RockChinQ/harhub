@@ -20,6 +20,64 @@ export interface WorkspaceRequestOptions {
   headers?: Record<string, string>;
 }
 
+export class HarhubWorkspaceClient {
+  constructor(readonly context: RemoteContext) {}
+
+  async response(
+    requestPath: string,
+    options: WorkspaceRequestOptions = {}
+  ): Promise<Response> {
+    const hasBody = options.body !== undefined;
+    return fetchHarhub(workspaceApiUrl(this.context, requestPath), {
+      method: options.method ?? "GET",
+      headers: {
+        Authorization: `Bearer ${this.context.token}`,
+        ...(hasBody ? { "Content-Type": "application/json" } : {}),
+        ...options.headers
+      },
+      ...(hasBody ? { body: JSON.stringify(options.body) } : {})
+    });
+  }
+
+  async json<T = unknown>(
+    requestPath: string,
+    options: WorkspaceRequestOptions = {}
+  ): Promise<T> {
+    const response = await this.response(requestPath, options);
+    const data = response.status === 204
+      ? undefined
+      : await response.json().catch(() => undefined);
+    if (!response.ok) {
+      throw new Error(
+        isRecord(data) && typeof data.error === "string"
+          ? data.error
+          : `Harhub request failed with ${response.status}.`
+      );
+    }
+    return data as T;
+  }
+
+  async download(
+    requestPath: string,
+    fallbackName: string,
+    options: WorkspaceRequestOptions = {}
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    const response = await this.response(requestPath, options);
+    if (!response.ok) {
+      const data = await response.json().catch(() => undefined);
+      throw new Error(
+        isRecord(data) && typeof data.error === "string"
+          ? data.error
+          : `Download failed with ${response.status}.`
+      );
+    }
+    return {
+      buffer: Buffer.from(await response.arrayBuffer()),
+      fileName: contentDispositionFileName(response.headers.get("content-disposition"), fallbackName)
+    };
+  }
+}
+
 export function resolveRemoteContext(parsed: ParsedArgs): RemoteContext {
   const apiUrl = resolveHarhubApiUrl(parsed);
   const workspaceId = resolveHarhubWorkspaceId(parsed);
@@ -43,18 +101,7 @@ export async function requestWorkspaceResponse(
   requestPath: string,
   options: WorkspaceRequestOptions = {}
 ): Promise<Response> {
-  const context = resolveRemoteContext(parsed);
-  const hasBody = options.body !== undefined;
-  const response = await fetchHarhub(workspaceApiUrl(context, requestPath), {
-    method: options.method ?? "GET",
-    headers: {
-      Authorization: `Bearer ${context.token}`,
-      ...(hasBody ? { "Content-Type": "application/json" } : {}),
-      ...options.headers
-    },
-    ...(hasBody ? { body: JSON.stringify(options.body) } : {})
-  });
-  return response;
+  return new HarhubWorkspaceClient(resolveRemoteContext(parsed)).response(requestPath, options);
 }
 
 export async function requestWorkspaceJson<T = unknown>(
@@ -62,18 +109,7 @@ export async function requestWorkspaceJson<T = unknown>(
   requestPath: string,
   options: WorkspaceRequestOptions = {}
 ): Promise<T> {
-  const response = await requestWorkspaceResponse(parsed, requestPath, options);
-  const data = response.status === 204
-    ? undefined
-    : await response.json().catch(() => undefined);
-  if (!response.ok) {
-    throw new Error(
-      isRecord(data) && typeof data.error === "string"
-        ? data.error
-        : `Harhub request failed with ${response.status}.`
-    );
-  }
-  return data as T;
+  return new HarhubWorkspaceClient(resolveRemoteContext(parsed)).json<T>(requestPath, options);
 }
 
 export async function downloadWorkspaceFile(
@@ -82,19 +118,11 @@ export async function downloadWorkspaceFile(
   fallbackName: string,
   options: WorkspaceRequestOptions = {}
 ): Promise<{ buffer: Buffer; fileName: string }> {
-  const response = await requestWorkspaceResponse(parsed, requestPath, options);
-  if (!response.ok) {
-    const data = await response.json().catch(() => undefined);
-    throw new Error(
-      isRecord(data) && typeof data.error === "string"
-        ? data.error
-        : `Download failed with ${response.status}.`
-    );
-  }
-  return {
-    buffer: Buffer.from(await response.arrayBuffer()),
-    fileName: contentDispositionFileName(response.headers.get("content-disposition"), fallbackName)
-  };
+  return new HarhubWorkspaceClient(resolveRemoteContext(parsed)).download(
+    requestPath,
+    fallbackName,
+    options
+  );
 }
 
 export function contentDispositionFileName(value: string | null, fallbackName: string): string {

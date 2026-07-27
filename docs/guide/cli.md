@@ -57,8 +57,9 @@ On Linux and macOS, the config is stored under
 `$XDG_CONFIG_HOME/harhub/config.json` or `~/.config/harhub/config.json` with
 user-only permissions. Set `HARHUB_CONFIG` to override that path. Command-line
 token and workspace flags take precedence over `HARHUB_WORKSPACE_ID` and
-`HARHUB_TOKEN`, which in turn take precedence over the saved login. Server
-selection changes only with an explicit `--url`.
+`HARHUB_TOKEN`, which in turn take precedence over the saved login. Set
+`HARHUB_API_URL` as the environment equivalent of `--url` for CI, MCP hosts, and
+other non-interactive processes.
 
 The CLI automatically honors uppercase and lowercase `HTTP_PROXY`,
 `HTTPS_PROXY`, and `NO_PROXY` environment variables. A transient network failure
