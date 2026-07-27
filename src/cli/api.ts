@@ -53,7 +53,11 @@ function readCliConfigForTarget(parsed: ParsedArgs) {
 }
 
 function explicitHarhubApiUrl(parsed: ParsedArgs): string | undefined {
-  return optionString(parsed, "url") ?? optionString(parsed, "api");
+  return (
+    optionString(parsed, "url") ??
+    optionString(parsed, "api") ??
+    process.env.HARHUB_API_URL
+  );
 }
 
 function normalizeApiUrl(value: string): string {

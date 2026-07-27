@@ -163,8 +163,9 @@ harhub login --url http://127.0.0.1:3310
 
 Without `--url`, every CLI command targets `https://harhub.rcpd.cc`. For a
 self-hosted login, keep passing the same `--url`; the saved token and workspace
-are reused only when they belong to that exact URL. `HARHUB_WORKSPACE_ID` and
-`HARHUB_TOKEN` remain available as temporary overrides for CI and automation.
+are reused only when they belong to that exact URL. `HARHUB_API_URL`,
+`HARHUB_WORKSPACE_ID`, and `HARHUB_TOKEN` remain available as temporary
+overrides for CI and automation.
 
 Scan the current directory and choose which discovered Skills to upload:
 
@@ -263,6 +264,32 @@ download or restore.
 
 See the [CLI guide](./docs/guide/cli.md) for Project, GitHub Repository, Forge,
 remote edit, download, streaming, and automation examples.
+
+## Agent Operations MCP
+
+The npm package also installs `harhub-mcp`, a stdio MCP server that exposes the
+CLI's authenticated Library, Project, GitHub, and Forge operations to agents.
+It reuses the login saved by `harhub login`:
+
+```json
+{
+  "mcpServers": {
+    "harhub": {
+      "command": "harhub-mcp"
+    }
+  }
+}
+```
+
+Three supporting Agent Skills live under [`skills/`](./skills/). Install one or
+all of them directly from the repository:
+
+```bash
+npx skills add RockChinQ/harhub --skill harhub-library-operations harhub-project-operations harhub-forge-operations
+```
+
+See the [Agent Operations MCP guide](./docs/guide/mcp.md) for environment
+configuration, filesystem boundaries, tool groups, and confirmation rules.
 
 ## Configuration
 

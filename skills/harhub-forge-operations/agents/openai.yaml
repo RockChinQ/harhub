@@ -1,0 +1,11 @@
+interface:
+  display_name: "Harhub Forge Operations"
+  short_description: "Run adaptive discovery and generate frameworks"
+  default_prompt: "Use $harhub-forge-operations to clarify this requirement and generate a Harhub framework."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "harhub"
+      description: "Harhub workspace operations MCP server"
+      transport: "stdio"

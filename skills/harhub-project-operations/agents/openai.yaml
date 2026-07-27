@@ -1,0 +1,11 @@
+interface:
+  display_name: "Harhub Project Operations"
+  short_description: "Track repositories and Project asset bindings"
+  default_prompt: "Use $harhub-project-operations to inspect this Harhub Project and make the requested repository change."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "harhub"
+      description: "Harhub workspace operations MCP server"
+      transport: "stdio"
