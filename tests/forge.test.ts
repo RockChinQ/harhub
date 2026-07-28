@@ -31,7 +31,7 @@ test("retries Forge AI requests and surfaces the final failure", async (context)
   let alwaysFail = false;
   const server = createServer((_request, response) => {
     attempts += 1;
-    if (alwaysFail || attempts < 3) {
+    if (alwaysFail || attempts < 2) {
       response.writeHead(503, { "Content-Type": "application/json" });
       response.end(JSON.stringify({ error: { message: "provider overloaded" } }));
       return;
@@ -67,7 +67,7 @@ test("retries Forge AI requests and surfaces the final failure", async (context)
   };
 
   const followUp = await createHarnessFollowUp(input, [], configuration);
-  assert.equal(attempts, 3);
+  assert.equal(attempts, 2);
   assert.equal(followUp.mode, "llm");
   assert.equal(followUp.questions?.[0]?.question, "Who will use the release assistant?");
 
@@ -75,9 +75,9 @@ test("retries Forge AI requests and surfaces the final failure", async (context)
   attempts = 0;
   await assert.rejects(
     createHarnessFollowUp(input, [], configuration),
-    /AI provider remained unavailable after 3 attempts/
+    /AI provider remained unavailable after 2 attempts/
   );
-  assert.equal(attempts, 3);
+  assert.equal(attempts, 2);
 });
 
 test("streams Forge AI deltas and requests provider streaming", async (context) => {

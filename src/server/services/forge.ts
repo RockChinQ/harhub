@@ -36,18 +36,19 @@ const MAX_ARCHIVE_SKILL_BYTES = 25 * 1024 * 1024;
 const MAX_FORGE_ASSET_DESCRIPTION_CHARS = 360;
 
 const FOLLOW_UP_AI_POLICY: ForgeAiOperationPolicy = {
-  maxAttempts: 3,
-  attemptTimeoutMs: 30_000,
-  totalTimeoutMs: 70_000,
-  retryDelaysMs: [300, 900]
+  maxAttempts: 2,
+  attemptTimeoutMs: 90_000,
+  minimumAttemptTimeoutMs: 60_000,
+  totalTimeoutMs: 195_000,
+  retryDelaysMs: [1_500]
 };
 
 const GENERATE_AI_POLICY: ForgeAiOperationPolicy = {
-  maxAttempts: 3,
-  attemptTimeoutMs: 75_000,
-  minimumAttemptTimeoutMs: 45_000,
-  totalTimeoutMs: 240_000,
-  retryDelaysMs: [750, 1_500]
+  maxAttempts: 2,
+  attemptTimeoutMs: 150_000,
+  minimumAttemptTimeoutMs: 90_000,
+  totalTimeoutMs: 315_000,
+  retryDelaysMs: [2_000]
 };
 
 const CONNECTION_TEST_AI_POLICY: ForgeAiOperationPolicy = {
