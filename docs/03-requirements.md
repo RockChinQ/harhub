@@ -126,7 +126,7 @@ Harhub 应支持这些 artifact 类型：
 
 ### Skills-first 发布闭环
 
-在完整版本和 Bundle 系统之前，MVP 必须先完成 [Agent Skill 发布、分享与安装闭环](./10-sharing-and-installation-loop.md)：
+在完整版本和 Bundle 系统之前，MVP 必须先完成 Agent Skill 发布、分享与安装闭环：
 
 - Upload 默认保持 workspace-private，只有显式 `--share` 或 Share action 才创建 public link。
 - CLI upload 成功后可以立即返回 share page 和 install command。

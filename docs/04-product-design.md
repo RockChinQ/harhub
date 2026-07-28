@@ -69,7 +69,7 @@ Catalog 列出 harness packages，并展示：
 
 ## Skills-first 初期闭环
 
-当前优先工作流不是完整 Bundle composition，而是 [Agent Skill 发布、分享与安装闭环](./10-sharing-and-installation-loop.md)：
+当前优先工作流不是完整 Bundle composition，而是 Agent Skill 发布、分享与安装闭环：
 
 1. Author 在本地维护标准 Skill directory。
 2. Author 执行 `harhub skills upload <path> --share`。

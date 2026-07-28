@@ -232,7 +232,7 @@ GET  /api/skills
 
 `/api/workspaces/:workspaceId/skills` 是 Assets API 的 Skills-only compatibility view；legacy `/api/skills` 只保留 demo workspace 的 read route。公开 share token 是可撤销 bearer link；公开响应不会暴露 S3 bucket 或 object key，asset 删除时对应 share 也会失效。Discovery response 使用 archive URL 和 SHA-256 digest，让兼容 Agent Skills CLI 可以直接消费 share URL。
 
-当前 share 通过 `assetId` 查找 workspace catalog 中的当前对象，还没有 immutable release snapshot。闭环完成前需要让 share pin 到具体 upload release，避免同名重新上传改变旧链接内容。详细设计见 [Agent Skill 发布、分享与安装闭环](./10-sharing-and-installation-loop.md)。
+当前 share 通过 `assetId` 查找 workspace catalog 中的当前对象，还没有 immutable release snapshot。闭环完成前需要让 share pin 到具体 upload release，避免同名重新上传改变旧链接内容。
 
 服务端已经移除 workspace path-based scan、create 和 in-place patch routes。Uploaded package 版本不可覆盖；Web/CLI 修改会重新上传完整校验包并创建新版本。GitHub repository scanner 只读取已授权 repository，不接收客户端本地路径。
 

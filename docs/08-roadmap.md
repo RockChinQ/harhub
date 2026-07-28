@@ -19,7 +19,7 @@ MVP 应先证明 Harhub 能把散落的 Agent Skills 转化为可管理、可复
 
 ## 当前优先里程碑：发布、分享与安装闭环
 
-当前最高优先级是完成 [Agent Skill 发布、分享与安装闭环](./10-sharing-and-installation-loop.md)。基础路径已经存在：
+当前最高优先级是完成 Agent Skill 发布、分享与安装闭环。基础路径已经存在：
 
 - `harhub skills upload --share` 在上传成功后生成 public share URL。
 - 已上传 Asset 可以通过 CLI 或 Web share/unshare。

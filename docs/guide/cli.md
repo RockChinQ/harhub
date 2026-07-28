@@ -263,6 +263,5 @@ npx skills add https://harhub.rcpd.cc/s/<share-token>
 npx skills add https://harhub.rcpd.cc/s/<share-token> -a codex -g -y
 ```
 
-The product decisions and release-pinning requirement for this flow are
-documented in the
-[Agent Skill Sharing And Installation Loop](../10-sharing-and-installation-loop.md).
+Public shares currently resolve the logical asset's current version rather than
+pinning an immutable release.

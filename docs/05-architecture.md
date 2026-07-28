@@ -242,7 +242,7 @@ Agent Skills 资产直接遵循 agentskills.io 的目录与 `SKILL.md` 规范。
 - `createdByAccountId`
 - `createdAt`
 
-该模型允许旧 share 持续解析到原始 archive，同时让新 upload 创建独立 release。完整闭环见 [Agent Skill 发布、分享与安装闭环](./10-sharing-and-installation-loop.md)。
+该模型允许旧 share 持续解析到原始 archive，同时让新 upload 创建独立 release。
 
 ### Project（当前仓库锚点）
 
@@ -455,7 +455,7 @@ Uploaded Skill 版本不支持原地覆盖；`skills edit` 下载当前包、替
 
 npm package 同时提供 `harhub-mcp` stdio server。它复用 CLI 登录信息，暴露 Library、Project、GitHub 和 Forge 的 authenticated remote operations；本地文件参数受 `HARHUB_MCP_ALLOWED_ROOTS` 限制，高影响 mutation 需要显式 `confirm: true`。仓库 `skills/` 下提供三套操作 Skills，帮助 agents 安全编排这些工具。
 
-Skills-first 的当前产品路径和 P0 完成标准见 [Agent Skill 发布、分享与安装闭环](./10-sharing-and-installation-loop.md)。
+Skills-first 的当前产品路径围绕上传、分享、安装和撤销形成闭环。
 
 ### 目标 CLI 与 MCP
 

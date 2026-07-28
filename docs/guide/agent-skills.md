@@ -83,6 +83,3 @@ Individual uploaded versions are immutable. Updating a Skill always creates a
 new version; retained earlier versions can be downloaded or restored. Public
 shares still resolve the logical asset's current version rather than pinning an
 immutable release.
-
-See [Agent Skill Sharing And Installation Loop](../10-sharing-and-installation-loop.md)
-for the product decisions and remaining release-pinning work.
