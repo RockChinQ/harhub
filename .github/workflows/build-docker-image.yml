@@ -176,16 +176,23 @@ jobs:
               Env: $env,
               RepullImageAndRedeploy: true}')
 
-          curl --fail-with-body --silent --show-error \
+          REDEPLOY_STATUS=$(curl --silent --show-error \
             -X PUT "$PORTAINER_URL/api/stacks/$STACK_ID/git/redeploy?endpointId=$ENDPOINT_ID" \
             -H "Authorization: Bearer $JWT" \
             -H "Content-Type: application/json" \
             -d "$DEPLOY_BODY" \
-            -o /tmp/portainer-redeploy.json
-          jq -e --argjson id "$STACK_ID" '.Id == $id and .Status == 1' \
-            /tmp/portainer-redeploy.json >/dev/null
-
-          echo "Portainer accepted stack $STACK_ID redeploy"
+            -o /tmp/portainer-redeploy.json \
+            -w "%{http_code}")
+          if [[ "$REDEPLOY_STATUS" =~ ^2 ]]; then
+            jq -e --argjson id "$STACK_ID" '.Id == $id and .Status == 1' \
+              /tmp/portainer-redeploy.json >/dev/null
+            echo "Portainer accepted stack $STACK_ID redeploy"
+          else
+            REDEPLOY_ERROR=$(jq -r \
+              'if type == "object" then (.message // .details // "no error message") else "non-JSON response" end' \
+              /tmp/portainer-redeploy.json 2>/dev/null || echo "unreadable response")
+            echo "::warning::Portainer redeploy returned HTTP $REDEPLOY_STATUS: $REDEPLOY_ERROR. Verifying the actual container state."
+          fi
 
       - name: Verify deployed image and health
         shell: bash

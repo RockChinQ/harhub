@@ -27,6 +27,18 @@ test("runs the full quality gate before building a deployable image", () => {
   assert.equal(deployment.jobs?.quality?.uses, "./.github/workflows/ci.yml");
   assert.equal(deployment.jobs?.build?.needs, "quality");
   assert.equal(deployment.jobs?.["deploy-dev"]?.needs, "build");
+
+  const deploymentCommands = deployment.jobs?.["deploy-dev"]?.steps
+    ?.flatMap((step) => step.run ? [step.run] : []) ?? [];
+  assert.match(deploymentCommands[0] ?? "", /REDEPLOY_STATUS=/);
+  assert.match(
+    deploymentCommands[0] ?? "",
+    /Verifying the actual container state/
+  );
+  assert.match(
+    deploymentCommands[1] ?? "",
+    /CONTAINER_IMAGE_ID.*TAG_IMAGE_ID/
+  );
 });
 
 test("tests packages before publishing them to npm", () => {
