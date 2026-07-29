@@ -113,7 +113,7 @@ Usage:
   harhub projects publish <project-id> <binding-id> [remote options]
   harhub projects propose <project-id> bootstrap [remote options]
   harhub projects propose <project-id> add-library-skills --asset <asset-id>... [remote options]
-  harhub projects propose <project-id> remove-skill --binding <binding-id> [remote options]
+  harhub projects propose <project-id> remove-skill --binding <binding-id> [--binding <binding-id>...] [remote options]
   harhub projects open <project-id> <proposal-id> [remote options]
   harhub projects rotate-token <project-id> --yes [remote options]
   harhub projects archive <project-id> --yes [remote options]

@@ -664,7 +664,7 @@ const proposalSchema = z.discriminatedUnion("kind", [
   z.object({
     projectId: idSchema,
     kind: z.literal("remove-skill"),
-    bindingId: idSchema
+    bindingIds: z.array(idSchema).min(1).max(100)
   }),
   z.object({
     projectId: idSchema,
@@ -681,7 +681,7 @@ const proposalSchema = z.discriminatedUnion("kind", [
 type ProposalBodyInput =
   | { kind: "bootstrap" }
   | { kind: "add-library-skills"; assetIds: string[] }
-  | { kind: "remove-skill"; bindingId: string }
+  | { kind: "remove-skill"; bindingIds: string[] }
   | { kind: "add-library-mcps"; assetIds: string[] }
   | { kind: "remove-mcp"; bindingId: string };
 
@@ -689,6 +689,9 @@ function proposalBody(input: ProposalBodyInput): Record<string, unknown> {
   if (input.kind === "bootstrap") return { kind: input.kind };
   if (input.kind === "add-library-skills" || input.kind === "add-library-mcps") {
     return { kind: input.kind, assetIds: input.assetIds };
+  }
+  if (input.kind === "remove-skill") {
+    return { kind: input.kind, bindingIds: input.bindingIds };
   }
   return { kind: input.kind, bindingId: input.bindingId };
 }

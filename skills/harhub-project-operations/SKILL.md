@@ -28,7 +28,8 @@ Repository changes are staged as proposals:
 
 - Initialize the Harhub structure: `kind: "bootstrap"`.
 - Add Library Skills: `kind: "add-library-skills"` with every selected asset ID.
-- Remove a tracked Skill: `kind: "remove-skill"` with its binding ID.
+- Remove tracked Skills in one pull request: `kind: "remove-skill"` with every
+  selected binding ID in `bindingIds`.
 - Add Library MCP configurations: `kind: "add-library-mcps"` with every
   selected asset ID.
 - Remove a tracked MCP configuration: `kind: "remove-mcp"` with its binding ID.

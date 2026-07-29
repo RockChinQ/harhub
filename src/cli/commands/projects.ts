@@ -129,9 +129,13 @@ export function proposalBody(kind: string | undefined, parsed: ParsedArgs): Reco
     return { kind, assetIds };
   }
   if (kind === "remove-skill") {
-    const bindingId = optionString(parsed, "binding") ?? parsed.positionals[2];
-    if (!bindingId) throw new Error("remove-skill requires --binding <binding-id>.");
-    return { kind, bindingId };
+    const bindingIds = optionStrings(parsed, "binding");
+    const positionalBindingId = parsed.positionals[2];
+    if (bindingIds.length === 0 && positionalBindingId) bindingIds.push(positionalBindingId);
+    if (bindingIds.length === 0) {
+      throw new Error("remove-skill requires at least one --binding <binding-id>.");
+    }
+    return { kind, bindingIds };
   }
   if (kind === "add-library-mcps") {
     const assetIds = optionStrings(parsed, "asset");

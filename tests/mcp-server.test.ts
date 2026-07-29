@@ -56,6 +56,31 @@ test("executes authenticated workspace reads over the MCP protocol", async () =>
   });
 });
 
+test("creates one Project proposal for multiple Skill removals", async () => {
+  await withHttpServer(async (request, response) => {
+    assert.equal(request.url, "/api/workspaces/ws_demo/projects/project_1/proposals");
+    assert.equal(request.method, "POST");
+    assert.deepEqual(await readJson(request), {
+      kind: "remove-skill",
+      bindingIds: ["binding_1", "binding_2"]
+    });
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({ id: "proposal_1", kind: "remove-skill" }));
+  }, async (baseUrl) => {
+    await withMcpClient(baseUrl, async (client) => {
+      const result = await client.callTool({
+        name: "harhub_project_create_proposal",
+        arguments: {
+          projectId: "project_1",
+          kind: "remove-skill",
+          bindingIds: ["binding_1", "binding_2"]
+        }
+      });
+      assert.equal("isError" in result ? result.isError : undefined, undefined);
+    });
+  });
+});
+
 test("rejects destructive calls without explicit confirmation before HTTP", async () => {
   let requests = 0;
   await withHttpServer((_request, response) => {

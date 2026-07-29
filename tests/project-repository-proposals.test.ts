@@ -7,7 +7,8 @@ import {
   createAddLibrarySkillsProposal,
   createBootstrapProposal,
   createRemoveMcpProposal,
-  createRemoveSkillProposal
+  createRemoveSkillProposal,
+  createRemoveSkillsProposal
 } from "../src/server/services/project-repository-proposals.js";
 
 test("bootstrap proposals require explicit write permissions and only contain reviewed Harhub files", () => {
@@ -110,6 +111,64 @@ test("repository-root Skills cannot create a destructive removal proposal", () =
     binding,
     filePaths: ["SKILL.md", "src/index.ts"]
   }), /repository-root Skill cannot be removed/i);
+});
+
+test("multiple Skill removals are combined into one reviewed proposal", () => {
+  const base = proposalBase();
+  const research: ProjectBinding = {
+    id: "binding-research",
+    kind: "skill",
+    name: "Research",
+    path: ".agents/skills/research",
+    source: "library",
+    status: "synced",
+    assetId: "asset-research"
+  };
+  const delivery: ProjectBinding = {
+    id: "binding-delivery",
+    kind: "skill",
+    name: "Delivery",
+    path: ".agents/skills/delivery",
+    source: "repository",
+    status: "synced"
+  };
+  base.project.bindings = [research, delivery];
+  base.snapshot.artifacts = [
+    inventorySkill(research.path, research.id),
+    inventorySkill(delivery.path, delivery.id)
+  ];
+
+  const proposal = createRemoveSkillsProposal({
+    ...base,
+    removals: [
+      {
+        binding: research,
+        filePaths: [
+          ".agents/skills/research/SKILL.md",
+          ".agents/skills/research/references/interview.md"
+        ]
+      },
+      {
+        binding: delivery,
+        filePaths: [".agents/skills/delivery/SKILL.md"]
+      }
+    ]
+  });
+
+  assert.equal(proposal.kind, "remove-skill");
+  assert.match(proposal.branch, /skills-remove/);
+  assert.deepEqual(proposal.files, [
+    { path: ".agents/skills/delivery/SKILL.md", status: "deleted" },
+    { path: ".agents/skills/research/SKILL.md", status: "deleted" },
+    { path: ".agents/skills/research/references/interview.md", status: "deleted" }
+  ]);
+  assert.throws(() => createRemoveSkillsProposal({
+    ...base,
+    removals: [
+      { binding: research, filePaths: [".agents/skills/research/SKILL.md"] },
+      { binding: research, filePaths: [".agents/skills/research/SKILL.md"] }
+    ]
+  }), /must be unique/);
 });
 
 test("Library MCP proposals add and remove exact repository configuration files", () => {

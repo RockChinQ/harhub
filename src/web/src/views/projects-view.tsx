@@ -165,8 +165,9 @@ export function ProjectsView({
   const [librarySkillSearch, setLibrarySkillSearch] = useState("");
   const [selectedLibrarySkillIds, setSelectedLibrarySkillIds] = useState<string[]>([]);
   const [isLoadingLibrarySkills, setIsLoadingLibrarySkills] = useState(false);
+  const [selectedProjectSkillIds, setSelectedProjectSkillIds] = useState<string[]>([]);
   const [removeSkillOpen, setRemoveSkillOpen] = useState(false);
-  const [removeSkillBinding, setRemoveSkillBinding] = useState<ProjectBinding>();
+  const [removeSkillBindings, setRemoveSkillBindings] = useState<ProjectBinding[]>([]);
   const [projectDetailTab, setProjectDetailTab] = useState("skills");
   const [scanHistoryOpen, setScanHistoryOpen] = useState(false);
   useDocumentTitle(
@@ -185,6 +186,9 @@ export function ProjectsView({
     setArchiveOpen(false);
     setDeleteOpen(false);
     setDeleteConfirmation("");
+    setSelectedProjectSkillIds([]);
+    setRemoveSkillBindings([]);
+    setRemoveSkillOpen(false);
     void refresh();
   }, [routedProjectId, token, workspace.id]);
 
@@ -253,6 +257,26 @@ export function ProjectsView({
       : activeSkillProposal
         ? "Finish the current asset change before starting another."
         : projectSkillManagementDisabledReason;
+  const selectedProjectSkills = projectSkills.filter((binding) =>
+    selectedProjectSkillIds.includes(binding.id)
+  );
+  const selectableFilteredProjectSkills = filteredProjectSkills.filter((binding) =>
+    binding.path !== "."
+  );
+  const allFilteredProjectSkillsSelected = selectableFilteredProjectSkills.length > 0 &&
+    selectableFilteredProjectSkills.every((binding) => selectedProjectSkillIds.includes(binding.id));
+  const someFilteredProjectSkillsSelected = selectableFilteredProjectSkills.some((binding) =>
+    selectedProjectSkillIds.includes(binding.id)
+  );
+  const removingMcp = removeSkillBindings.length === 1 && removeSkillBindings[0]?.kind === "mcp";
+
+  useEffect(() => {
+    const currentIds = new Set(projectSkills.map((binding) => binding.id));
+    setSelectedProjectSkillIds((selected) => {
+      const retained = selected.filter((bindingId) => currentIds.has(bindingId));
+      return retained.length === selected.length ? selected : retained;
+    });
+  }, [projectSkills]);
 
   async function refresh() {
     setIsLoading(true);
@@ -480,31 +504,56 @@ export function ProjectsView({
   }
 
   function confirmRemoveSkill(binding: ProjectBinding) {
-    setRemoveSkillBinding(binding);
+    setRemoveSkillBindings([binding]);
     setRemoveSkillOpen(true);
   }
 
+  function confirmRemoveSelectedSkills() {
+    if (selectedProjectSkills.length === 0) return;
+    setRemoveSkillBindings(selectedProjectSkills);
+    setRemoveSkillOpen(true);
+  }
+
+  function toggleProjectSkillSelection(bindingId: string, checked: boolean) {
+    setSelectedProjectSkillIds((selected) => {
+      if (!checked) return selected.filter((candidate) => candidate !== bindingId);
+      return selected.includes(bindingId) ? selected : [...selected, bindingId];
+    });
+  }
+
+  function toggleAllFilteredProjectSkills(checked: boolean) {
+    const visibleIds = new Set(selectableFilteredProjectSkills.map((binding) => binding.id));
+    setSelectedProjectSkillIds((selected) => checked
+      ? Array.from(new Set([...selected, ...visibleIds]))
+      : selected.filter((bindingId) => !visibleIds.has(bindingId))
+    );
+  }
+
   async function previewRemoveSkill() {
-    if (!project || !removeSkillBinding) return;
+    if (!project || removeSkillBindings.length === 0) return;
     setIsCreatingProposal(true);
     setError(undefined);
     try {
-      const created = removeSkillBinding.kind === "mcp"
+      const mcpBinding = removeSkillBindings.length === 1 && removeSkillBindings[0]?.kind === "mcp"
+        ? removeSkillBindings[0]
+        : undefined;
+      const created = mcpBinding
         ? await createProjectMcpRemoveProposal(
             token,
             workspace.id,
             project.id,
-            removeSkillBinding.id
+            mcpBinding.id
           )
         : await createProjectSkillRemoveProposal(
             token,
             workspace.id,
             project.id,
-            removeSkillBinding.id
+            removeSkillBindings.map((binding) => binding.id)
           );
       setProposal(created);
       setRemoveSkillOpen(false);
-      setRemoveSkillBinding(undefined);
+      setRemoveSkillBindings([]);
+      setSelectedProjectSkillIds([]);
       setProposalOpen(true);
       await refreshInventory();
     } catch (caught) {
@@ -1001,18 +1050,76 @@ export function ProjectsView({
                 </CardHeader>
                 <CardContent className="p-0">
                   {filteredProjectSkills.length ? (
-                    <div className="max-h-[56vh] divide-y overflow-y-auto">
-                      {filteredProjectSkills.map((binding) => (
-                        <ProjectSkillRow
-                          key={binding.id}
-                          binding={binding}
-                          onReview={() => void openSkillDiff(binding)}
-                          onRemove={() => confirmRemoveSkill(binding)}
-                          removeDisabledReason={binding.path === "."
+                    <div>
+                      <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-5 py-2">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <Checkbox
+                            checked={allFilteredProjectSkillsSelected
+                              ? true
+                              : someFilteredProjectSkillsSelected
+                                ? "indeterminate"
+                                : false}
+                            disabled={
+                              selectableFilteredProjectSkills.length === 0 ||
+                              Boolean(projectSkillMutationDisabledReason)
+                            }
+                            aria-label="Select all matching Project Skills"
+                            onCheckedChange={(checked) => toggleAllFilteredProjectSkills(checked === true)}
+                          />
+                          <span className="text-xs text-muted-foreground">
+                            {selectedProjectSkills.length
+                              ? `${selectedProjectSkills.length} selected`
+                              : `${selectableFilteredProjectSkills.length} removable`}
+                          </span>
+                        </div>
+                        {selectedProjectSkills.length ? (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setSelectedProjectSkillIds([])}
+                            >
+                              Clear
+                            </Button>
+                            <DisabledControlTooltip
+                              label={`Remove ${selectedProjectSkills.length} selected Skills`}
+                              reason={projectSkillMutationDisabledReason}
+                            >
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="text-destructive hover:text-destructive"
+                                disabled={Boolean(projectSkillMutationDisabledReason)}
+                                onClick={confirmRemoveSelectedSkills}
+                              >
+                                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                Remove selected
+                              </Button>
+                            </DisabledControlTooltip>
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="max-h-[56vh] divide-y overflow-y-auto">
+                        {filteredProjectSkills.map((binding) => {
+                          const removeDisabledReason = binding.path === "."
                             ? "Repository-root Skills cannot be removed through Harhub."
-                            : projectSkillMutationDisabledReason}
-                        />
-                      ))}
+                            : projectSkillMutationDisabledReason;
+                          return (
+                            <ProjectSkillRow
+                              key={binding.id}
+                              binding={binding}
+                              selected={selectedProjectSkillIds.includes(binding.id)}
+                              selectionDisabledReason={removeDisabledReason}
+                              onSelectedChange={(checked) => toggleProjectSkillSelection(binding.id, checked)}
+                              onReview={() => void openSkillDiff(binding)}
+                              onRemove={() => confirmRemoveSkill(binding)}
+                              removeDisabledReason={removeDisabledReason}
+                            />
+                          );
+                        })}
+                      </div>
                     </div>
                   ) : projectSkills.length ? (
                     <p className="p-6 text-sm text-muted-foreground">
@@ -1499,20 +1606,49 @@ export function ProjectsView({
           </DialogContent>
         </Dialog>
 
-        <AlertDialog open={removeSkillOpen} onOpenChange={setRemoveSkillOpen}>
+        <AlertDialog
+          open={removeSkillOpen}
+          onOpenChange={(open) => {
+            if (isCreatingProposal) return;
+            setRemoveSkillOpen(open);
+            if (!open) setRemoveSkillBindings([]);
+          }}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Remove {removeSkillBinding?.name} from this Project?</AlertDialogTitle>
+              <AlertDialogTitle>
+                {removingMcp
+                  ? `Remove ${removeSkillBindings[0]?.name} from this Project?`
+                  : removeSkillBindings.length === 1
+                    ? `Remove ${removeSkillBindings[0]?.name} from this Project?`
+                    : `Remove ${removeSkillBindings.length} Skills from this Project?`}
+              </AlertDialogTitle>
               <AlertDialogDescription>
-                This removes the {removeSkillBinding?.kind === "mcp" ? "MCP configuration" : "Skill package"} from the Project through a GitHub pull request.
-                The workspace Library asset, if any, is not deleted.
+                {removingMcp
+                  ? "This removes the MCP configuration through a GitHub pull request."
+                  : `This removes ${removeSkillBindings.length === 1 ? "the selected Skill package" : "all selected Skill packages"} through one GitHub pull request.`}
+                {" "}Workspace Library assets are not deleted.
               </AlertDialogDescription>
             </AlertDialogHeader>
+            {!removingMcp && removeSkillBindings.length > 1 ? (
+              <div className="max-h-48 overflow-y-auto rounded-lg border">
+                <div className="divide-y">
+                  {removeSkillBindings.map((binding) => (
+                    <div key={binding.id} className="px-3 py-2">
+                      <p className="text-sm font-medium">{binding.name}</p>
+                      <p className="mt-0.5 break-all font-mono text-xs text-muted-foreground">
+                        {binding.path}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <AlertDialogFooter>
               <AlertDialogCancel disabled={isCreatingProposal}>Cancel</AlertDialogCancel>
               <AlertDialogAction disabled={isCreatingProposal} onClick={() => void previewRemoveSkill()}>
                 {isCreatingProposal ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                Review removal
+                Review {removeSkillBindings.length > 1 ? `${removeSkillBindings.length} removals` : "removal"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -1870,11 +2006,17 @@ function BindingRow({
 
 function ProjectSkillRow({
   binding,
+  selected,
+  selectionDisabledReason,
+  onSelectedChange,
   onReview,
   onRemove,
   removeDisabledReason
 }: {
   binding: ProjectBinding;
+  selected?: boolean;
+  selectionDisabledReason?: string;
+  onSelectedChange?: (checked: boolean) => void;
   onReview: () => void;
   onRemove: () => void;
   removeDisabledReason?: string;
@@ -1883,14 +2025,29 @@ function ProjectSkillRow({
     (binding.status === "added" || binding.status === "modified");
   return (
     <div className="grid gap-3 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="truncate text-sm font-medium">{binding.name}</p>
-          <Badge variant="outline" className="text-[10px]">
-            {binding.assetId ? "Library linked" : "Repository owned"}
-          </Badge>
+      <div className="flex min-w-0 items-center gap-3">
+        {onSelectedChange ? (
+          <DisabledControlTooltip
+            label={`Select ${binding.name}`}
+            reason={selectionDisabledReason}
+          >
+            <Checkbox
+              checked={selected}
+              disabled={Boolean(selectionDisabledReason)}
+              aria-label={`Select ${binding.name}`}
+              onCheckedChange={(checked) => onSelectedChange(checked === true)}
+            />
+          </DisabledControlTooltip>
+        ) : null}
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-sm font-medium">{binding.name}</p>
+            <Badge variant="outline" className="text-[10px]">
+              {binding.assetId ? "Library linked" : "Repository owned"}
+            </Badge>
+          </div>
+          <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{binding.path}</p>
         </div>
-        <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{binding.path}</p>
       </div>
       <div className="flex items-center justify-self-end gap-1.5">
         <BindingStatusBadge status={binding.status} />
@@ -2012,7 +2169,7 @@ function getProjectSkillManagementDisabledReason(
 
 function proposalDialogTitle(proposal?: ProjectChangeProposal): string {
   if (proposal?.kind === "add-library-skills") return "Add Library Skills";
-  if (proposal?.kind === "remove-skill") return "Remove Project Skill";
+  if (proposal?.kind === "remove-skill") return "Remove Project Skills";
   if (proposal?.kind === "add-library-mcps") return "Add Library MCPs";
   if (proposal?.kind === "remove-mcp") return "Remove Project MCP";
   return "Managed repository configuration";

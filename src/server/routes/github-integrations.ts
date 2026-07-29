@@ -40,7 +40,7 @@ import {
   createAddLibrarySkillsProposal,
   createBootstrapProposal,
   createRemoveMcpProposal,
-  createRemoveSkillProposal,
+  createRemoveSkillsProposal,
   openProjectChangeProposal
 } from "../services/project-repository-proposals.js";
 import { loadStoredMcp, loadStoredSkill } from "../services/skill-packages.js";
@@ -321,27 +321,35 @@ export function registerGitHubIntegrationRoutes(app: Express): void {
           };
         });
       } else if (kind === "remove-skill") {
-        const bindingId = requiredBodyString(req.body, "bindingId");
-        const binding = project.bindings.find((candidate) => candidate.id === bindingId);
-        if (!binding) throw new Error("Project Skill binding was not found.");
-        const artifact = inventory.latestSnapshot.artifacts.find((candidate) =>
-          candidate.kind === "skill" &&
-          (candidate.bindingId === binding.id || candidate.path === binding.path)
-        );
-        if (!artifact) throw new Error("Project Skill is not present in the latest repository inventory.");
-        const filePaths = await listProjectInventoryFilePaths(
-          context.workspace.id,
-          projectId,
-          inventory.latestSnapshot.id,
-          artifact.id
-        );
-        proposal = createRemoveSkillProposal({
+        const bindingIds = req.body?.bindingIds === undefined
+          ? [requiredBodyString(req.body, "bindingId")]
+          : readStringArray(req.body.bindingIds, "bindingIds", 100);
+        const removals = await Promise.all(bindingIds.map(async (bindingId) => {
+          const binding = project.bindings.find((candidate) => candidate.id === bindingId);
+          if (!binding || binding.kind !== "skill") {
+            throw new Error(`Project Skill binding ${bindingId} was not found.`);
+          }
+          const artifact = inventory.latestSnapshot!.artifacts.find((candidate) =>
+            candidate.kind === "skill" &&
+            (candidate.bindingId === binding.id || candidate.path === binding.path)
+          );
+          if (!artifact) {
+            throw new Error(`Project Skill ${binding.name} is not present in the latest repository inventory.`);
+          }
+          const filePaths = await listProjectInventoryFilePaths(
+            context.workspace.id,
+            projectId,
+            inventory.latestSnapshot!.id,
+            artifact.id
+          );
+          return { binding, filePaths };
+        }));
+        proposal = createRemoveSkillsProposal({
           project,
           connection,
           installation,
           snapshot: inventory.latestSnapshot,
-          binding,
-          filePaths,
+          removals,
           accountId: context.account.id
         });
       } else if (kind === "add-library-mcps") {

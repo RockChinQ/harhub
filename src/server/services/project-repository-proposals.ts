@@ -137,25 +137,62 @@ export function createRemoveSkillProposal(input: {
   filePaths: string[];
   accountId: string;
 }): ProjectChangeProposal {
+  return createRemoveSkillsProposal({
+    project: input.project,
+    connection: input.connection,
+    installation: input.installation,
+    snapshot: input.snapshot,
+    removals: [{ binding: input.binding, filePaths: input.filePaths }],
+    accountId: input.accountId
+  });
+}
+
+export function createRemoveSkillsProposal(input: {
+  project: HarhubProject;
+  connection: ProjectRepositoryConnectionRecord;
+  installation: GitHubInstallation;
+  snapshot: ProjectInventorySnapshot;
+  removals: Array<{ binding: ProjectBinding; filePaths: string[] }>;
+  accountId: string;
+}): ProjectChangeProposal {
   assertManagedChangesAvailable(input.connection, input.installation);
-  if (input.binding.kind !== "skill" || input.binding.status === "missing") {
-    throw new Error("Only an observed Project Skill can be removed.");
+  if (input.removals.length === 0 || input.removals.length > 100) {
+    throw new Error("Select between 1 and 100 Project Skills per pull request.");
   }
-  if (input.binding.path === ".") {
-    throw new Error("A repository-root Skill cannot be removed through Harhub.");
+  const bindingIds = input.removals.map(({ binding }) => binding.id);
+  if (new Set(bindingIds).size !== bindingIds.length) {
+    throw new Error("Project Skill selections must be unique.");
   }
-  const root = safeRelativePath(input.binding.path);
-  const filePaths = Array.from(new Set(input.filePaths.map(safeRelativePath))).sort();
-  if (filePaths.length === 0) throw new Error("Project Skill files are unavailable in the latest inventory.");
-  if (filePaths.length > 100) throw new Error("Project Skill exceeds the 100 file pull request limit.");
-  if (filePaths.some((path) => !path.startsWith(`${root}/`))) {
-    throw new Error("Project Skill inventory contains a file outside its Skill root.");
+  const filePaths = input.removals.flatMap(({ binding, filePaths }) => {
+    if (binding.kind !== "skill" || binding.status === "missing") {
+      throw new Error("Only observed Project Skills can be removed.");
+    }
+    if (binding.path === ".") {
+      throw new Error("A repository-root Skill cannot be removed through Harhub.");
+    }
+    const root = safeRelativePath(binding.path);
+    const paths = Array.from(new Set(filePaths.map(safeRelativePath))).sort();
+    if (paths.length === 0) {
+      throw new Error(`Project Skill files are unavailable for ${binding.name}.`);
+    }
+    if (paths.some((path) => !path.startsWith(`${root}/`))) {
+      throw new Error("Project Skill inventory contains a file outside its Skill root.");
+    }
+    const artifact = input.snapshot.artifacts.find((candidate) =>
+      candidate.kind === "skill" &&
+      (candidate.bindingId === binding.id || candidate.path === binding.path)
+    );
+    if (!artifact) {
+      throw new Error(`Project Skill ${binding.name} is not present in the latest repository inventory.`);
+    }
+    return paths;
+  }).sort();
+  if (filePaths.length > 100) {
+    throw new Error("Selected Project Skills exceed the 100 file pull request limit.");
   }
-  const artifact = input.snapshot.artifacts.find((candidate) =>
-    candidate.kind === "skill" &&
-    (candidate.bindingId === input.binding.id || candidate.path === input.binding.path)
-  );
-  if (!artifact) throw new Error("Project Skill is not present in the latest repository inventory.");
+  if (new Set(filePaths).size !== filePaths.length) {
+    throw new Error("Selected Project Skills contain overlapping repository files.");
+  }
   const now = new Date().toISOString();
   return {
     id: randomUUID(),
@@ -164,7 +201,7 @@ export function createRemoveSkillProposal(input: {
     kind: "remove-skill",
     status: "preview",
     baseSha: input.snapshot.commitSha,
-    branch: proposalBranch("skill-remove", input.project.id),
+    branch: proposalBranch("skills-remove", input.project.id),
     files: filePaths.map((path) => ({ path, status: "deleted" as const })),
     createdByAccountId: input.accountId,
     createdAt: now,
@@ -295,11 +332,11 @@ function proposalPullRequestCopy(proposal: ProjectChangeProposal): { title: stri
   }
   if (proposal.kind === "remove-skill") {
     return {
-      title: "Remove a Skill from this Harhub Project",
+      title: "Remove selected Skills from this Harhub Project",
       body: [
-        "This PR removes the selected Project Skill package from the repository.",
+        "This PR removes the selected Project Skill packages from the repository.",
         "",
-        "The workspace Library asset is not deleted. Harhub will rescan the default branch after merge."
+        "Workspace Library assets are not deleted. Harhub will rescan the default branch after merge."
       ].join("\n")
     };
   }

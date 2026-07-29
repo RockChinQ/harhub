@@ -157,6 +157,13 @@ test("updates repository ownership policy and creates Library asset proposals", 
     ])))).code, 0);
     assert.equal((await captureLog(() => runRepositoryCommand("propose", args(baseUrl, [
       "project_1",
+      "remove-skill",
+      "--binding",
+      "skill_binding_1",
+      "--binding=skill_binding_2"
+    ])))).code, 0);
+    assert.equal((await captureLog(() => runRepositoryCommand("propose", args(baseUrl, [
+      "project_1",
       "add-library-mcps",
       "--asset",
       "mcp_1"
@@ -187,9 +194,17 @@ test("updates repository ownership policy and creates Library asset proposals", 
   assert.deepEqual(seen[2], {
     url: "/api/workspaces/ws_demo/projects/project_1/proposals",
     method: "POST",
-    body: { kind: "add-library-mcps", assetIds: ["mcp_1"] }
+    body: {
+      kind: "remove-skill",
+      bindingIds: ["skill_binding_1", "skill_binding_2"]
+    }
   });
   assert.deepEqual(seen[3], {
+    url: "/api/workspaces/ws_demo/projects/project_1/proposals",
+    method: "POST",
+    body: { kind: "add-library-mcps", assetIds: ["mcp_1"] }
+  });
+  assert.deepEqual(seen[4], {
     url: "/api/workspaces/ws_demo/projects/project_1/proposals",
     method: "POST",
     body: { kind: "remove-mcp", bindingId: "binding_1" }

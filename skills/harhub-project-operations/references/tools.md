@@ -37,4 +37,5 @@ A Project deletion removes only Harhub's Project index and tracking history; it 
 
 `harhub_project_create_proposal` supports `add-library-skills`, `remove-skill`,
 `add-library-mcps`, and `remove-mcp`. MCP add proposals write the selected
-Library document to `.harness/mcp/<slug>.json`.
+Library document to `.harness/mcp/<slug>.json`. Pass every selected Skill
+binding in `bindingIds` to remove multiple Project Skills in one proposal.

@@ -100,6 +100,9 @@ Project and repository commands cover creation, connection, inventory, scans,
 ownership policy, Skill diff/publish, proposals, pull requests, token rotation,
 archive, and Project deletion:
 
+The Project Skills tab supports selecting multiple removable Skills and
+preparing one reviewed GitHub pull request for the complete deletion set.
+
 ```bash
 harhub projects show <project-id>
 harhub projects scan <project-id>
@@ -107,6 +110,9 @@ harhub projects diff <project-id> <binding-id>
 harhub projects publish <project-id> <binding-id>
 harhub projects delete <project-id> --yes
 harhub repositories propose <project-id> add-library-skills --asset <asset-id>
+harhub repositories propose <project-id> remove-skill \
+  --binding <binding-id> \
+  --binding <another-binding-id>
 harhub repositories propose <project-id> add-library-mcps --asset <asset-id>
 harhub repositories propose <project-id> remove-mcp --binding <binding-id>
 harhub repositories open <project-id> <proposal-id>

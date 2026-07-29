@@ -38,8 +38,12 @@ Inventory 会区分 Library 同步、Library 已修改、仓库自有和缺失�
 ```bash
 harhub projects propose <project-id> bootstrap
 harhub projects propose <project-id> add-library-skills --asset <asset-id>
+harhub projects propose <project-id> remove-skill \
+  --binding <binding-id> \
+  --binding <another-binding-id>
 harhub projects propose <project-id> add-library-mcps --asset <asset-id>
 harhub projects open <project-id> <proposal-id>
 ```
 
-打开 Proposal 会创建 Pull Request；这是外部写操作，应在用户明确批准后执行。
+Project Skills 页面也可以多选 Skill，把整批删除汇总到一个 Proposal。打开
+Proposal 会创建 Pull Request；这是外部写操作，应在用户明确批准后执行。

@@ -298,14 +298,14 @@ export function createProjectSkillRemoveProposal(
   token: string,
   workspaceId: string,
   projectId: string,
-  bindingId: string
+  bindingIds: string[]
 ): Promise<ProjectChangeProposal> {
   return request(
     `/api/workspaces/${encodeURIComponent(workspaceId)}/projects/${encodeURIComponent(projectId)}/proposals`,
     {
       method: "POST",
       headers: JSON_HEADERS,
-      body: JSON.stringify({ kind: "remove-skill", bindingId }),
+      body: JSON.stringify({ kind: "remove-skill", bindingIds }),
       cache: "no-store",
       token
     }

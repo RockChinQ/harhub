@@ -203,7 +203,9 @@ harhub projects diff <project-id> <binding-id> [--path file]
 harhub projects publish <project-id> <binding-id>
 harhub projects propose <project-id> bootstrap
 harhub projects propose <project-id> add-library-skills --asset <asset-id> [--asset <asset-id>...]
-harhub projects propose <project-id> remove-skill --binding <binding-id>
+harhub projects propose <project-id> remove-skill \
+  --binding <binding-id> \
+  --binding <another-binding-id>
 harhub projects open <project-id> <proposal-id>
 harhub projects rotate-token <project-id> --yes
 harhub projects archive <project-id> --yes
