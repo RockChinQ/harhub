@@ -86,22 +86,28 @@ Archiving a Project disconnects repository tracking but does not delete its
 workspace Library Skills. Deleting a Forge session likewise does not delete a
 Project already frozen from it.
 
+Deleting a Project removes its Harhub index, sync credentials, repository
+connection, inventory and scan history, and Project-only Skill fork cache. It
+does not delete or modify the GitHub repository or workspace Library assets.
+The Project name must be entered in the page confirmation before deletion.
+
 ## CLI And MCP
 
 Project and repository commands cover creation, connection, inventory, scans,
 ownership policy, Skill diff/publish, proposals, pull requests, token rotation,
-and archive:
+archive, and Project deletion:
 
 ```bash
 harhub projects show <project-id>
 harhub projects scan <project-id>
 harhub projects diff <project-id> <binding-id>
 harhub projects publish <project-id> <binding-id>
+harhub projects delete <project-id> --yes
 harhub repositories propose <project-id> add-library-skills --asset <asset-id>
 harhub repositories open <project-id> <proposal-id>
 ```
 
 The Agent Operations MCP exposes the same authenticated operations with
 explicit confirmation on publication, pull-request opening, token rotation,
-and archive. See [GitHub Integration](./github-integration),
+archive, and Project deletion. See [GitHub Integration](./github-integration),
 [CLI](./cli), and [Agent Operations MCP](./mcp).

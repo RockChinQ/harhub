@@ -7,6 +7,7 @@
 - `harhub_project_create`
 - `harhub_project_connect_repository`
 - `harhub_project_archive`
+- `harhub_project_delete`
 - `harhub_project_rotate_sync_token`
 - `harhub_project_inventory`
 - `harhub_project_scan`
@@ -32,3 +33,4 @@
 - `ignored`: retain detection but exclude the artifact from managed synchronization.
 
 Repository mutations should go through proposals and pull requests. A Project archive does not delete its GitHub repository.
+A Project deletion removes only Harhub's Project index and tracking history; it does not delete the GitHub repository or workspace Library assets.

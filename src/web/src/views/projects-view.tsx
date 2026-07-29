@@ -82,6 +82,7 @@ import {
   createProjectBootstrapProposal,
   createProjectSkillAddProposal,
   createProjectSkillRemoveProposal,
+  deleteProject,
   getGitHubIntegrationStatus,
   getProjectInventory,
   getProjectSkillDiff,
@@ -126,6 +127,9 @@ export function ProjectsView({
   const [isRotating, setIsRotating] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
   const [repository, setRepository] = useState("");
   const [defaultBranch, setDefaultBranch] = useState("main");
   const [isConnecting, setIsConnecting] = useState(false);
@@ -174,6 +178,9 @@ export function ProjectsView({
     setCopied(false);
     setProjectDetailTab("skills");
     setScanHistoryOpen(false);
+    setArchiveOpen(false);
+    setDeleteOpen(false);
+    setDeleteConfirmation("");
     void refresh();
   }, [routedProjectId, token, workspace.id]);
 
@@ -526,6 +533,24 @@ export function ProjectsView({
       setError(errorMessage(caught));
     } finally {
       setIsArchiving(false);
+    }
+  }
+
+  async function deleteCurrentProject() {
+    if (!project || deleteConfirmation !== project.name) return;
+    setIsDeleting(true);
+    setError(undefined);
+    try {
+      await deleteProject(token, workspace.id, project.id);
+      setDeleteOpen(false);
+      setDeleteConfirmation("");
+      setProject(undefined);
+      setInventory(undefined);
+      onNavigateProject(undefined);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -1141,6 +1166,24 @@ export function ProjectsView({
                     Archive project
                   </Button>
                 </div>
+                <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-destructive">Delete Project index</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      Permanently remove this Project and its tracking history from Harhub.
+                      The GitHub repository and Library assets are not changed.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    className="shrink-0"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    Delete project
+                  </Button>
+                </div>
               </CardContent>
             </Card>
               </TabsContent>
@@ -1166,6 +1209,57 @@ export function ProjectsView({
               >
                 {isArchiving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Archive
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
+          open={deleteOpen}
+          onOpenChange={(open) => {
+            if (isDeleting) return;
+            setDeleteOpen(open);
+            if (!open) setDeleteConfirmation("");
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this Project from Harhub?</AlertDialogTitle>
+              <AlertDialogDescription className="space-y-2">
+                <span className="block">
+                  This permanently removes the Project index, repository connection, sync
+                  credentials, inventory and scan history, and Project-only Skill forks.
+                </span>
+                <span className="block font-medium text-foreground">
+                  The GitHub repository and workspace Library assets will not be deleted.
+                </span>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-2">
+              <label htmlFor="delete-project-confirmation" className="text-sm font-medium">
+                Type <span className="font-semibold">{project?.name}</span> to confirm
+              </label>
+              <Input
+                id="delete-project-confirmation"
+                value={deleteConfirmation}
+                autoComplete="off"
+                disabled={isDeleting}
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+              />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={
+                  isDeleting ||
+                  !project ||
+                  deleteConfirmation !== project.name
+                }
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => void deleteCurrentProject()}
+              >
+                {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Delete project
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

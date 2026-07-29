@@ -16,7 +16,7 @@ import { AllowedPaths } from "../src/mcp/paths.js";
 test("advertises the full CLI-equivalent Harhub tool surface with safety hints", async () => {
   await withMcpClient("http://127.0.0.1:1", async (client) => {
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 39);
+    assert.equal(listed.tools.length, 40);
     assert.ok(listed.tools.some((tool) => tool.name === "harhub_assets_list"));
     assert.ok(listed.tools.some((tool) => tool.name === "harhub_project_create_proposal"));
     assert.ok(listed.tools.some((tool) => tool.name === "harhub_forge_generate"));
@@ -27,6 +27,10 @@ test("advertises the full CLI-equivalent Harhub tool surface with safety hints",
 
     const listTool = listed.tools.find((tool) => tool.name === "harhub_projects_list");
     assert.equal(listTool?.annotations?.readOnlyHint, true);
+
+    const deleteProjectTool = listed.tools.find((tool) => tool.name === "harhub_project_delete");
+    assert.equal(deleteProjectTool?.annotations?.destructiveHint, true);
+    assert.deepEqual(deleteProjectTool?.inputSchema.required?.sort(), ["confirm", "projectId"]);
   });
 });
 

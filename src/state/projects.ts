@@ -279,6 +279,54 @@ export function archiveProject(
   });
 }
 
+export function deleteProjectIndex(
+  accountId: string,
+  workspaceId: string,
+  projectId: string
+): Promise<{
+  project: HarhubProject;
+  skillForkStorage: StoredObject[];
+}> {
+  return serializeStateAccess(async () => {
+    const state = await loadState();
+    requireWorkspaceAdmin(state, accountId, workspaceId);
+    const project = findProject(state, workspaceId, projectId);
+    const snapshotIds = new Set(
+      state.projectInventorySnapshots
+        .filter((snapshot) => snapshot.projectId === projectId)
+        .map((snapshot) => snapshot.id)
+    );
+    const now = new Date().toISOString();
+
+    state.projects = state.projects.filter((candidate) => candidate.id !== projectId);
+    state.projectRepositoryConnections = state.projectRepositoryConnections
+      .filter((connection) => connection.projectId !== projectId);
+    state.projectScanJobs = state.projectScanJobs
+      .filter((job) => job.projectId !== projectId);
+    state.projectInventorySnapshots = state.projectInventorySnapshots
+      .filter((snapshot) => snapshot.projectId !== projectId);
+    state.projectInventoryFiles = state.projectInventoryFiles
+      .filter((file) => !snapshotIds.has(file.snapshotId));
+    state.projectBindingPolicies = state.projectBindingPolicies
+      .filter((policy) => policy.projectId !== projectId);
+    state.projectChangeProposals = state.projectChangeProposals
+      .filter((proposal) => proposal.projectId !== projectId);
+    for (const session of state.forgeSessions) {
+      if (session.frozenProject?.id !== projectId) continue;
+      delete session.frozenProject;
+      session.updatedAt = now;
+    }
+
+    await saveState(state);
+    return {
+      project: toPublicProject(project),
+      skillForkStorage: structuredClone(
+        (project.skillForks ?? []).map((fork) => fork.storage)
+      )
+    };
+  });
+}
+
 export function removeFailedGitHubAppProjectImport(
   accountId: string,
   workspaceId: string,

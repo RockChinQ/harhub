@@ -193,9 +193,11 @@ harhub projects propose <project-id> remove-skill --binding <binding-id>
 harhub projects open <project-id> <proposal-id>
 harhub projects rotate-token <project-id> --yes
 harhub projects archive <project-id> --yes
+harhub projects delete <project-id> --yes
 ```
 
 Destructive project commands require `--yes` (or `-y`).
+Deleting a Project removes its Harhub index and tracking history without deleting the GitHub repository or workspace Library assets.
 
 ## GitHub Repositories
 

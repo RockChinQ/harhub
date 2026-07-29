@@ -18,12 +18,18 @@ export async function runProjectCommand(subcommand: string, parsed: ParsedArgs):
         return output(parsed, await requestWorkspaceJson(parsed, `${projectPath(parsed)}/rotate-sync-token`, {
           method: "POST"
         }), "Rotated project sync token");
-      case "delete":
       case "archive":
         requireYes(parsed, "archive this project");
-        return output(parsed, await requestWorkspaceJson(parsed, projectPath(parsed), {
-          method: "DELETE"
+        return output(parsed, await requestWorkspaceJson(parsed, `${projectPath(parsed)}/archive`, {
+          method: "POST"
         }), "Archived project");
+      case "delete":
+        requireYes(parsed, "permanently delete this project index");
+        await requestWorkspaceJson(parsed, projectPath(parsed), {
+          method: "DELETE",
+          body: { confirm: true }
+        });
+        return output(parsed, { id: requirePositional(parsed, 0, "project-id") }, "Deleted project");
       case "inventory":
         return output(parsed, await requestWorkspaceJson(parsed, `${projectPath(parsed)}/inventory`), "Repository inventory");
       case "scan":

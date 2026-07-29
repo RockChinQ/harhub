@@ -211,6 +211,7 @@ export type WorkspaceAuditEventType =
   | "asset.version.restored"
   | "project.archived"
   | "project.created"
+  | "project.deleted"
   | "project.frozen"
   | "project.repository.connected"
   | "project.repository.synced"

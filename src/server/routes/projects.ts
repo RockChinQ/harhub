@@ -27,6 +27,7 @@ import {
   publishProjectSkillFork,
   syncProjectRepositoryBundle
 } from "../services/project-skill-forks.js";
+import { deleteTrackedProject } from "../services/project-repository-inventory.js";
 import { getBearerToken, sendError, setPrivateNoStore } from "../utils/http.js";
 
 const MAX_PROJECT_NAME_CHARS = 120;
@@ -188,7 +189,7 @@ export function registerProjectRoutes(
     }
   );
 
-  app.delete("/api/workspaces/:workspaceId/projects/:projectId", async (req, res) => {
+  app.post("/api/workspaces/:workspaceId/projects/:projectId/archive", async (req, res) => {
     const context = await requireWorkspaceAdminAccess(req, res);
     if (!context) return;
     setPrivateNoStore(res);
@@ -203,6 +204,26 @@ export function registerProjectRoutes(
       res.json(project);
     } catch (error) {
       sendError(res, error, 400);
+    }
+  });
+
+  app.delete("/api/workspaces/:workspaceId/projects/:projectId", async (req, res) => {
+    const context = await requireWorkspaceAdminAccess(req, res);
+    if (!context) return;
+    setPrivateNoStore(res);
+    try {
+      if (!isRecord(req.body) || req.body.confirm !== true) {
+        throw new Error("Project deletion requires explicit confirmation.");
+      }
+      await deleteTrackedProject({
+        accountId: context.account.id,
+        workspaceId: context.workspace.id,
+        projectId: readRequiredString(req.params.projectId, "projectId", 128)
+      });
+      res.status(204).end();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sendError(res, error, message.includes("not found") ? 404 : 400);
     }
   });
 

@@ -343,6 +343,71 @@ export async function deleteProjectRepositoryConnection(projectId: string): Prom
   });
 }
 
+export async function deleteProjectTrackingState(projectId: string): Promise<void> {
+  if (isDatabaseStateEnabled()) {
+    await ensureRepositoryDatabase();
+    await withDatabaseTransaction(async (client) => {
+      await client.query(
+        `delete from harhub_project_inventory_files
+         where snapshot_id in (
+           select id from harhub_project_inventory_snapshots where project_id = $1
+         )`,
+        [projectId]
+      );
+      await client.query(
+        `delete from harhub_project_inventory_artifacts
+         where snapshot_id in (
+           select id from harhub_project_inventory_snapshots where project_id = $1
+         )`,
+        [projectId]
+      );
+      await client.query(
+        "delete from harhub_project_inventory_snapshots where project_id = $1",
+        [projectId]
+      );
+      await client.query(
+        "delete from harhub_project_scan_jobs where project_id = $1",
+        [projectId]
+      );
+      await client.query(
+        "delete from harhub_project_binding_policies where project_id = $1",
+        [projectId]
+      );
+      await client.query(
+        "delete from harhub_project_change_proposals where project_id = $1",
+        [projectId]
+      );
+      await client.query(
+        "delete from harhub_project_repository_connections where project_id = $1",
+        [projectId]
+      );
+    });
+    return;
+  }
+
+  await serializeStateAccess(async () => {
+    const state = await loadState();
+    const snapshotIds = new Set(
+      state.projectInventorySnapshots
+        .filter((snapshot) => snapshot.projectId === projectId)
+        .map((snapshot) => snapshot.id)
+    );
+    state.projectRepositoryConnections = state.projectRepositoryConnections
+      .filter((connection) => connection.projectId !== projectId);
+    state.projectScanJobs = state.projectScanJobs
+      .filter((job) => job.projectId !== projectId);
+    state.projectInventorySnapshots = state.projectInventorySnapshots
+      .filter((snapshot) => snapshot.projectId !== projectId);
+    state.projectInventoryFiles = state.projectInventoryFiles
+      .filter((file) => !snapshotIds.has(file.snapshotId));
+    state.projectBindingPolicies = state.projectBindingPolicies
+      .filter((policy) => policy.projectId !== projectId);
+    state.projectChangeProposals = state.projectChangeProposals
+      .filter((proposal) => proposal.projectId !== projectId);
+    await saveState(state);
+  });
+}
+
 export async function getProjectRepositoryConnectionInternal(
   projectId: string
 ): Promise<ProjectRepositoryConnectionRecord | undefined> {

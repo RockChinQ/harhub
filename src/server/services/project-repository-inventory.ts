@@ -27,8 +27,11 @@ import {
   connectProjectGitHubAppRepository,
   createGitHubAppProject,
   createProjectScanJob,
+  deleteProjectIndex,
   deleteProjectRepositoryConnection,
+  deleteProjectTrackingState,
   failProjectScan,
+  getProject,
   getProjectInventoryStateInternal,
   getProjectRepositoryConnectionInternal,
   findProjectRepositoryConnection,
@@ -42,6 +45,7 @@ import {
   updateProjectGitHubRepositoryMetadata
 } from "../../state/index.js";
 import { type ProjectRepositoryConnectionRecord } from "../../state/types.js";
+import { deleteStoredObject } from "../../storage/index.js";
 import { GitHubAppError, readRepositoryInventorySource } from "./github-app.js";
 import { syncProjectRepositoryFiles } from "./project-skill-forks.js";
 import { resolveExplicitLibraryAsset } from "./project-repository-ownership.js";
@@ -50,6 +54,8 @@ import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
 const MAX_SCAN_ATTEMPTS = 3;
 const RETRY_BASE_MS = 1_000;
 const scheduledJobs = new Set<string>();
+const activeProjectJobs = new Map<string, Set<Promise<void>>>();
+const deletedProjectIds = new Set<string>();
 let recoveryStarted = false;
 
 export async function importGitHubRepository(input: {
@@ -179,6 +185,9 @@ export async function queueProjectRepositoryScan(input: {
   requestedSha?: string;
   actorAccountId?: string;
 }): Promise<ProjectScanJob> {
+  if (deletedProjectIds.has(input.projectId)) {
+    throw new Error("Project has been deleted.");
+  }
   const connection = await getProjectRepositoryConnectionInternal(input.projectId);
   if (!connection || connection.workspaceId !== input.workspaceId || connection.status !== "active") {
     throw new Error("Project GitHub repository connection is not active.");
@@ -207,7 +216,67 @@ export function recoverProjectRepositoryScans(): void {
     .catch((error) => logScan("recovery_failed", { error: errorMessage(error) }));
 }
 
+export async function deleteTrackedProject(input: {
+  accountId: string;
+  workspaceId: string;
+  projectId: string;
+}): Promise<HarhubProject> {
+  await getProject(input.accountId, input.workspaceId, input.projectId);
+  deletedProjectIds.add(input.projectId);
+  let projectDeleted = false;
+
+  try {
+    const deleted = await deleteProjectIndex(
+      input.accountId,
+      input.workspaceId,
+      input.projectId
+    );
+    projectDeleted = true;
+    await waitForProjectJobs(input.projectId);
+
+    const cleanupResults = await Promise.allSettled([
+      deleteProjectTrackingState(input.projectId),
+      ...deleted.skillForkStorage.map((storage) => deleteStoredObject(storage))
+    ]);
+    const cleanupFailures = cleanupResults.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected"
+    );
+    if (cleanupFailures.length > 0) {
+      logScan("project_delete_cleanup_failed", {
+        projectId: input.projectId,
+        failures: cleanupFailures.map((result) => errorMessage(result.reason))
+      });
+    }
+    await recordWorkspaceAuditEvent({
+      workspaceId: input.workspaceId,
+      eventType: "project.deleted",
+      entityType: "project",
+      entityId: input.projectId,
+      actorAccountId: input.accountId,
+      source: "api",
+      metadata: {
+        name: deleted.project.name,
+        repository: deleted.project.repository
+          ? `${deleted.project.repository.owner}/${deleted.project.repository.name}`
+          : null,
+        cleanupFailures: cleanupFailures.length
+      },
+      deduplicationKey: `project-deleted:${input.projectId}`
+    }).catch((error) => {
+      logScan("project_delete_audit_failed", {
+        projectId: input.projectId,
+        error: errorMessage(error)
+      });
+    });
+    return deleted.project;
+  } catch (error) {
+    if (!projectDeleted) deletedProjectIds.delete(input.projectId);
+    throw error;
+  }
+}
+
 export async function executeProjectRepositoryScan(job: ProjectScanJob): Promise<void> {
+  if (deletedProjectIds.has(job.projectId)) return;
   const startedAt = Date.now();
   let running = job;
   try {
@@ -226,6 +295,7 @@ export async function executeProjectRepositoryScan(job: ProjectScanJob): Promise
       name: connection.name,
       ...(running.requestedSha ? { requestedSha: running.requestedSha } : {})
     });
+    if (deletedProjectIds.has(running.projectId)) return;
     const inventory = await getProjectInventoryStateInternal(running.workspaceId, running.projectId);
     const catalog = await loadOrCreateWorkspaceAssetCatalog(workspaceRecord(running.workspaceId));
     const detected = detectRepositoryInventory(source.files);
@@ -263,6 +333,7 @@ export async function executeProjectRepositoryScan(job: ProjectScanJob): Promise
         .filter((policy) => policy.ownership === "repository")
         .map((policy) => policy.artifactPath))
     });
+    if (deletedProjectIds.has(running.projectId)) return;
     const snapshot: ProjectInventorySnapshot = {
       id: randomUUID(),
       workspaceId: running.workspaceId,
@@ -323,6 +394,7 @@ export async function executeProjectRepositoryScan(job: ProjectScanJob): Promise
       artifacts: artifacts.length
     });
   } catch (error) {
+    if (deletedProjectIds.has(running.projectId)) return;
     const failure = scanFailure(error);
     await failProjectScan(running.id, failure).catch(() => undefined);
     await recordWorkspaceAuditEvent({
@@ -357,11 +429,31 @@ export async function executeProjectRepositoryScan(job: ProjectScanJob): Promise
 }
 
 function scheduleJob(job: ProjectScanJob): void {
-  if (scheduledJobs.has(job.id)) return;
+  if (scheduledJobs.has(job.id) || deletedProjectIds.has(job.projectId)) return;
   scheduledJobs.add(job.id);
   setImmediate(() => {
-    void executeProjectRepositoryScan(job).finally(() => scheduledJobs.delete(job.id));
+    if (deletedProjectIds.has(job.projectId)) {
+      scheduledJobs.delete(job.id);
+      return;
+    }
+    const execution = executeProjectRepositoryScan(job);
+    const projectJobs = activeProjectJobs.get(job.projectId) ?? new Set<Promise<void>>();
+    projectJobs.add(execution);
+    activeProjectJobs.set(job.projectId, projectJobs);
+    void execution.finally(() => {
+      scheduledJobs.delete(job.id);
+      projectJobs.delete(execution);
+      if (projectJobs.size === 0) activeProjectJobs.delete(job.projectId);
+    });
   });
+}
+
+async function waitForProjectJobs(projectId: string): Promise<void> {
+  while (true) {
+    const jobs = [...(activeProjectJobs.get(projectId) ?? [])];
+    if (jobs.length === 0) return;
+    await Promise.allSettled(jobs);
+  }
 }
 
 async function requireConnection(job: ProjectScanJob): Promise<ProjectRepositoryConnectionRecord> {

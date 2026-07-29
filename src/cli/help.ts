@@ -115,7 +115,8 @@ Usage:
   harhub projects propose <project-id> remove-skill --binding <binding-id> [remote options]
   harhub projects open <project-id> <proposal-id> [remote options]
   harhub projects rotate-token <project-id> --yes [remote options]
-  harhub projects archive <project-id> --yes [remote options]`);
+  harhub projects archive <project-id> --yes [remote options]
+  harhub projects delete <project-id> --yes [remote options]`);
 }
 
 export function printRepositoriesHelp(): void {

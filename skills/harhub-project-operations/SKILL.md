@@ -32,6 +32,9 @@ Repository changes are staged as proposals:
 
 Call `harhub_project_create_proposal`, inspect the response, then call `harhub_project_open_proposal` only when the user has approved opening the pull request. Do not describe implementation details such as branch plumbing unless asked.
 
-Publishing a repository fork to the global Library, opening a pull request, archiving a Project, and rotating a sync token require `confirm: true`.
+Publishing a repository fork to the global Library, opening a pull request,
+archiving or deleting a Project, and rotating a sync token require
+`confirm: true`. Project deletion removes only the Harhub index and tracking
+history; it does not delete the GitHub repository or Library assets.
 
 Read [references/tools.md](references/tools.md) for the complete operation map.

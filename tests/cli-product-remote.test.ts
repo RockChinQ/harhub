@@ -95,6 +95,42 @@ test("creates and connects projects through the CLI command group", async () => 
   ]);
 });
 
+test("keeps Project archive and confirmed index deletion distinct", async () => {
+  const seen: Array<{ url: string; method: string; body: unknown }> = [];
+  await withServer(async (request, response) => {
+    seen.push({ url: request.url!, method: request.method!, body: await readJson(request) });
+    if (request.method === "DELETE") {
+      response.statusCode = 204;
+      response.end();
+      return;
+    }
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({ id: "project_1", status: "archived" }));
+  }, async (baseUrl) => {
+    assert.equal((await captureLog(() => runProjectCommand("archive", args(baseUrl, [
+      "project_1",
+      "--yes"
+    ])))).code, 0);
+    assert.equal((await captureLog(() => runProjectCommand("delete", args(baseUrl, [
+      "project_1",
+      "--yes"
+    ])))).code, 0);
+  });
+
+  assert.deepEqual(seen, [
+    {
+      url: "/api/workspaces/ws_demo/projects/project_1/archive",
+      method: "POST",
+      body: undefined
+    },
+    {
+      url: "/api/workspaces/ws_demo/projects/project_1",
+      method: "DELETE",
+      body: { confirm: true }
+    }
+  ]);
+});
+
 test("updates repository ownership policy and creates add-skill proposals", async () => {
   const seen: Array<{ url: string; method: string; body: unknown }> = [];
   await withServer(async (request, response) => {

@@ -101,8 +101,25 @@ export function archiveProject(
   projectId: string
 ): Promise<HarhubProject> {
   return request(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/projects/${encodeURIComponent(projectId)}/archive`,
+    { method: "POST", cache: "no-store", token }
+  );
+}
+
+export function deleteProject(
+  token: string,
+  workspaceId: string,
+  projectId: string
+): Promise<void> {
+  return request(
     `/api/workspaces/${encodeURIComponent(workspaceId)}/projects/${encodeURIComponent(projectId)}`,
-    { method: "DELETE", cache: "no-store", token }
+    {
+      method: "DELETE",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ confirm: true }),
+      cache: "no-store",
+      token
+    }
   );
 }
 

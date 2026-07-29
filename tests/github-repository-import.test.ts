@@ -258,8 +258,8 @@ test("imports an existing GitHub repository and refreshes it from signed push we
     assert.equal(independentRefreshed.project.sync.revision, 2);
 
     const archived = await fetch(
-      `${baseUrl}/api/workspaces/ws_demo/projects/${imported.project.id}`,
-      { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
+      `${baseUrl}/api/workspaces/ws_demo/projects/${imported.project.id}/archive`,
+      { method: "POST", headers: { Authorization: `Bearer ${token}` } }
     );
     assert.equal(archived.status, 200);
     const legacy = await createProject({

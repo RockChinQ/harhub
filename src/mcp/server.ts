@@ -284,8 +284,23 @@ function registerProjectTools(server: McpServer, client: HarhubMcpClient): void 
     schema: projectIdSchema.extend({ confirm: confirmSchema }),
     annotations: destructive,
     run: async ({ projectId }) => {
-      await client.json(projectPath(projectId), { method: "DELETE" });
+      await client.json(`${projectPath(projectId)}/archive`, { method: "POST" });
       return { archived: projectId };
+    }
+  });
+
+  register(server, {
+    name: "harhub_project_delete",
+    title: "Delete Project",
+    description: "Permanently delete a Harhub Project index and its tracking history without deleting the GitHub repository or Library assets. Requires explicit confirmation.",
+    schema: projectIdSchema.extend({ confirm: confirmSchema }),
+    annotations: destructive,
+    run: async ({ projectId }) => {
+      await client.json(projectPath(projectId), {
+        method: "DELETE",
+        body: { confirm: true }
+      });
+      return { deleted: projectId };
     }
   });
 
