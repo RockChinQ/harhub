@@ -38,7 +38,7 @@ import {
 import { createWorkspace, type SessionResponse } from "@/lib/api"
 import type { WorkspaceRecord } from "../../../shared/types"
 
-type AppSidebarView = "assets" | "asset-detail" | "projects" | "project-detail" | "forge" | "workspace" | "account"
+type AppSidebarView = "assets" | "asset-detail" | "mcps" | "mcp-detail" | "projects" | "project-detail" | "forge" | "workspace" | "account"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   token: string
@@ -63,6 +63,7 @@ export function AppSidebar({
   ...props
 }: AppSidebarProps) {
   const isSkillsActive = view === "assets" || view === "asset-detail"
+  const isMcpsActive = view === "mcps" || view === "mcp-detail"
   const isProjectsActive = view === "projects" || view === "project-detail"
 
   return (
@@ -109,8 +110,8 @@ export function AppSidebar({
               title: "MCPs",
               url: "/mcps",
               icon: Server,
-              disabled: true,
-              badge: "Soon",
+              isActive: isMcpsActive,
+              onSelect: () => onNavigate({ view: "mcps" }),
             },
             {
               title: "Rules",

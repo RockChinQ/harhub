@@ -12,19 +12,24 @@ Harhub 是开源的团队 Agent Harness 控制平面。它把 Agent 可复用能
 | 对象 | 用途 |
 | --- | --- |
 | Workspace | 团队隔离边界；成员、角色和资产都归属于 Workspace。 |
-| Library | 团队共享资产库；当前只管理 Agent Skills 的完整生命周期。 |
+| Library | 团队共享资产库；管理 Agent Skills 与 MCP 配置的版本生命周期。 |
 | Forge | 持久化需求访谈与 Harness 生成会话。 |
 | Project | Harhub 与真实 GitHub 仓库之间的长期关系。 |
 
 ## Library 的能力边界
 
-Library 当前的可变资产类型是 **Skill**。Harhub 会校验 `SKILL.md`，把每个 Skill 独立存储，并保留最近五个不可变版本。原始上传 zip 不会作为私有格式保留；下载时会生成标准单 Skill zip。
+Library 当前的可变资产类型是 **Skill** 和 **MCP**。Harhub 会校验
+`SKILL.md` 或 MCP JSON，把每个资产独立存储，并保留最近五个不可变版本。
+原始 Skill 上传 zip 不会作为私有格式保留；下载时会生成标准单 Skill zip。
+MCP 保留原始 JSON，公开展示和 Forge prompt 只使用安全元数据。
 
-Project 可以识别仓库自己的 MCP 配置、Rules、`AGENTS.md`、`CLAUDE.md`、Copilot Instructions 等内容，但这些暂时只有盘点、分类和变更交付能力，并不具备与 Library Skill 相同的发布和版本生命周期。
+Project 可以把 Library Skill 或 MCP 配置绑定到仓库文件，并通过 Pull
+Request 添加或移除。Rules、`AGENTS.md`、`CLAUDE.md`、Copilot Instructions
+等内容暂时只有盘点、分类和变更交付能力。
 
 ## 适合谁
 
-- 需要统一维护团队 Skills 的研发团队；
+- 需要统一维护团队 Skills 与 MCP 配置的研发团队；
 - 希望把仓库里的 Harness 状态可视化并减少漂移的项目负责人；
 - 希望 Agent 能安全地查询、上传、生成和交付 Harness 的平台团队；
 - 希望自托管、使用 Postgres 与 S3 兼容存储的组织。

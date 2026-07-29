@@ -15,7 +15,7 @@ harhub whoami
 
 `harhub login` 使用 OAuth 2.0 Device Authorization：终端显示短码，浏览器确认后把服务器、Token 和默认 Workspace 保存到本机配置。
 
-## 2. 把 Skill 放入 Library
+## 2. 把资产放入 Library
 
 Web 端在 Library 选择上传 zip。一个 zip 可以包含一个或多个嵌套 Skill，预览扫描结果后再选择导入。
 
@@ -29,6 +29,15 @@ harhub skills upload ./skills --all --json
 ```
 
 导入后检查校验状态、标准元数据和文件预览。修改 Skill 会创建新的不可变版本，不会原地覆盖历史。
+
+MCP 配置可从 Web 的 Library → MCP 上传，或使用：
+
+```bash
+harhub assets upload ./mcp.json --kind mcp \
+  --name "Issue tracker" --description "Use for issue-tracking projects."
+```
+
+MCP 也保留最近五个不可变版本，但不支持公开分享。
 
 ## 3. 分享或安装
 
@@ -45,7 +54,7 @@ npx skills add https://harhub.rcpd.cc/s/<share-token>
 
 ## 4. 连接真实项目
 
-在 Projects 中通过 GitHub App 导入或连接仓库，然后执行扫描。Harhub 会盘点 Skills、MCP 配置、Rules 和 Agent Instructions，并标记 Library 同步、仓库自有、修改或缺失状态。
+在 Projects 中通过 GitHub App 导入或连接仓库，然后执行扫描。Harhub 会盘点 Skills、MCP 配置、Rules 和 Agent Instructions，并标记 Library 同步、仓库自有、修改或缺失状态。Library Skills 与 MCP 配置都可通过可审查 Proposal 添加或移除。
 
 需要改变仓库时，先创建 Proposal，审核差异后再打开 Pull Request。Harhub 不会把尚未确认的提案直接写入默认分支。
 

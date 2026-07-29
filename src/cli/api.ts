@@ -165,6 +165,42 @@ export async function uploadSkillZip(input: {
   return data as Record<string, any>;
 }
 
+export async function uploadMcpConfiguration(input: {
+  apiUrl: string;
+  workspaceId: string;
+  token: string;
+  name: string;
+  description: string;
+  fileName: string;
+  buffer: Buffer;
+}): Promise<Record<string, any>> {
+  const form = new FormData();
+  form.set("name", input.name);
+  form.set("description", input.description);
+  form.set(
+    "file",
+    new Blob([new Uint8Array(input.buffer)], { type: "application/json" }),
+    input.fileName
+  );
+  const response = await fetchHarhub(
+    `${input.apiUrl}/api/workspaces/${input.workspaceId}/assets/mcp`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}` },
+      body: form
+    }
+  );
+  const data = await response.json().catch(() => undefined);
+  if (!response.ok) {
+    throw new Error(
+      typeof data?.error === "string"
+        ? data.error
+        : `MCP upload failed with ${response.status}`
+    );
+  }
+  return data as Record<string, any>;
+}
+
 export async function createWorkspaceAssetShare(input: {
   apiUrl: string;
   workspaceId: string;

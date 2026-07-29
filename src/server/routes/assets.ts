@@ -10,14 +10,15 @@ import {
 } from "../services/asset-mutations.js";
 import {
   handleAssetImportPreview,
-  handleAssetUpload
+  handleAssetUpload,
+  handleMcpAssetUpload
 } from "../services/asset-upload.js";
 import {
   getWorkspaceAssetVersionArchive,
   rollbackWorkspaceAssetVersion
 } from "../services/asset-versions.js";
 import { assetListPayload } from "../services/asset-responses.js";
-import { loadStoredSkill } from "../services/skill-packages.js";
+import { loadStoredAssetFilesForPreview } from "../services/skill-packages.js";
 import {
   validateWorkspaceAsset,
   validateWorkspaceAssetBatch,
@@ -65,7 +66,7 @@ export function registerAssetRoutes(
         return;
       }
 
-      const { files } = await loadStoredSkill(asset.storage);
+      const files = await loadStoredAssetFilesForPreview(asset);
       res.json(buildAssetPreview(
         asset,
         files,
@@ -165,6 +166,12 @@ function registerAssetMutationRoutes(
     const context = await requireWorkspaceAdminAccess(req, res);
     if (!context) return;
     await handleAssetUpload(req, res, context);
+  });
+
+  app.post("/api/workspaces/:workspaceId/assets/mcp", upload.single("file"), async (req, res) => {
+    const context = await requireWorkspaceAdminAccess(req, res);
+    if (!context) return;
+    await handleMcpAssetUpload(req, res, context);
   });
 
   app.post("/api/workspaces/:workspaceId/assets/import/preview", upload.single("file"), async (req, res) => {

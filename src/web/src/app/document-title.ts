@@ -25,6 +25,8 @@ export function appPageTitle({
   if (route.view === "landing") return undefined;
   if (route.view === "device") return "Authorize Device";
   if (route.view === "asset-detail") return assetName || "Skill";
+  if (route.view === "mcp-detail") return assetName || "MCP";
+  if (route.view === "mcps") return "MCPs";
   if (route.view === "assets") return "Skills";
   if (route.view === "projects") return "Projects";
   if (route.view === "project-detail") return "Project";

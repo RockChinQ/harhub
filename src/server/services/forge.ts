@@ -23,7 +23,7 @@ import {
   MIN_FORGE_INTERVIEW_ANSWERS
 } from "../../shared/forge.js";
 import { addProjectIntegrationFiles } from "../../features/projects/framework.js";
-import { loadStoredSkill } from "./skill-packages.js";
+import { loadStoredMcp, loadStoredSkill } from "./skill-packages.js";
 import {
   forgeDiscoveryAreaPrompt,
   forgeDiscoveryLensPrompt,
@@ -32,7 +32,7 @@ import {
 } from "./forge-discovery-lenses.js";
 
 const MAX_LIST_ITEMS = 6;
-const MAX_ARCHIVE_SKILL_BYTES = 25 * 1024 * 1024;
+const MAX_ARCHIVE_ASSET_BYTES = 25 * 1024 * 1024;
 const MAX_FORGE_ASSET_DESCRIPTION_CHARS = 360;
 
 const FOLLOW_UP_AI_POLICY: ForgeAiOperationPolicy = {
@@ -388,18 +388,19 @@ export async function createHarnessTemplate(
             verification: ["verification evidence"]
           }
         }),
-        "First form a coherent project concept from the requirement and interview answers. Then evaluate every availableSkills entry against that concept and use only exact assetId values from the list.",
-        "Select every distinct Skill whose description materially supports the resulting project's users, workflows, implementation, verification, or delivery constraints. The number of selected Skills must emerge from the project concept: there is no preferred or fixed count, and you must not stop at 4 by default.",
-        "Do not select weakly related or redundant Skills merely to increase the count. selectedAssets may be empty when no workspace Skill is genuinely useful.",
-        `Keep the combined sizeBytes of selected Skills at or below ${MAX_ARCHIVE_SKILL_BYTES}, because Harhub copies every selected package into the downloaded framework.`,
-        "Never reproduce, summarize, rewrite, or generate Skill instructions or Skill files. Return only each selected assetId and a short reason; Harhub copies the original stored Skill package later.",
+        "First form a coherent project concept from the requirement and interview answers. Then evaluate every availableAssets entry against that concept and use only exact assetId values from the list.",
+        "Select every distinct Skill or MCP configuration whose description materially supports the resulting project's users, workflows, implementation, verification, integrations, or delivery constraints. The number of selected assets must emerge from the project concept: there is no preferred or fixed count, and you must not stop at 4 by default.",
+        "Use the kind and safe MCP server/transport metadata to distinguish reusable instructions from runtime integrations. Never infer or request credentials.",
+        "Do not select weakly related or redundant assets merely to increase the count. selectedAssets may be empty when no workspace asset is genuinely useful.",
+        `Keep the combined sizeBytes of selected assets at or below ${MAX_ARCHIVE_ASSET_BYTES}, because Harhub copies every selected package or configuration into the downloaded framework.`,
+        "Never reproduce, summarize, rewrite, or generate Skill instructions, Skill files, MCP configuration values, environment values, tokens, or secrets. Return only each selected assetId and a short reason; Harhub copies the original stored asset later.",
         "Keep the narrative blueprint concise: include only distinct, useful entries in profile lists and only the workflow steps needed by this project. This brevity guidance does not impose a count on selectedAssets.",
         "Do not add prose outside the JSON fields.",
         "Use the same language as the user's requirement."
       ].join("\n"),
       user: JSON.stringify({
         ...input,
-        availableSkills: workspaceAssets.map(generationAssetPromptSummary)
+        availableAssets: workspaceAssets.map(generationAssetPromptSummary)
       }),
       signal,
       onActivity: reportActivity,
@@ -433,8 +434,15 @@ export function buildHarnessTemplate(
     file(".harness/context/stack.md", stackContext(spec)),
     file(".harness/rules/engineering.md", engineeringRules(spec)),
     file(".harness/workflows/delivery.md", deliveryWorkflow(spec)),
-    file(".harness/skills/README.md", selectedSkillsReadme(selectedAssets)),
-    file(".harness/catalog/skills.json", `${JSON.stringify({ skills: selectedAssets }, null, 2)}\n`),
+    file(".harness/skills/README.md", selectedSkillsReadme(
+      selectedAssets.filter((asset) => asset.kind === "skill")
+    )),
+    file(".harness/catalog/skills.json", `${JSON.stringify({
+      skills: selectedAssets.filter((asset) => asset.kind === "skill")
+    }, null, 2)}\n`),
+    file(".harness/catalog/mcps.json", `${JSON.stringify({
+      mcps: selectedAssets.filter((asset) => asset.kind === "mcp")
+    }, null, 2)}\n`),
     file(
       ".harness/changes/CHANGELOG.md",
       "# Harness Changelog\n\nRecord changes to project instructions, rules, workflows, and reusable assets here.\n"
@@ -478,15 +486,27 @@ function readTemplateSpec(
 function generationAssetPromptSummary(asset: HarnessWorkspaceAssetSummary) {
   return {
     id: asset.id,
+    kind: asset.kind,
     name: asset.name,
     description: asset.description.slice(0, MAX_FORGE_ASSET_DESCRIPTION_CHARS),
-    sizeBytes: asset.size
+    sizeBytes: asset.size,
+    ...(asset.kind === "mcp"
+      ? {
+          serverCount: asset.mcp?.serverCount ?? 0,
+          serverNames: asset.mcp?.serverNames ?? [],
+          transports: asset.mcp?.transports ?? []
+        }
+      : {})
   };
 }
 
 export function workspaceAssetSummaries(assets: AssetRecord[]): HarnessWorkspaceAssetSummary[] {
   return assets
-    .filter((asset) => asset.kind === "skill" && asset.health !== "error" && Boolean(asset.storage))
+    .filter((asset) =>
+      (asset.kind === "skill" || asset.kind === "mcp") &&
+      asset.health !== "error" &&
+      Boolean(asset.storage)
+    )
     .map((asset) => ({
       id: asset.id,
       kind: asset.kind,
@@ -496,7 +516,8 @@ export function workspaceAssetSummaries(assets: AssetRecord[]): HarnessWorkspace
       description: asset.description,
       health: asset.health,
       fileCount: asset.storage?.fileCount ?? 0,
-      size: asset.storage?.size ?? 0
+      size: asset.storage?.size ?? 0,
+      ...(asset.mcp ? { mcp: asset.mcp } : {})
     }));
 }
 
@@ -511,16 +532,21 @@ export async function createHarnessTemplateArchive(
   validateFrameworkFiles(input.files);
   const selectedIds = new Set(input.selectedAssetIds);
   const assets = catalog.assets.filter(
-    (asset) => selectedIds.has(asset.id) && asset.kind === "skill" && asset.health !== "error"
+    (asset) => selectedIds.has(asset.id) && asset.health !== "error"
   );
-  const totalSkillBytes = assets.reduce((total, asset) => total + (asset.storage?.size ?? 0), 0);
-  if (totalSkillBytes > MAX_ARCHIVE_SKILL_BYTES) {
-    throw new Error("Selected Skills are too large for one generated template");
+  if (assets.length !== selectedIds.size) {
+    throw new Error("One or more selected workspace assets are unavailable");
+  }
+  const totalAssetBytes = assets.reduce((total, asset) => total + (asset.storage?.size ?? 0), 0);
+  if (totalAssetBytes > MAX_ARCHIVE_ASSET_BYTES) {
+    throw new Error("Selected assets are too large for one generated template");
   }
 
   const zip = new JSZip();
   input.files.forEach((item) => zip.file(item.path, item.content));
-  const skillPackages = await Promise.all(assets.map(async (asset) => {
+  const skillPackages = await Promise.all(assets.filter(
+    (asset) => asset.kind === "skill"
+  ).map(async (asset) => {
     if (!asset.storage) throw new Error(`Selected asset ${asset.id} has no stored package`);
     return { asset, files: (await loadStoredSkill(asset.storage)).files };
   }));
@@ -530,6 +556,16 @@ export async function createHarnessTemplateArchive(
     for (const skillFile of skillPackage.files) {
       zip.file(`${basePath}/${safeRelativePath(skillFile.path)}`, skillFile.content);
     }
+  }
+  const mcpConfigurations = await Promise.all(
+    assets.filter((asset) => asset.kind === "mcp").map(async (asset) => {
+      if (!asset.storage) throw new Error(`Selected asset ${asset.id} has no stored configuration`);
+      return { asset, analyzed: (await loadStoredMcp(asset.storage)).analyzed };
+    })
+  );
+  for (const mcp of mcpConfigurations) {
+    const target = `.harness/mcp/${mcp.asset.slug || slugify(mcp.asset.name) || "mcp"}.json`;
+    zip.file(target, mcp.analyzed.content);
   }
 
   return {
@@ -560,8 +596,8 @@ function readAssetSelections(
     (total, selection) => total + (availableById.get(selection.assetId)?.size ?? 0),
     0
   );
-  if (selectedBytes > MAX_ARCHIVE_SKILL_BYTES) {
-    throw new Error("AI template selected Skills that exceed the framework archive size limit");
+  if (selectedBytes > MAX_ARCHIVE_ASSET_BYTES) {
+    throw new Error("AI template selected assets that exceed the framework archive size limit");
   }
   return selections;
 }
@@ -579,7 +615,9 @@ function resolveSelectedAssets(
     return [{
       ...asset,
       reason: selection.reason,
-      installPath: `.harness/skills/${asset.slug || slugify(asset.name) || "skill"}`
+      installPath: asset.kind === "skill"
+        ? `.harness/skills/${asset.slug || slugify(asset.name) || "skill"}`
+        : `.harness/mcp/${asset.slug || slugify(asset.name) || "mcp"}.json`
     }];
   });
 }
@@ -1330,6 +1368,7 @@ function validateFrameworkFiles(files: HarnessTemplateFile[]): void {
     ".harness/workflows/delivery.md",
     ".harness/skills/README.md",
     ".harness/catalog/skills.json",
+    ".harness/catalog/mcps.json",
     ".harness/changes/CHANGELOG.md",
     ".harhub/project.json",
     ".harhub/scripts/collect-bindings.mjs",
@@ -1373,6 +1412,8 @@ function agentGuide(
   spec: ForgeTemplateSpec,
   selectedAssets: HarnessTemplateAssetSelection[]
 ): string {
+  const selectedSkills = selectedAssets.filter((asset) => asset.kind === "skill");
+  const selectedMcps = selectedAssets.filter((asset) => asset.kind === "mcp");
   return `# ${spec.name} Agent Guide
 
 ## Read First
@@ -1385,7 +1426,8 @@ Before changing the project, read:
 4. \`.harness/rules/engineering.md\`
 5. \`.harness/workflows/delivery.md\`
 6. \`.harness/skills/README.md\`
-7. \`.harhub/project.json\`
+7. \`.harness/catalog/mcps.json\`
+8. \`.harhub/project.json\`
 
 ## Working Contract
 
@@ -1393,9 +1435,15 @@ ${bullets(spec.agentRules)}
 
 ## Workspace Skills
 
-${selectedAssets.length
+${selectedSkills.length
     ? "Use the selected workspace Skills when their descriptions match the current task. Each complete Skill package is included under `.harness/skills/` in the downloaded template."
     : "No workspace Skill was selected. Revisit the Harhub workspace catalog before adopting this baseline."}
+
+## Workspace MCP integrations
+
+${selectedMcps.length
+    ? "Use the selected MCP configurations under `.harness/mcp/` when the project needs those integrations. Resolve environment-variable placeholders at runtime and never commit literal credentials."
+    : "No workspace MCP configuration was selected for this baseline."}
 
 ## Change Record
 
@@ -1406,6 +1454,8 @@ function harnessReadme(
   spec: ForgeTemplateSpec,
   selectedAssets: HarnessTemplateAssetSelection[]
 ): string {
+  const skillCount = selectedAssets.filter((asset) => asset.kind === "skill").length;
+  const mcpCount = selectedAssets.filter((asset) => asset.kind === "mcp").length;
   return `# ${spec.name} Harness
 
 ${spec.summary}
@@ -1418,7 +1468,8 @@ This directory is a reviewable project harness template. It contains project con
 - \`context/stack.md\`: known technical context and decisions still needed.
 - \`rules/engineering.md\`: standing instructions for agents.
 - \`workflows/delivery.md\`: the first delivery workflow and verification gates.
-- \`skills/\`: ${selectedAssets.length} selected Skill package${selectedAssets.length === 1 ? "" : "s"} from the current Harhub workspace.
+- \`skills/\`: ${skillCount} selected Skill package${skillCount === 1 ? "" : "s"} from the current Harhub workspace.
+- \`mcp/\`: ${mcpCount} selected MCP configuration${mcpCount === 1 ? "" : "s"} from the current Harhub workspace.
 - \`changes/CHANGELOG.md\`: the history of harness changes.
 - \`../.harhub/project.json\`: the Project binding manifest populated when this framework is frozen in Harhub.
 - \`../.github/workflows/harhub-sync.yml\`: repository automation that reports Skill, MCP, and Rule changes back to Harhub.`;

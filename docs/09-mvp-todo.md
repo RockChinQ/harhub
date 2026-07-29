@@ -2,13 +2,17 @@
 
 Harhub 的 MVP 策略是 **开源分发加 hosted SaaS 运营**。产品品类应是 **团队 AI harness 管理**：管理团队用来让 agents 可靠运行的 Skills、MCP servers、rules、project instructions 和 governance metadata。
 
-Library 实现应继续聚焦 Agent Skills，但这是切入点，不是最终品类。Skills 有价值，是因为它们有具体包结构、可以校验、可以上传和预览，并能形成可衡量的复用闭环。Project 层已经开始盘点 rules、MCP 配置和 instructions，并为 Skills 提供 repository drift/PR workflow；这些能力尚未扩展为完整的多资产 Library、bundle composition 和 cross-tool distribution。
+Library 从 Agent Skills 切入，并已加入 MCP 配置的私有采用闭环。Skills
+有价值，是因为它们有具体包结构、可以校验、上传、预览和公开分发；MCP
+配置则提供版本、Project binding/PR 和 Forge materialization。Rules 与
+instructions 尚未扩展为完整 Library lifecycle，通用 bundle composition
+和 cross-tool distribution 也仍未实现。
 
 ## 目标形态
 
 Harhub 应以两个互相关联的表面发布：
 
-- **开源项目**：一个 self-hostable TypeScript app、CLI 和 MCP server，用于校验、编目并管理 harness assets，同时不发明自定义格式。Library 只发布 Agent Skills；Projects 可以盘点多类 repository harness files。
+- **开源项目**：一个 self-hostable TypeScript app、CLI 和 MCP server，用于校验、编目并管理 harness assets，同时不发明自定义格式。Library 管理 Agent Skills 与私有 MCP 配置；Projects 可以盘点多类 repository harness files。
 - **Hosted SaaS**：面向不想自行运维 storage、auth、catalog 和 governance infrastructure 的团队，提供免费 cloud workspace。
 
 Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的使用限制控制运营成本，并将超限状态作为未来 paid plan 的需求信号。
@@ -52,7 +56,7 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 
 ## 近期已完成
 
-- [x] 将 Skills 统一作为 Library Asset kind 管理；Project inventory 同时识别 MCP、Rules 和 instructions，但不为它们提供 Library mutation lifecycle。
+- [x] 将 Skills 与 MCP 配置统一作为 Library Asset kind 管理；Project inventory 同时识别 Rules 和 instructions，但不为后两者提供 Library mutation lifecycle。
 - [x] 将前端固定到 `127.0.0.1:5176`，API 固定到 `127.0.0.1:3310`。
 - [x] 支持任意 zip 多 Skill 发现与勾选导入；每个 Skill 逐文件写入独立 S3 prefix，并提供本地 MinIO 开发路径。
 - [x] 将 Skill detail 做成 URL-addressable 页面，支持 file tree 和 file preview。
@@ -73,12 +77,13 @@ Hosted MVP 发布时只提供免费版。与其立即收费，不如用清晰的
 - [x] 添加持久化 Forge sessions、workspace AI connection test、适应式 discovery、streaming/retry 和 Project freeze。
 - [x] 添加 GitHub App repository import、multi-artifact Project inventory、push refresh、Skill fork diff/人工回流和 pull request delivery。
 - [x] 添加覆盖 Library、Projects、GitHub 和 Forge 的 CLI commands 与 Agent Operations MCP tools。
+- [x] 添加 MCP Library 上传/版本、Project binding/PR，以及 Forge 安全选择与原样物化。
 - [x] 添加 simplified owner/admin mutation RBAC、normalized audit events 和 repository projections。
 - [x] 采用 Apache-2.0 license，并让 image deployment 依赖 `check → test → build` quality workflow。
 
 更广义 team-harness 产品的重要缺口：
 
-- **Multi-artifact inventory 还停留在 Project scope**：scanner 能盘点 repository Skills、MCP 配置、rules 和 agent instructions，但没有跨 Project 查询、全局 catalog 或 non-Skill publish lifecycle。
+- **Rules/Instructions inventory 还停留在 Project scope**：scanner 能盘点 repository Skills、MCP 配置、rules 和 agent instructions，但 rules/instructions 没有跨 Project 查询、全局 catalog 或 Library lifecycle。
 - **没有 cross-tool target model**：缺少 Codex、Claude Code、Cursor、GitHub Copilot、ChatGPT、CI 或 repo materialization 的 target abstraction。
 - **Governance workflow 仍是局部能力**：Asset/Project mutation 有 audit events，Project Skill forks 有人工 diff/publish，repository changes 有 proposal/PR confirmation；仍缺通用 review、approval、rollout 和 policy exception model。
 - **没有 MCP risk model**：尚未表示 MCP servers、tools、scopes、environment requirements 和 secret boundaries。
@@ -266,7 +271,8 @@ Distribution action 可以是：
 - [x] 扫描 connected repository 中任意位置的 `SKILL.md`、`AGENTS.md`、`CLAUDE.md`、Copilot instructions、Cursor/Windsurf rules、`.harness` rules/MCP 和常见 MCP JSON。
 - [x] 按 Skill、MCP、rule、instruction、format、source repository/branch/commit/path 与 ownership policy 对发现项分类。
 - [x] 在 Project detail 中为 rules、instructions 和 MCP definitions 添加 read-only inventory views。
-- [ ] 将 non-Skill inventory 提升为跨 Project 查询与独立 Library asset lifecycle。
+- [x] 将 MCP inventory 提升为独立 Library asset lifecycle，并支持 Project binding。
+- [ ] 将 rules/instructions inventory 提升为跨 Project 查询与独立 Library asset lifecycle。
 - [ ] 检测 duplicate 或 near-duplicate rules 和 instructions。
 - [ ] 在实现完整 composition 前追踪每种 artifact type 的需求。
 
@@ -355,7 +361,7 @@ MVP 满足以下条件时，可以公开免费发布：
 3. 团队能看到 activated workspaces、storage usage、quota hits、upload failures 和 distribution actions。
 4. 开源 repo 能根据文档步骤在没有私有基础设施的情况下 self-host。
 5. Imported Skill 文件默认私有；只有 workspace authorization 可预览，或通过有效且可撤销的 share token 下载动态生成的标准 zip。
-6. 已实现 Library 保持 Skills-only，Project inventory 可以发现其他 harness 类型，同时 positioning 清楚解释更大的 team AI harness management 品类。
+6. 已实现 Library 的 Skill/MCP 生命周期，Project inventory 可以发现其他 harness 类型，同时 positioning 清楚解释更大的 team AI harness management 品类。
 7. 在使用或评审 Skills MVP 后，至少 5 个团队明确请求支持 rules、MCP、`AGENTS.md`、Copilot instructions 或 cross-tool distribution。
 
 ## 前四周里程碑
@@ -385,4 +391,5 @@ MVP 满足以下条件时，可以公开免费发布：
 - [x] OSS license 采用 Apache-2.0。
 - [ ] Public signup 时机：open signup、invite code 或 waitlist。
 - [ ] Immutable release model：share pin 到 Harhub release snapshot，还是映射到 Git tag/commit。
-- [ ] 第一个 non-Skill **Library lifecycle** target：rules/instructions publishing，还是 MCP registry/governance。
+- [x] 第一个 non-Skill **Library lifecycle** target 采用 MCP registry 与 Project/Forge 集成。
+- [ ] 下一个 Library lifecycle target：rules 还是 instructions。

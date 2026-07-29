@@ -15,6 +15,7 @@ import {
   getHarhubSession,
   getPublicAssetShare,
   revokeWorkspaceAssetShare,
+  uploadMcpConfiguration,
   uploadSkillZip
 } from "../cli/api.js";
 import {
@@ -112,6 +113,21 @@ export class HarhubMcpClient {
         })))
       : undefined;
     return { ...result, ...(shares ? { shares } : {}) };
+  }
+
+  async uploadMcp(input: {
+    file: string;
+    name: string;
+    description: string;
+  }): Promise<Record<string, unknown>> {
+    const file = this.paths.readable(input.file);
+    return uploadMcpConfiguration({
+      ...this.context,
+      name: input.name,
+      description: input.description,
+      fileName: path.basename(file),
+      buffer: readFileSync(file)
+    });
   }
 
   async uploadSkillPaths(input: {

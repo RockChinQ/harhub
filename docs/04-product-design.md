@@ -1,6 +1,6 @@
 # 产品设计
 
-> 状态说明：本章主要描述目标产品形态。当前 beta 已实现 Skills Library、五版保留与回滚、Forge、Projects、GitHub App repository inventory、Skill fork diff/人工回流和 PR delivery。通用 Package releases、Bundles、Assignments、Findings、非 Skill Library 生命周期和完整治理工作流仍在规划中。
+> 状态说明：本章主要描述目标产品形态。当前 beta 已实现 Skills/MCP Library、五版保留与回滚、Forge、Projects、GitHub App repository inventory、Skill fork diff/人工回流和 Skill/MCP PR delivery。通用 Package releases、Bundles、Assignments、Findings、Rules/Instructions Library 生命周期和完整治理工作流仍在规划中。
 
 ## 产品形态
 
@@ -144,7 +144,7 @@ Upload 与 share 必须分开：普通 upload 保持 private，只有 `--share` 
 
 ## Agent Skills 结构
 
-Harhub Library 当前只管理 agentskills.io 定义的 Skill 目录或 zip：
+Harhub Library 管理 agentskills.io 定义的 Skill 目录或 zip：
 
 ```text
 skill-name/
@@ -154,7 +154,11 @@ skill-name/
   assets/
 ```
 
-Harhub 当前不定义任何新的 Skill 文件格式。Project repository scanner 已能发现 MCP 配置、rules 和 agent instructions，但它们仍是 repository-owned inventory，不会被包装成 Skill，也没有完整的 Library 发布生命周期。
+Harhub 当前不定义任何新的 Skill 文件格式。Library 也管理使用
+`mcpServers` 或 `servers` map 的原始 MCP JSON，提取安全元数据并保留最近
+五版。Project repository scanner 还能发现 rules 和 agent instructions；
+这些仍是 repository-owned inventory，不会被包装成 Skill，也没有完整的
+Library 发布生命周期。
 
 ## 组合模型
 

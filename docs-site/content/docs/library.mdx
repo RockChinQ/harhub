@@ -1,6 +1,6 @@
 ---
-title: Library 与 Skills
-description: 上传、版本化、下载和分享团队的标准 Agent Skills。
+title: Library 资产
+description: 管理团队的标准 Agent Skills 与 MCP 配置。
 ---
 
 ## Skill 包要求
@@ -33,9 +33,26 @@ harhub download <skill> --version 2 --output ./skill-v2.zip
 
 ## 分享规则
 
-分享页只公开该 Skill 的公开元数据、文件预览和可验证下载。撤销分享后旧 URL 失效：
+分享页只公开 Skill 的公开元数据、文件预览和可验证下载。撤销分享后旧 URL 失效：
 
 ```bash
 harhub share <skill>
 harhub unshare <skill>
 ```
+
+MCP 配置不允许公开分享。
+
+## MCP 配置
+
+Library 中的一个 MCP 资产对应一个 JSON 文件，顶层使用 `mcpServers` 或
+`servers`。Harhub 保留原始内容及最近五个不可变版本，并提取 server 名称、
+数量与 transport 等安全元数据用于浏览和 Forge 选择。
+
+```bash
+harhub assets upload ./mcp.json --kind mcp \
+  --name "Issue tracker" \
+  --description "Use for projects connected to the team issue tracker."
+```
+
+凭据应使用环境变量占位符。若 secret-like 环境变量包含字面量，校验会给出警告。
+配置值不会进入 Forge 的 AI prompt。

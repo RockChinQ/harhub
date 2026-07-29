@@ -100,7 +100,7 @@ export function SkillOverviewPanel({
     setHistoryDialogOpen(false);
     setVersionAction(undefined);
     setVersionMessage(undefined);
-    if (!asset) return;
+    if (!asset || asset.kind !== "skill") return;
 
     let active = true;
     setIsSharing(true);
@@ -122,7 +122,7 @@ export function SkillOverviewPanel({
   if (!asset) {
     return (
       <div className={cn("flex min-h-48 items-center justify-center rounded-lg border border-dashed bg-card text-sm text-muted-foreground", className)}>
-        Select a skill.
+        Select an asset.
       </div>
     );
   }
@@ -289,6 +289,17 @@ export function SkillOverviewPanel({
         <p className="mt-4 truncate font-mono text-xs text-muted-foreground">
           {selectedAsset.name}
         </p>
+        {selectedAsset.kind === "mcp" && selectedAsset.mcp ? (
+          <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
+            {selectedAsset.mcp.serverCount} server{selectedAsset.mcp.serverCount === 1 ? "" : "s"}
+            {selectedAsset.mcp.serverNames.length
+              ? ` · ${selectedAsset.mcp.serverNames.join(", ")}`
+              : ""}
+            {selectedAsset.mcp.transports.length
+              ? ` · ${selectedAsset.mcp.transports.join(", ")}`
+              : ""}
+          </p>
+        ) : null}
         {selectedAsset.updatedAt ? (
           <p className="mt-1 text-xs text-muted-foreground">
             Updated {formatVersionDate(selectedAsset.updatedAt)}
@@ -317,8 +328,9 @@ export function SkillOverviewPanel({
                 <DialogHeader>
                   <DialogTitle>Version history</DialogTitle>
                   <DialogDescription>
-                    The current package and four previous versions are retained. A rollback creates
-                    a new version instead of rewriting history.
+                    The current {selectedAsset.kind === "skill" ? "package" : "configuration"} and
+                    {" "}four previous versions are retained. A rollback creates a new version
+                    instead of rewriting history.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
@@ -333,8 +345,8 @@ export function SkillOverviewPanel({
                     />
                   )) : (
                     <div className="rounded-md border p-4 text-sm text-muted-foreground">
-                      This Skill is currently at v{currentVersion}. Its detailed history will be
-                      recorded the next time the package changes.
+                      This asset is currently at v{currentVersion}. Its detailed history will be
+                      recorded the next time its contents change.
                     </div>
                   )}
                 </div>
@@ -404,6 +416,7 @@ export function SkillOverviewPanel({
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+            {selectedAsset.kind === "skill" ? (
             <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
               <DialogTrigger asChild>
                 <Button
@@ -512,6 +525,7 @@ export function SkillOverviewPanel({
                 )}
               </DialogContent>
             </Dialog>
+            ) : null}
             <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
               <AlertDialogTrigger asChild>
                 <Button
@@ -530,7 +544,7 @@ export function SkillOverviewPanel({
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Delete skill?</AlertDialogTitle>
+                  <AlertDialogTitle>Delete {selectedAsset.kind === "skill" ? "Skill" : "MCP"}?</AlertDialogTitle>
                   <AlertDialogDescription>
                     This removes {selectedAsset.displayName} from the workspace catalog.
                   </AlertDialogDescription>

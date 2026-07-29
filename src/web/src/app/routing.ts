@@ -14,6 +14,10 @@ export function routeFromPath(pathname: string): AppRoute {
     const assetQuery = segments[1] ? decodeRoutePart(segments.slice(1).join("/")) : undefined;
     return assetQuery ? { view: "asset-detail", assetQuery } : { view: "assets" };
   }
+  if (section === "mcps") {
+    const assetQuery = segments[1] ? decodeRoutePart(segments.slice(1).join("/")) : undefined;
+    return assetQuery ? { view: "mcp-detail", assetQuery } : { view: "mcps" };
+  }
 
   if (section === "workspace") return { view: "workspace" };
   if (section === "projects") {
@@ -37,6 +41,7 @@ export function normalizeRoute(route: AppRoute): AppRoute {
   if (route.view === "asset-detail" && !route.assetQuery) {
     return { view: "assets" };
   }
+  if (route.view === "mcp-detail" && !route.assetQuery) return { view: "mcps" };
   if (route.view === "share" && !route.shareToken) return { view: "assets" };
   if (route.view === "project-detail" && !route.projectId) return { view: "projects" };
   if (route.view === "forge" && !route.forgeSessionId) return { view: "forge" };
@@ -47,6 +52,10 @@ export function pathForRoute(route: AppRoute): string {
   if (route.view === "asset-detail" && route.assetQuery) {
     return `/skills/${encodeURIComponent(route.assetQuery)}`;
   }
+  if (route.view === "mcp-detail" && route.assetQuery) {
+    return `/mcps/${encodeURIComponent(route.assetQuery)}`;
+  }
+  if (route.view === "mcps") return "/mcps";
   if (route.view === "workspace") return "/workspace";
   if (route.view === "projects" || route.view === "project-detail") {
     return route.projectId
@@ -76,6 +85,8 @@ export function replaceBrowserRoute(route: AppRoute): void {
 
 export function viewTitle(view: View): string {
   if (view === "asset-detail") return "Skill Detail";
+  if (view === "mcp-detail") return "MCP Detail";
+  if (view === "mcps") return "MCPs";
   if (view === "workspace") return "Workspace";
   if (view === "projects") return "Projects";
   if (view === "project-detail") return "Project";

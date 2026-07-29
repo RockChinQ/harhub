@@ -67,7 +67,7 @@ function initialFrameworkBindings(
   const rule = files.find((item) => item.path === ".harness/rules/engineering.md");
   return [
     ...selectedAssets.map((asset) => ({
-      kind: "skill" as const,
+      kind: asset.kind,
       name: asset.displayName,
       path: asset.installPath,
       source: "harhub" as const,

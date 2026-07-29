@@ -156,6 +156,19 @@ function registerLibraryTools(server: McpServer, client: HarhubMcpClient): void 
   });
 
   register(server, {
+    name: "harhub_mcp_upload",
+    title: "Upload MCP configuration",
+    description: "Validate and store one local MCP JSON configuration in the workspace Library. Use environment placeholders instead of literal credentials.",
+    schema: z.object({
+      file: z.string().min(1).describe("JSON file path inside an allowed local root."),
+      name: z.string().min(1).describe("Human-readable MCP asset name."),
+      description: z.string().min(1).describe("When projects should use this integration.")
+    }),
+    annotations: mutation,
+    run: (input) => client.uploadMcp(input)
+  });
+
+  register(server, {
     name: "harhub_skill_edit_file",
     title: "Edit remote Skill file",
     description: "Replace one file in a remote Skill package, validate it, and upload a new immutable version.",
@@ -652,17 +665,29 @@ const proposalSchema = z.discriminatedUnion("kind", [
     projectId: idSchema,
     kind: z.literal("remove-skill"),
     bindingId: idSchema
+  }),
+  z.object({
+    projectId: idSchema,
+    kind: z.literal("add-library-mcps"),
+    assetIds: z.array(idSchema).min(1)
+  }),
+  z.object({
+    projectId: idSchema,
+    kind: z.literal("remove-mcp"),
+    bindingId: idSchema
   })
 ]);
 
 type ProposalBodyInput =
   | { kind: "bootstrap" }
   | { kind: "add-library-skills"; assetIds: string[] }
-  | { kind: "remove-skill"; bindingId: string };
+  | { kind: "remove-skill"; bindingId: string }
+  | { kind: "add-library-mcps"; assetIds: string[] }
+  | { kind: "remove-mcp"; bindingId: string };
 
 function proposalBody(input: ProposalBodyInput): Record<string, unknown> {
   if (input.kind === "bootstrap") return { kind: input.kind };
-  if (input.kind === "add-library-skills") {
+  if (input.kind === "add-library-skills" || input.kind === "add-library-mcps") {
     return { kind: input.kind, assetIds: input.assetIds };
   }
   return { kind: input.kind, bindingId: input.bindingId };

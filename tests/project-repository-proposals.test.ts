@@ -3,8 +3,10 @@ import test from "node:test";
 
 import type { AssetRecord, ProjectBinding, ProjectInventoryArtifact } from "../src/shared/types.js";
 import {
+  createAddLibraryMcpsProposal,
   createAddLibrarySkillsProposal,
   createBootstrapProposal,
+  createRemoveMcpProposal,
   createRemoveSkillProposal
 } from "../src/server/services/project-repository-proposals.js";
 
@@ -108,6 +110,56 @@ test("repository-root Skills cannot create a destructive removal proposal", () =
     binding,
     filePaths: ["SKILL.md", "src/index.ts"]
   }), /repository-root Skill cannot be removed/i);
+});
+
+test("Library MCP proposals add and remove exact repository configuration files", () => {
+  const base = proposalBase();
+  const asset: AssetRecord = {
+    ...librarySkill("github", "GitHub"),
+    kind: "mcp",
+    description: "GitHub MCP integration",
+    storage: {
+      ...librarySkill("github", "GitHub").storage!,
+      contentType: "application/vnd.harhub.mcp-config"
+    }
+  };
+  const added = createAddLibraryMcpsProposal({
+    ...base,
+    mcps: [{
+      asset,
+      content: Buffer.from('{"mcpServers":{"github":{"command":"npx"}}}\n')
+    }]
+  });
+  assert.equal(added.kind, "add-library-mcps");
+  assert.deepEqual(added.files.map((file) => file.path), [
+    ".harness/mcp/github.json"
+  ]);
+
+  const binding: ProjectBinding = {
+    id: "binding-github",
+    kind: "mcp",
+    name: "GitHub",
+    path: ".harness/mcp/github.json",
+    source: "harhub",
+    status: "synced",
+    assetId: asset.id
+  };
+  base.project.bindings = [binding];
+  base.snapshot.artifacts = [{
+    ...inventorySkill(binding.path, binding.id),
+    kind: "mcp",
+    format: "harhub-mcp",
+    path: binding.path
+  }];
+  const removed = createRemoveMcpProposal({
+    ...base,
+    binding
+  });
+  assert.equal(removed.kind, "remove-mcp");
+  assert.deepEqual(removed.files, [{
+    path: ".harness/mcp/github.json",
+    status: "deleted"
+  }]);
 });
 
 function proposalBase() {

@@ -3,13 +3,14 @@ import {
   findAsset,
   upsertAsset
 } from "../../features/assets/index.js";
+import { createImportedMcpAsset } from "../../features/mcp/index.js";
 import type { AssetCatalog, AssetRecord, WorkspaceRecord } from "../../shared/types.js";
 import {
   describeWorkspaceCatalogStorage,
   writeWorkspaceAssetCatalog
 } from "../../state/index.js";
 import { assetListPayload } from "./asset-responses.js";
-import { loadStoredSkill } from "./skill-packages.js";
+import { loadStoredMcp, loadStoredSkill } from "./skill-packages.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
 
 export async function validateWorkspaceAssets(
@@ -41,7 +42,7 @@ export async function validateWorkspaceAsset(
   }
 
   if (!asset.storage) {
-    throw new Error("Only uploaded skill packages can be validated.");
+    throw new Error("Only uploaded assets can be validated.");
   }
 
   const nextAsset = await validateStoredAsset(workspace, asset);
@@ -71,7 +72,7 @@ export async function validateWorkspaceAssetBatch(
     }
 
     if (!asset.storage) {
-      failed.push({ id: query, error: "Only uploaded skill packages can be bulk validated." });
+      failed.push({ id: query, error: "Only uploaded assets can be bulk validated." });
       continue;
     }
 
@@ -109,20 +110,31 @@ async function validateStoredAsset(
 ): Promise<AssetRecord> {
   if (!asset.storage) return asset;
 
-  const { skill } = await loadStoredSkill(asset.storage);
-  const refreshed = createImportedSkillAsset({
-    workspaceId: workspace.id,
-    skill,
-    storage: asset.storage,
-    previous: asset,
-    rejectInvalid: false
-  });
+  const refreshed = asset.kind === "skill"
+    ? createImportedSkillAsset({
+        workspaceId: workspace.id,
+        skill: (await loadStoredSkill(asset.storage)).skill,
+        storage: asset.storage,
+        previous: asset,
+        rejectInvalid: false
+      })
+    : createImportedMcpAsset({
+        workspaceId: workspace.id,
+        name: asset.name,
+        displayName: asset.displayName,
+        description: asset.description,
+        analyzed: (await loadStoredMcp(asset.storage)).analyzed,
+        storage: asset.storage,
+        previous: asset,
+        rejectInvalid: false
+      });
 
   return {
     ...asset,
     health: refreshed.health,
     validation: refreshed.validation,
-    validationIssues: refreshed.validationIssues
+    validationIssues: refreshed.validationIssues,
+    ...(refreshed.mcp ? { mcp: refreshed.mcp } : {})
   };
 }
 

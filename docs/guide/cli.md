@@ -1,6 +1,7 @@
 # CLI
 
-The Harhub CLI manages local Agent Skills, workspace assets, projects, GitHub repositories, and Forge sessions.
+The Harhub CLI manages local Agent Skills, workspace Skill/MCP assets, projects,
+GitHub repositories, and Forge sessions.
 
 ## Install
 
@@ -127,6 +128,19 @@ harhub skills upload /path/to/repo --all --share
 layouts. It recursively finds every `SKILL.md` and imports all valid candidates.
 Harhub stores imported Skills independently and generates standard downloadable
 archives with `SKILL.md` at the root.
+
+## Upload MCP Configurations
+
+Upload one JSON document using an `mcpServers` or `servers` map:
+
+```bash
+harhub assets upload ./mcp.json --kind mcp \
+  --name "Issue tracker" \
+  --description "Use for projects connected to the team issue tracker."
+```
+
+MCP assets retain the latest five immutable versions and cannot be publicly
+shared. Prefer environment placeholders over literal secret values.
 
 ## Remote Assets And Skills
 

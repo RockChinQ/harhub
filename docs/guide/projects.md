@@ -13,9 +13,9 @@ Use one of three paths:
 - Choose **Import repository** to authorize the GitHub App, select an
   installation repository, create the Project, and queue its first scan.
 
-Freezing preserves the generated framework and its selected Library Skill
-bindings. Importing preserves the existing repository as the source of truth
-and begins with read-only inventory.
+Freezing preserves the generated framework and its selected Library Skill and
+MCP bindings. Importing preserves the existing repository as the source of
+truth and begins with read-only inventory.
 
 ## Repository Connections
 
@@ -41,14 +41,15 @@ inventory snapshot.
 
 Each artifact can be:
 
-- **Library-owned**: a repository Skill is bound to a workspace Library Skill,
-  optionally pinned to a retained version.
+- **Library-owned**: a repository Skill or MCP configuration is bound to its
+  workspace Library asset, optionally pinned to a retained version.
 - **Repository-owned**: the repository remains authoritative.
 - **Ignored**: Harhub records the choice but does not track it as an active
   binding.
 
-Non-Skill artifacts are currently Project inventory only. They do not yet have
-the Library upload/version/publish lifecycle available to Skills.
+Rules and agent instructions are currently Project inventory only. They do not
+yet have the Library upload/version lifecycle available to Skills and MCP
+configurations.
 
 ## Skill Forks And Library Sync
 
@@ -67,7 +68,9 @@ With GitHub App write permissions, owners and admins can stage and preview:
 
 - Project bootstrap files.
 - One or more complete Library Skill packages to add.
+- One or more Library MCP configurations to add under `.harness/mcp/`.
 - A Project Skill package to remove.
+- A Project MCP configuration to remove.
 
 The proposal shows exact file additions or deletions. Opening it creates a
 branch from the latest scanned commit and a pull request. The change remains
@@ -104,6 +107,8 @@ harhub projects diff <project-id> <binding-id>
 harhub projects publish <project-id> <binding-id>
 harhub projects delete <project-id> --yes
 harhub repositories propose <project-id> add-library-skills --asset <asset-id>
+harhub repositories propose <project-id> add-library-mcps --asset <asset-id>
+harhub repositories propose <project-id> remove-mcp --binding <binding-id>
 harhub repositories open <project-id> <proposal-id>
 ```
 

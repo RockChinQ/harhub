@@ -6,9 +6,9 @@ Read it before making changes.
 ## Product Boundary
 
 Harhub is a tenant-aware control plane for agent harness assets. The workspace
-Library currently manages Agent Skills as its only mutable Asset kind. Projects
-can also inventory repository-owned Skills, MCP configuration, rules, and agent
-instructions, but those non-Skill artifacts do not yet have a Library
+Library currently manages Agent Skills and MCP configurations as mutable,
+versioned Asset kinds. Projects can also inventory repository-owned rules and
+agent instructions, but those artifact kinds do not yet have a Library
 publish/version lifecycle. Keep that boundary explicit and keep the Library
 ready for more managed asset kinds later.
 
@@ -33,6 +33,14 @@ Skills contract:
 If a task depends on the latest Agent Skills definition, verify the official
 standard before changing validation or package semantics.
 
+MCP Library assets are single JSON documents using an `mcpServers` or `servers`
+map. Preserve the original document in object storage, retain at most five
+immutable versions, and install it into Projects at
+`.harness/mcp/<asset-slug>.json`. Never send configuration values or credentials
+to Forge AI; only safe metadata such as display name, server names, count, and
+transport may enter prompts. Literal secret-like environment values must
+produce validation warnings, and MCP assets must not support public sharing.
+
 ## Project Structure
 
 ```text
@@ -40,6 +48,7 @@ src/
   cli/                 CLI entrypoints, argument parsing, and command handlers.
   features/
     assets/            Asset catalog, upload, update, delete, and runtime indexing logic.
+    mcp/               MCP configuration parsing, safe metadata, and validation.
     projects/          Generated project framework and repository binding helpers.
     repository-inventory/
                        Repository harness discovery and classification.
@@ -110,8 +119,9 @@ behavior.
 - Keep local JSON persistence behind `src/state` and catalog helpers. Avoid
   ad-hoc file reads or writes from route handlers.
 - Keep object storage behavior behind `src/storage` and server services.
-- Validation logic for Skills belongs in `src/features/skills`; asset-level
-  orchestration belongs in `src/features/assets` or `src/server/services`.
+- Validation logic belongs in the matching feature (`src/features/skills` or
+  `src/features/mcp`); asset-level orchestration belongs in
+  `src/features/assets` or `src/server/services`.
 - Make delete paths idempotent where practical, especially when S3 objects are
   already missing.
 
@@ -139,13 +149,14 @@ For browser-visible changes, verify in a real browser at `http://127.0.0.1:5176`
 when feasible. For upload changes, use a real zip package and the real file
 picker if browser automation cannot attach files.
 
-## Skill And Asset UX Rules
+## Library Asset UX Rules
 
-- Skills are displayed and managed as Assets.
+- Skills and MCP configurations are displayed and managed as Assets.
 - The list page should support search and scanning at a glance.
 - Upload belongs behind an explicit upload action, not as always-visible bulk
   form chrome.
-- Detail pages should be URL-addressable under `/skills/:slug`.
+- Detail pages should be URL-addressable under `/skills/:slug` or
+  `/mcps/:slug`.
 - Detail pages should show useful standard fields, validation state, and a file tree
   with preview support.
 - Validation issues must be scoped to the selected asset or skill; do not leak

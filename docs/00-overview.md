@@ -6,12 +6,13 @@ Harhub 是面向团队的 agent harness 控制平面。这里的 harness 指让 
 
 ## 当前实现与目标
 
-当前代码基线为 `0.1.0-beta.5`。Workspace Library 仍以 Agent Skills 为唯一可发布资产，但产品已经形成 Library、Forge、Project、GitHub repository integration 和 agent operations 的闭环。已经实现的产品表面包括：
+当前代码基线为 `0.1.0-beta.5`。Workspace Library 已管理 Agent Skills 与 MCP 配置，产品已经形成 Library、Forge、Project、GitHub repository integration 和 agent operations 的闭环。已经实现的产品表面包括：
 
 - React Web UI 和 TypeScript CLI。
 - 账号、session、workspace、角色和邀请。
 - 本地 Skill 扫描、官方格式校验、目录打包和 Workspace-scoped zip 上传。
-- 搜索、详情、文件预览、批量校验、删除、真实版本历史、旧版下载和回滚；每个 Skill 保留当前版和最近四个旧版。
+- 搜索、详情、文件预览、批量校验、删除、真实版本历史、旧版下载和回滚；每个 Skill 或 MCP 配置保留当前版和最近四个旧版。
+- MCP JSON 安全元数据提取、literal-secret 警告、Project Library binding，以及 Forge 安全选择与原样物化。
 - Public share page、下载、CLI 上传/分享和跨 Agent 安装命令。
 - Workspace-scoped Forge AI 配置与连接测试、适应式访谈、可重入流式任务、Harness ZIP 生成、持久化 session 和 Project freeze。
 - GitHub App repository import、受限 repository scanner、push webhook refresh、ownership policy、Skill-fork 文件级 diff、人工回流 Library 和显式 PR delivery。
@@ -20,7 +21,7 @@ Harhub 是面向团队的 agent harness 控制平面。这里的 harness 指让 
 - Email/password、邮件验证码、Google/GitHub OAuth 登录。
 - 覆盖 Library、Project、GitHub 和 Forge 操作的 CLI 与 stdio MCP server，以及仓库内三套可安装的操作 Skills。
 
-Workspace Library 中的非 Skill 资产生命周期、share-to-release pinning、通用 Bundle/lockfile、完整治理与策略引擎、跨工具 rollout、使用分析和任务结果评估仍是目标设计，不是当前 API 已经完整提供的能力。本文档集会明确区分“当前实现”和“目标架构”。
+Workspace Library 中 Rules/Instructions 等其他资产的生命周期、share-to-release pinning、通用 Bundle/lockfile、完整治理与策略引擎、跨工具 rollout、使用分析和任务结果评估仍是目标设计，不是当前 API 已经完整提供的能力。本文档集会明确区分“当前实现”和“目标架构”。
 
 ## 文档地图
 

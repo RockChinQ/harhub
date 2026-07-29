@@ -474,14 +474,14 @@ export function syncProjectFromRepository(
     for (const observed of incoming.values()) {
       const id = randomUUID();
       const forkUpdate = observed.kind === "skill" ? updatedForks.get(observed.path) : undefined;
-      const baseline = observed.kind === "skill" ? baselines.get(observed.path) : undefined;
-      const status = observed.kind === "skill"
-        ? baseline?.digest === observed.digest
-          ? "synced" as const
-          : baseline?.digest
-            ? "modified" as const
-            : "added" as const
-        : "synced" as const;
+      const baseline = baselines.get(observed.path);
+      const status = baseline?.digest === observed.digest
+        ? "synced" as const
+        : baseline?.digest
+          ? "modified" as const
+          : observed.kind === "skill"
+            ? "added" as const
+            : "synced" as const;
       const fork = status === "added" || status === "modified" ? forkUpdate : undefined;
       if (fork) nextForks.push(structuredClone(fork));
       nextBindings.push({
@@ -588,14 +588,14 @@ export function syncProjectFromGitHubApp(
     });
     for (const observed of incoming.values()) {
       const forkUpdate = observed.kind === "skill" ? updatedForks.get(observed.path) : undefined;
-      const baseline = observed.kind === "skill" ? baselines.get(observed.path) : undefined;
-      const status = observed.kind === "skill"
-        ? baseline?.digest === observed.digest
-          ? "synced" as const
-          : baseline?.digest
-            ? "modified" as const
-            : "added" as const
-        : "synced" as const;
+      const baseline = baselines.get(observed.path);
+      const status = baseline?.digest === observed.digest
+        ? "synced" as const
+        : baseline?.digest
+          ? "modified" as const
+          : observed.kind === "skill"
+            ? "added" as const
+            : "synced" as const;
       const fork = status === "added" || status === "modified" ? forkUpdate : undefined;
       if (fork) nextForks.push(structuredClone(fork));
       nextBindings.push({
@@ -750,7 +750,7 @@ function initialProjectBindings(
   return [
     ...template.selectedAssets.map((asset) => ({
       id: randomUUID(),
-      kind: "skill" as const,
+      kind: asset.kind,
       name: asset.displayName,
       path: asset.installPath,
       source: "harhub" as const,

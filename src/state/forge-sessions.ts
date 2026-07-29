@@ -751,7 +751,9 @@ function validateForgeSessionViewState(
       (file) => file.path === viewState.selectedPath
     );
     const isSelectedSkillFile = session.template.selectedAssets.some(
-      (asset) => viewState.selectedPath?.startsWith(`${asset.installPath}/`)
+      (asset) =>
+        viewState.selectedPath === asset.installPath ||
+        viewState.selectedPath?.startsWith(`${asset.installPath}/`)
     );
     if (!isGeneratedFile && !isSelectedSkillFile) {
       throw new Error("Forge preview selection is not part of this framework.");

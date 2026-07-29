@@ -1,5 +1,6 @@
 import {
   FileArchive,
+  FileJson2,
   Loader2,
   Search,
   ShieldCheck,
@@ -10,6 +11,7 @@ import {
 import { type DragEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
+  AssetKind,
   AssetRecord,
   StorageStatus,
   WorkspaceRecord
@@ -33,6 +35,7 @@ import { uploadStatusLabel } from "../../app/format";
 import { bulkWorkspaceAssets } from "../../lib/api";
 import { SkillListTable } from "./skill-list-table";
 import { UploadSkillZipForm } from "./upload-skill-zip-form";
+import { UploadMcpForm } from "./upload-mcp-form";
 
 type BulkAction = "validate" | "delete";
 
@@ -53,7 +56,8 @@ export function AssetsView({
   onQueryChange,
   onSelect,
   onOpenDetail,
-  onRefresh
+  onRefresh,
+  kind = "skill"
 }: {
   workspace: WorkspaceRecord;
   token: string;
@@ -66,6 +70,7 @@ export function AssetsView({
   onSelect: (id: string) => void;
   onOpenDetail: (id: string) => void;
   onRefresh: () => Promise<void>;
+  kind?: AssetKind;
 }) {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
@@ -77,9 +82,11 @@ export function AssetsView({
   const [bulkMessage, setBulkMessage] = useState<BulkMessage | undefined>();
   const dragDepth = useRef(0);
   const managedAssets = useMemo(
-    () => assets.filter((asset) => asset.storage),
-    [assets]
+    () => assets.filter((asset) => asset.kind === kind && asset.storage),
+    [assets, kind]
   );
+  const singular = kind === "skill" ? "Skill" : "MCP";
+  const plural = kind === "skill" ? "Skills" : "MCPs";
   const filteredAssets = managedAssets.filter((asset) => {
     const normalizedQuery = query.trim().toLowerCase();
     const matchesQuery =
@@ -134,6 +141,7 @@ export function AssetsView({
   }
 
   function handleDragEnter(event: DragEvent<HTMLDivElement>) {
+    if (kind !== "skill") return;
     if (!dragHasFiles(event)) return;
     event.preventDefault();
     dragDepth.current += 1;
@@ -141,6 +149,7 @@ export function AssetsView({
   }
 
   function handleDragOver(event: DragEvent<HTMLDivElement>) {
+    if (kind !== "skill") return;
     if (!dragHasFiles(event)) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
@@ -148,6 +157,7 @@ export function AssetsView({
   }
 
   function handleDragLeave(event: DragEvent<HTMLDivElement>) {
+    if (kind !== "skill") return;
     if (!dragHasFiles(event)) return;
     event.preventDefault();
     dragDepth.current = Math.max(0, dragDepth.current - 1);
@@ -157,6 +167,7 @@ export function AssetsView({
   }
 
   function handleDrop(event: DragEvent<HTMLDivElement>) {
+    if (kind !== "skill") return;
     if (!dragHasFiles(event)) return;
     event.preventDefault();
     dragDepth.current = 0;
@@ -194,7 +205,7 @@ export function AssetsView({
         tone: failedCount > 0 ? "warning" : "success",
         text: failedCount > 0
           ? `${bulkActionLabel(action)} finished: ${succeededCount} succeeded, ${failedCount} failed.`
-          : `${bulkActionLabel(action)} finished for ${succeededCount} skill${succeededCount === 1 ? "" : "s"}.`,
+          : `${bulkActionLabel(action)} finished for ${succeededCount} ${singular}${succeededCount === 1 ? "" : "s"}.`,
         details: result.bulk.failed.map((item) =>
           `${selectedAssetNames.get(item.id) ?? item.id}: ${item.error}`
         )
@@ -212,7 +223,7 @@ export function AssetsView({
 
   return (
     <div
-      data-testid="skills-drop-zone"
+      data-testid={`${kind}-drop-zone`}
       className="relative flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col gap-4 overflow-hidden"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
@@ -234,7 +245,7 @@ export function AssetsView({
       ) : null}
       <div className="flex shrink-0 min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-normal">Skills</h1>
+          <h1 className="text-2xl font-semibold tracking-normal">{plural}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {managedAssets.length} uploaded
           </p>
@@ -244,7 +255,7 @@ export function AssetsView({
             <PopoverTrigger asChild>
               <Button>
                 <Upload className="h-4 w-4" aria-hidden="true" />
-                Upload
+                Add {singular}
               </Button>
             </PopoverTrigger>
             <PopoverContent
@@ -254,26 +265,38 @@ export function AssetsView({
             >
               <div className="flex items-start gap-3 border-b bg-muted/30 px-4 py-4">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-background text-primary shadow-sm">
-                  <FileArchive className="h-5 w-5" aria-hidden="true" />
+                  {kind === "skill"
+                    ? <FileArchive className="h-5 w-5" aria-hidden="true" />
+                    : <FileJson2 className="h-5 w-5" aria-hidden="true" />}
                 </div>
                 <div className="min-w-0">
-                  <div className="font-medium">Upload skill package</div>
+                  <div className="font-medium">
+                    {kind === "skill" ? "Upload skill package" : "Add MCP configuration"}
+                  </div>
                   <div className="mt-1 text-xs text-muted-foreground">{uploadStatusLabel(storage)}</div>
                 </div>
               </div>
               <div className="max-h-[calc(100vh-8.5rem)] min-w-0 overflow-x-hidden overflow-y-auto p-4">
-                <UploadSkillZipForm
-                  workspace={workspace}
-                  token={token}
-                  storage={storage}
-                  initialFile={droppedUploadFile}
-                  initialError={dropUploadError}
-                  onUploaded={async () => {
-                    setDroppedUploadFile(undefined);
-                    setDropUploadError(undefined);
-                    await onRefresh();
-                  }}
-                />
+                {kind === "skill" ? (
+                  <UploadSkillZipForm
+                    workspace={workspace}
+                    token={token}
+                    storage={storage}
+                    initialFile={droppedUploadFile}
+                    initialError={dropUploadError}
+                    onUploaded={async () => {
+                      setDroppedUploadFile(undefined);
+                      setDropUploadError(undefined);
+                      await onRefresh();
+                    }}
+                  />
+                ) : (
+                  <UploadMcpForm
+                    workspace={workspace}
+                    token={token}
+                    onUploaded={onRefresh}
+                  />
+                )}
               </div>
             </PopoverContent>
           </Popover>
@@ -285,8 +308,8 @@ export function AssetsView({
           <Input
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="Search skills"
-            aria-label="Search skills"
+            placeholder={`Search ${plural.toLowerCase()}`}
+            aria-label={`Search ${plural.toLowerCase()}`}
             className="pl-9"
           />
         </div>
@@ -309,7 +332,7 @@ export function AssetsView({
                   {selectedBulkCount} selected
                 </Badge>
                 <span className="text-sm text-muted-foreground">
-                  Bulk actions apply to imported Skills only.
+                  Bulk actions apply to uploaded {plural}.
                 </span>
               </div>
             ) : null}
@@ -367,9 +390,9 @@ export function AssetsView({
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Delete selected skills?</AlertDialogTitle>
+                  <AlertDialogTitle>Delete selected {plural.toLowerCase()}?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This removes {selectedBulkCount} imported Skill{selectedBulkCount === 1 ? "" : "s"} from this workspace.
+                      This removes {selectedBulkCount} uploaded {singular}{selectedBulkCount === 1 ? "" : "s"} from this workspace.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -408,6 +431,7 @@ export function AssetsView({
       <div className="min-h-0 min-w-0 flex-1 overflow-auto">
         <SkillListTable
           assets={filteredAssets}
+          kind={kind}
           selectedId={selectedAsset?.id}
           selectedAssetIds={selectedAssetIds}
           isLoading={isLoading}

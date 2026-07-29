@@ -131,8 +131,8 @@ const GENERATION_STEPS: Array<{
   },
   {
     id: "assets",
-    title: "Load workspace Skills",
-    description: "Collect the usable Skill assets available to this workspace."
+    title: "Load workspace assets",
+    description: "Collect the usable Skill and MCP assets available to this workspace."
   },
   {
     id: "compose",
@@ -163,8 +163,11 @@ export function ForgeView({
   onOpenWorkspaceSettings: () => void;
   onOpenProject: (projectId: string) => void;
 }) {
-  const usableSkills = assets.filter(
-    (asset) => asset.kind === "skill" && asset.storage && asset.health !== "error"
+  const usableAssets = assets.filter(
+    (asset) =>
+      (asset.kind === "skill" || asset.kind === "mcp") &&
+      asset.storage &&
+      asset.health !== "error"
   );
   const [phase, setPhase] = useState<BuilderPhase>("idle");
   const [requirement, setRequirement] = useState("");
@@ -241,7 +244,7 @@ export function ForgeView({
     selectedSkillFile?.path === selectedPath ? selectedSkillFile : undefined
   );
   const skillTreeMarkers = useMemo(() => Object.fromEntries(
-    skillTrees.map((skill) => [skill.installPath, "Skill"])
+    skillTrees.map((skill) => [skill.installPath, skill.kind === "skill" ? "Skill" : "MCP"])
   ), [skillTrees]);
   const defaultCollapsedSkillPaths = useMemo(
     () => Object.keys(skillTreeMarkers),
@@ -396,6 +399,7 @@ export function ForgeView({
       const preview = await getWorkspaceAssetTree(token, workspace.id, asset.id);
       return {
         assetId: asset.id,
+        kind: asset.kind,
         installPath: asset.installPath,
         tree: preview.tree
       } satisfies ForgeSelectedSkillTree;
@@ -408,7 +412,7 @@ export function ForgeView({
       setSkillTrees(loaded);
       if (failedCount > 0) {
         setSkillTreeError(
-          `${failedCount} of ${results.length} selected Skill file trees could not be loaded.`
+          `${failedCount} of ${results.length} selected asset file trees could not be loaded.`
         );
       }
     }).finally(() => {
@@ -455,11 +459,14 @@ export function ForgeView({
       selectedSkillTarget.relativePath
     ).then((preview) => {
       if (!preview.selectedFile) {
-        throw new Error("The selected Skill file is unavailable for preview.");
+        throw new Error("The selected asset file is unavailable for preview.");
       }
       const file = prefixForgeSkillFilePreview(
         preview.selectedFile,
-        selectedSkillTarget.installPath
+        selectedSkillTarget.installPath,
+        template?.selectedAssets.find((asset) =>
+          asset.id === selectedSkillTarget.assetId
+        )?.kind === "mcp"
       );
       if (!active) return;
       cacheForgeSkillFile(skillFileCacheRef.current, cacheKey, file);
@@ -542,14 +549,14 @@ export function ForgeView({
 
   async function startInterview() {
     const normalized = requirement.trim();
-    if (!normalized || usableSkills.length === 0) return;
+    if (!normalized || usableAssets.length === 0) return;
     setError(undefined);
     setOperationFailure(undefined);
     setRetryAction(undefined);
     setTemplate(undefined);
     setAnswers([]);
     setAnswerDrafts([]);
-    setWorkingLabel("Reviewing the requirement and workspace Skills…");
+    setWorkingLabel("Reviewing the requirement and workspace assets…");
     setPhase("working");
     let session: ForgeSessionDetail;
     try {
@@ -604,10 +611,10 @@ export function ForgeView({
     setRetryAction(undefined);
     setWorkingOperation(operation);
     setWorkingLabel(operation === "generate"
-      ? "Selecting workspace Skills and composing the project harness…"
+      ? "Selecting workspace assets and composing the project harness…"
       : answers.length || submittedAnswers?.length
         ? "Finding the next useful questions…"
-        : "Reviewing the requirement and workspace Skills…");
+        : "Reviewing the requirement and workspace assets…");
     setLiveOutput("");
     setLiveAttempt(undefined);
     if (operation === "generate" && reconnectAttempt === 0 && !preserveProgress) {
@@ -1031,7 +1038,7 @@ export function ForgeView({
               Workspace AI · {aiSettings.model}
             </Badge>
             <span className="text-xs text-muted-foreground">
-              {usableSkills.length} workspace Skill{usableSkills.length === 1 ? "" : "s"} available
+              {usableAssets.length} workspace asset{usableAssets.length === 1 ? "" : "s"} available
             </span>
             <Button
               type="button"
@@ -1047,7 +1054,7 @@ export function ForgeView({
           <h1 className="text-2xl font-semibold tracking-tight">Forge a project harness</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
             Start with a rough idea. The Agent will ask only for material gaps, favor quick
-            choices and short answers, then compose a reviewable framework from Skills in {workspace.name}.
+            choices and short answers, then compose a reviewable framework from Library assets in {workspace.name}.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1171,9 +1178,9 @@ export function ForgeView({
                     already know.
                   </p>
                 </div>
-                {usableSkills.length === 0 ? (
+                {usableAssets.length === 0 ? (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-                    This workspace has no usable Skills yet. Upload and validate at least one Skill
+                    This workspace has no usable Library assets yet. Upload and validate at least one Skill or MCP configuration
                     before generating a workspace-based harness.
                   </div>
                 ) : (
@@ -1183,8 +1190,8 @@ export function ForgeView({
                       Workspace catalog is ready
                     </div>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      Harhub will only select non-error Skill packages from this workspace. The full
-                      selected packages are copied into the downloaded template.
+                      Harhub will only select non-error Skills and MCP configurations from this
+                      workspace. Selected assets are copied into the downloaded template.
                     </p>
                   </div>
                 )}
@@ -1193,7 +1200,7 @@ export function ForgeView({
                   className="w-full"
                   disabled={
                     !requirement.trim() ||
-                    usableSkills.length === 0
+                    usableAssets.length === 0
                   }
                   onClick={() => void startInterview()}
                 >
@@ -1262,7 +1269,7 @@ export function ForgeView({
                 {phase === "complete" ? (
                   <>
                     <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
-                      The starter framework is ready. Review the selected Skills and generated files
+                      The starter framework is ready. Review the selected assets and generated files
                       before downloading it.
                     </div>
                     <ProjectFreezePanel
@@ -1290,7 +1297,7 @@ export function ForgeView({
                   Harness framework
                 </CardTitle>
                 <CardDescription className="mt-1">
-                  Generated project context plus complete workspace Skill packages.
+                  Generated project context plus complete workspace Skill and MCP assets.
                 </CardDescription>
               </div>
               {template ? (
@@ -1330,7 +1337,7 @@ export function ForgeView({
                   <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
                     {template.profile.summary}
                   </p>
-                  <SelectedSkillsSummary
+                  <SelectedAssetsSummary
                     key={activeSessionId}
                     assets={template.selectedAssets}
                   />
@@ -1438,7 +1445,7 @@ export function ForgeView({
   );
 }
 
-function SelectedSkillsSummary({ assets }: { assets: HarnessTemplateAssetSelection[] }) {
+function SelectedAssetsSummary({ assets }: { assets: HarnessTemplateAssetSelection[] }) {
   const [open, setOpen] = useState(false);
   const visibleAssets = assets.slice(0, 3);
   const remaining = Math.max(0, assets.length - visibleAssets.length);
@@ -1446,7 +1453,7 @@ function SelectedSkillsSummary({ assets }: { assets: HarnessTemplateAssetSelecti
   if (assets.length === 0) {
     return (
       <div className="mt-3 rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-800">
-        No workspace Skill was selected.
+        No workspace asset was selected.
       </div>
     );
   }
@@ -1456,7 +1463,7 @@ function SelectedSkillsSummary({ assets }: { assets: HarnessTemplateAssetSelecti
       <div className="flex min-w-0 items-center gap-3 px-3 py-2">
         <div className="flex shrink-0 items-center gap-1.5 text-xs font-medium">
           <PackageCheck className="h-3.5 w-3.5 text-blue-700" aria-hidden="true" />
-          Selected Skills
+          Selected assets
           <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
             {assets.length}
           </Badge>
@@ -2178,7 +2185,7 @@ function TemplateEmptyState() {
         <h2 className="mt-4 font-semibold">Your composed framework will appear here</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           Harhub will create the project brief, agent bridge, technical context, rules, delivery
-          workflow, change log, and a curated set of complete Skills from the current workspace.
+          workflow, change log, and a curated set of complete Skills and MCP configurations from the current workspace.
         </p>
       </div>
     </div>

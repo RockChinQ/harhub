@@ -172,6 +172,84 @@ export function createRemoveSkillProposal(input: {
   };
 }
 
+export function createAddLibraryMcpsProposal(input: {
+  project: HarhubProject;
+  connection: ProjectRepositoryConnectionRecord;
+  installation: GitHubInstallation;
+  snapshot: ProjectInventorySnapshot;
+  mcps: Array<{ asset: AssetRecord; content: Buffer }>;
+  accountId: string;
+}): ProjectChangeProposal {
+  assertManagedChangesAvailable(input.connection, input.installation);
+  if (input.mcps.length === 0 || input.mcps.length > 20) {
+    throw new Error("Select between 1 and 20 Library MCP configurations per pull request.");
+  }
+  const occupiedPaths = new Set([
+    ...input.snapshot.artifacts.map((artifact) => artifact.path.toLowerCase()),
+    ...input.project.bindings.map((binding) => binding.path.toLowerCase())
+  ]);
+  const files = input.mcps.map(({ asset, content }) => {
+    if (asset.kind !== "mcp" || asset.health === "error" || !asset.storage) {
+      throw new Error(`Library MCP ${asset.displayName} is not available for Project adoption.`);
+    }
+    const targetPath = `.harness/mcp/${safePathSegment(asset.slug)}.json`;
+    if (occupiedPaths.has(targetPath.toLowerCase())) {
+      throw new Error(`Project already contains an MCP configuration at ${targetPath}.`);
+    }
+    occupiedPaths.add(targetPath.toLowerCase());
+    return proposalFile(targetPath, content);
+  }).sort((left, right) => left.path.localeCompare(right.path));
+  const now = new Date().toISOString();
+  return {
+    id: randomUUID(),
+    workspaceId: input.project.workspaceId,
+    projectId: input.project.id,
+    kind: "add-library-mcps",
+    status: "preview",
+    baseSha: input.snapshot.commitSha,
+    branch: proposalBranch("mcps-add", input.project.id),
+    files,
+    createdByAccountId: input.accountId,
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+export function createRemoveMcpProposal(input: {
+  project: HarhubProject;
+  connection: ProjectRepositoryConnectionRecord;
+  installation: GitHubInstallation;
+  snapshot: ProjectInventorySnapshot;
+  binding: ProjectBinding;
+  accountId: string;
+}): ProjectChangeProposal {
+  assertManagedChangesAvailable(input.connection, input.installation);
+  if (input.binding.kind !== "mcp" || input.binding.status === "missing") {
+    throw new Error("Only an observed Project MCP configuration can be removed.");
+  }
+  const artifact = input.snapshot.artifacts.find((candidate) =>
+    candidate.kind === "mcp" &&
+    (candidate.bindingId === input.binding.id || candidate.path === input.binding.path)
+  );
+  if (!artifact) {
+    throw new Error("Project MCP configuration is not present in the latest repository inventory.");
+  }
+  const now = new Date().toISOString();
+  return {
+    id: randomUUID(),
+    workspaceId: input.project.workspaceId,
+    projectId: input.project.id,
+    kind: "remove-mcp",
+    status: "preview",
+    baseSha: input.snapshot.commitSha,
+    branch: proposalBranch("mcp-remove", input.project.id),
+    files: [{ path: safeRelativePath(input.binding.path), status: "deleted" }],
+    createdByAccountId: input.accountId,
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
 export async function openProjectChangeProposal(input: {
   proposal: ProjectChangeProposal;
   connection: ProjectRepositoryConnectionRecord;
@@ -220,6 +298,26 @@ function proposalPullRequestCopy(proposal: ProjectChangeProposal): { title: stri
       title: "Remove a Skill from this Harhub Project",
       body: [
         "This PR removes the selected Project Skill package from the repository.",
+        "",
+        "The workspace Library asset is not deleted. Harhub will rescan the default branch after merge."
+      ].join("\n")
+    };
+  }
+  if (proposal.kind === "add-library-mcps") {
+    return {
+      title: "Add Library MCP configurations to this Harhub Project",
+      body: [
+        "This PR copies the selected workspace Library MCP configurations into the repository.",
+        "",
+        "Configuration values are copied exactly from the reviewed Library versions. Harhub will rescan the default branch after merge."
+      ].join("\n")
+    };
+  }
+  if (proposal.kind === "remove-mcp") {
+    return {
+      title: "Remove an MCP configuration from this Harhub Project",
+      body: [
+        "This PR removes the selected Project MCP configuration from the repository.",
         "",
         "The workspace Library asset is not deleted. Harhub will rescan the default branch after merge."
       ].join("\n")

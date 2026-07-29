@@ -55,7 +55,7 @@ export function SkillDetailView({
           Back
         </Button>
         <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-dashed bg-card text-sm text-muted-foreground">
-          Select a skill from the list first.
+          Select an asset from the list first.
         </div>
       </div>
     );

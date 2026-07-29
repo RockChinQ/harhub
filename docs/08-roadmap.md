@@ -1,6 +1,6 @@
 # 路线图
 
-> 状态更新时间：2026-07-27。Phase 0 已完成；Phase 1 的 Project repository inventory、Phase 2 的 Skill versions/rollback，以及 Phase 4 的 Skills-first repository adoption 已落地。通用 Bundle distribution、完整治理和评估仍未开始。
+> 状态更新时间：2026-07-29。Phase 0 已完成；Phase 1 的 Project repository inventory、Phase 2 的 Skill/MCP versions/rollback，以及 Phase 4 的 repository adoption 已落地。通用 Bundle distribution、完整治理和评估仍未开始。
 
 ## MVP 原则
 
@@ -112,7 +112,12 @@ MVP 应先证明 Harhub 能把散落的 Agent Skills 转化为可管理、可复
 
 ## Phase 4：分发与仓库采用（Distribution And Repo Adoption）
 
-状态：**Skills-first 子集已部分完成**。Public share、download、discovery 和 CLI install 已存在；Forge 可以生成含完整 Skill packages 和 GitHub workflow 的 harness。Projects 支持 GitHub App inventory、Skill fork drift/diff、Library 手工回流，以及显式 add/remove/bootstrap proposal 的 pull request delivery。通用 Bundle materialization、跨工具升级与 adoption dashboard 仍在规划中。
+状态：**Skills-first 子集已部分完成，并加入 MCP 私有采用闭环**。Skill
+public share、download、discovery 和 CLI install 已存在；Forge 可以生成含
+完整 Skill packages、选中 MCP JSON 和 GitHub workflow 的 harness。Projects
+支持 GitHub App inventory、Skill fork drift/diff、Library 手工回流，以及
+显式 Skill/MCP add/remove/bootstrap proposal 的 pull request delivery。
+通用 Bundle materialization、跨工具升级与 adoption dashboard 仍在规划中。
 
 目的：从管理走向实际使用。
 
@@ -154,10 +159,10 @@ MVP 应先证明 Harhub 能把散落的 Agent Skills 转化为可管理、可复
 - Password、email code、Google/GitHub OAuth、sessions 和 account settings。
 - Workspace、memberships、roles 和 invitations。
 - Agent Skills 本地 scan、create、validate、package 和 interactive upload。
-- Workspace-scoped Skill catalog、搜索、详情、文件树 preview、批量校验和删除。
-- 当前版加最近四个旧版的不可变 Skill storage、历史下载和 rollback。
+- Workspace-scoped Skill/MCP catalog、搜索、详情、文件树 preview、批量校验和删除。
+- 当前版加最近四个旧版的不可变 Asset storage、历史下载和 rollback。
 - Workspace Forge AI 配置/测试、适应式问题批次、流式可重入 operation、持久化 session、Harness ZIP 和 Project freeze。
-- GitHub App repository import、scan snapshots、push webhook refresh、ownership policy、Project Skill forks、diff/人工 publish 和 PR proposals。
+- GitHub App repository import、scan snapshots、push webhook refresh、ownership policy、Project Skill forks、diff/人工 publish，以及 Skill/MCP PR proposals。
 - 覆盖 Library、Projects、GitHub 和 Forge 的完整 CLI 与 stdio MCP server。
 - Postgres-compatible state、normalized version/audit/repository projections、S3-compatible file storage 和本地 JSON fallback。
 - 可撤销 public share 页面、标准化 zip download、Agent Skills discovery，以及可安装到目标 Agent 的 `harhub install`。
@@ -165,12 +170,12 @@ MVP 应先证明 Harhub 能把散落的 Agent Skills 转化为可管理、可复
 
 公开 MVP 前的主要边界：
 
-- Workspace Library 仍只管理 Skills；Project inventory 可以查看 Rules、MCP definitions 和 instructions，但不能将它们作为全生命周期 Library assets 发布。
-- Hosted Library 只来自 zip upload 或显式 Project Skill publish；服务端不会扫描客户端本地路径。
+- Workspace Library 管理 Skills 与 MCP 配置；Project inventory 也可查看 Rules 和 instructions，但后两者不能作为全生命周期 Library assets 发布。
+- Hosted Library 来自 Skill zip/MCP JSON upload 或显式 Project Skill publish；服务端不会扫描客户端本地路径。
 - Skill 有显式 retained version history 和 Project fork diff，但 public share 仍未 pin 到 immutable release，也没有通用 approval lifecycle。
 - 已有 public share/download、目标 Agent 安装和通用 `skills` CLI 互通，但没有 immutable release pinning、adoption event 或 usage analytics。
 - 没有 quota、usage reporting、admin operations dashboard、public rate limiting 或完整 production operations controls。
-- 已有 Project-scoped Skill drift 与 PR automation；没有通用 composition、lockfile、policy、cross-tool rollout 或 evaluation infrastructure。
+- 已有 Project-scoped Skill/MCP drift 与 PR automation；没有通用 composition、lockfile、policy、cross-tool rollout 或 evaluation infrastructure。
 
 ## 开放问题
 

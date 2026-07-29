@@ -81,8 +81,15 @@ export function App() {
     );
   }, [activeWorkspaceId, session]);
   const routedAsset = useMemo(
-    () => route.assetQuery ? findUiAsset(assets, route.assetQuery) : undefined,
-    [assets, route.assetQuery]
+    () => {
+      if (!route.assetQuery) return undefined;
+      const kind = route.view === "mcp-detail" ? "mcp" : "skill";
+      return findUiAsset(
+        assets.filter((asset) => asset.kind === kind),
+        route.assetQuery
+      );
+    },
+    [assets, route.assetQuery, route.view]
   );
   const selectedAsset = useMemo(
     () => routedAsset ?? assets.find((asset) => asset.id === selectedId),
@@ -171,7 +178,13 @@ export function App() {
       setIssues(result.issues);
       setStorageStatus(result.storage);
       const storedAssets = result.assets.filter((asset) => asset.storage);
-      const routeAsset = route.assetQuery ? findUiAsset(storedAssets, route.assetQuery) : undefined;
+      const routeKind = route.view === "mcp-detail" ? "mcp" : "skill";
+      const routeAsset = route.assetQuery
+        ? findUiAsset(
+            storedAssets.filter((asset) => asset.kind === routeKind),
+            route.assetQuery
+          )
+        : undefined;
       setSelectedId((current) =>
         routeAsset?.id ??
         (storedAssets.some((asset) => asset.id === current) ? current : storedAssets[0]?.id)
@@ -282,7 +295,10 @@ export function App() {
           const asset = findUiAsset(assets, assetId);
           if (!asset) return;
           setSelectedId(asset.id);
-          navigate({ view: "asset-detail", assetQuery: routeQueryForAsset(asset) });
+          navigate({
+            view: asset.kind === "mcp" ? "mcp-detail" : "asset-detail",
+            assetQuery: routeQueryForAsset(asset)
+          });
         }}
         onRefreshAssets={refreshAssets}
         onNavigate={navigate}

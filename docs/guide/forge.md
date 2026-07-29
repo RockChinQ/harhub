@@ -67,19 +67,24 @@ that was previously frozen from that session is not deleted.
 Generation is shown as persisted multi-step progress:
 
 1. Prepare project context.
-2. Select relevant workspace Skills.
+2. Select relevant workspace Skills and MCP configurations.
 3. Compose the harness blueprint.
 4. Save the framework.
 
-Skill selection follows the project concept rather than a fixed count. Forge
-copies complete selected Skill packages from object storage into the framework;
-it does not regenerate their contents. The combined selected Skill packages are
-limited to 25 MB.
+Asset selection follows the project concept rather than a fixed count. Forge
+copies complete selected Skill packages and MCP configurations from object
+storage into the framework; it does not regenerate their contents. The combined
+selected packages are limited to 25 MB.
+
+Only safe MCP metadata enters the AI request: the asset name and description,
+server names/count, and transport. Configuration values stay in object storage
+until the selected file is copied to `.harness/mcp/<slug>.json`.
 
 The generated tree includes project context, engineering rules, workflows,
-change records, copied Skills, `AGENTS.md`, and `.github` CI/sync files. Markdown
-files support Preview and Code modes. Skill directories start collapsed in the
-tree so a large selection does not hide the rest of the framework.
+change records, copied Skills and MCP configurations, `AGENTS.md`, and `.github`
+CI/sync files. Markdown files support Preview and Code modes. Skill directories
+start collapsed in the tree so a large selection does not hide the rest of the
+framework.
 
 The download uses the session's semantic name. A completed session can also be
 frozen as a Project without choosing a GitHub repository; connect a repository

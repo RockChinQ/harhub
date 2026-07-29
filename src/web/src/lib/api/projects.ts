@@ -312,6 +312,42 @@ export function createProjectSkillRemoveProposal(
   );
 }
 
+export function createProjectMcpAddProposal(
+  token: string,
+  workspaceId: string,
+  projectId: string,
+  assetIds: string[]
+): Promise<ProjectChangeProposal> {
+  return request(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/projects/${encodeURIComponent(projectId)}/proposals`,
+    {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ kind: "add-library-mcps", assetIds }),
+      cache: "no-store",
+      token
+    }
+  );
+}
+
+export function createProjectMcpRemoveProposal(
+  token: string,
+  workspaceId: string,
+  projectId: string,
+  bindingId: string
+): Promise<ProjectChangeProposal> {
+  return request(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/projects/${encodeURIComponent(projectId)}/proposals`,
+    {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ kind: "remove-mcp", bindingId }),
+      cache: "no-store",
+      token
+    }
+  );
+}
+
 export function openProjectProposal(
   token: string,
   workspaceId: string,

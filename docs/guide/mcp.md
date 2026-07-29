@@ -1,6 +1,6 @@
 # Agent Operations MCP
 
-Harhub includes a local stdio MCP server that exposes the authenticated workspace operations available in the CLI. It covers Library assets and Skills, Projects, GitHub repository integration, and Forge sessions.
+Harhub includes a local stdio MCP server that exposes the authenticated workspace operations available in the CLI. It covers Library Skills and MCP configurations, Projects, GitHub repository integration, and Forge sessions.
 
 ## Install And Authenticate
 
@@ -55,11 +55,21 @@ For a non-interactive or self-hosted environment, configure the MCP process:
 
 ### Library
 
-Use `harhub_assets_list` and `harhub_asset_get` to inspect state. Upload local Skills with `harhub_skills_upload_paths`, edit an immutable Skill through `harhub_skill_edit_file`, or download versions with `harhub_asset_download`. Validation, sharing, unsharing, deletion, and public installation are also exposed.
+Use `harhub_assets_list` and `harhub_asset_get` to inspect state. Upload local
+Skills with `harhub_skills_upload_paths`, upload a JSON MCP configuration with
+`harhub_mcp_upload`, edit an immutable Skill through `harhub_skill_edit_file`,
+or download retained versions with `harhub_asset_download`. Validation and
+deletion apply to both managed asset kinds; public sharing and installation are
+Skill-only.
 
 ### Projects And GitHub
 
-Project tools cover creation, repository connection, inventory scans, ownership policies, fork diffs, Library publication, staged proposals, and pull-request opening. GitHub tools cover authorization, installations, accessible repositories, import, and connection.
+Project tools cover creation, repository connection, inventory scans, ownership
+policies, fork diffs, Library publication, staged Skill/MCP proposals, and
+pull-request opening. Use `add-library-mcps` or `remove-mcp` with
+`harhub_project_create_proposal` to deliver MCP binding changes through GitHub.
+GitHub tools cover authorization, installations, accessible repositories,
+import, and connection.
 
 ### Forge
 

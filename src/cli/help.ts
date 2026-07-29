@@ -59,7 +59,7 @@ export function printAssetsHelp(): void {
 Local catalog:
   harhub assets scan [paths...] [--catalog .harhub/assets.json] [--json]
   harhub assets validate [paths...] [--json]
-  harhub assets list [--catalog .harhub/assets.json] [--kind skill] [--json]
+  harhub assets list [--catalog .harhub/assets.json] [--kind skill|mcp] [--json]
   harhub assets show <id|name|slug> [--catalog .harhub/assets.json] [--json]
   harhub assets create <name> [--kind skill] [--dir skills] [--description text]
   harhub assets update <id|name|slug> [--description text] [--json]
@@ -68,7 +68,8 @@ Local catalog:
 Workspace assets:
   harhub assets list --remote [remote options]
   harhub assets show <id|name|slug> --remote [remote options]
-  harhub assets upload <archive.zip> [--share] [remote options]
+  harhub assets upload <archive.zip> [--kind skill] [--share] [remote options]
+  harhub assets upload <config.json> --kind mcp --name <name> --description <text> [remote options]
   harhub assets delete <id|name|slug> --remote [remote options]
   harhub assets revalidate [id|name|slug] --remote [remote options]
 

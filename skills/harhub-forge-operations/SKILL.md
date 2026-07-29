@@ -1,6 +1,6 @@
 ---
 name: harhub-forge-operations
-description: Run Harhub Forge sessions through adaptive project discovery, follow-up answers, workspace Skill selection, framework generation, archive download, and Project freezing. Use when turning a product or engineering requirement into a reusable harness framework.
+description: Run Harhub Forge sessions through adaptive project discovery, workspace Skill and MCP selection, framework generation, archive download, and Project freezing. Use when turning a product or engineering requirement into a reusable harness framework.
 ---
 
 # Harhub Forge Operations
@@ -29,5 +29,9 @@ Use `harhub_forge_follow_up` to submit answers and request the next discovery st
 2. The tool consumes the full server stream and returns events plus composed text. If it fails or times out, call `harhub_forge_session_get` before retrying; the session is reentrant.
 3. Download with `harhub_forge_archive_download`, or persist it with `harhub_forge_session_freeze`.
 4. Delete only when explicitly requested; deleting a session does not delete an already frozen Project.
+
+Forge selects MCP assets from safe metadata only, then copies the original
+configuration into `.harness/mcp/`. Do not repeat configuration values in
+follow-up answers or prompts.
 
 Read [references/tools.md](references/tools.md) for exact inputs and recovery rules.

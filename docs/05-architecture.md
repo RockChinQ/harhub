@@ -4,8 +4,8 @@
 
 Harhub 是 agent harnesses 的控制平面。当前实现有三条主要输入路径：
 
-- CLI 扫描本地目录，Web、CLI 或 MCP 将标准 Agent Skill 包上传到 workspace Library。
-- Forge 根据需求和 workspace Skills 生成 project harness，并将完成的 session freeze 为 Project。
+- CLI 扫描本地目录，Web、CLI 或 MCP 将标准 Agent Skill 包或 MCP JSON 上传到 workspace Library。
+- Forge 根据需求和 workspace Skills/MCP 配置生成 project harness，并将完成的 session freeze 为 Project。
 - GitHub App 导入 existing repository，由服务端扫描 repository Skills、MCP 配置、rules 和 agent instructions；GitHub Action sync 是另一种 Project 接入路径。
 
 > 状态说明：本章同时记录当前 beta 的实际拓扑和长期目标架构。Repository Scanner 与早期 Artifact classification 已在 Project scope 内实现；Dependency Graph、通用 Composition Engine、Policy Engine、跨工具 Distribution Service 和独立 worker 仍是规划能力。
@@ -28,9 +28,9 @@ flowchart LR
   Forge["Forge AI interview"] --> API
   GitHub["GitHub App"] --> Scanner["Project repository scanner"]
   Scanner --> API
-  API --> Validate["Agent Skills validation"]
+  API --> Validate["Skill and MCP validation"]
   API --> Catalog["Library catalog + Projects + Forge sessions"]
-  API --> S3["S3-compatible versioned Skill files"]
+  API --> S3["S3-compatible versioned Asset files"]
   Catalog --> Postgres["Postgres-compatible state"]
   Catalog -. "local fallback" .-> JSON[".harhub JSON"]
 ```
@@ -115,16 +115,16 @@ Registry 不只是 blob storage。它理解外部资产的运行态、校验结�
 当前 hosted runtime registry 使用云原生持久化：
 
 - `harhub_state` 保存 accounts、sessions、workspaces、memberships、invitations、device authorization、Forge sessions、Projects 和 asset shares 的兼容快照。
-- `harhub_workspace_catalogs` 保存每个 workspace 的当前 Skill/Asset catalog 摘要，不再内嵌版本历史。
+- `harhub_workspace_catalogs` 保存每个 workspace 的当前 Skill/MCP Asset catalog 摘要，不再内嵌版本历史。
 - `harhub_asset_versions` 保存可按 workspace、asset、version、checksum 和时间查询的版本投影；启动时会自动回填旧 catalog 中的 `versionHistory`。
 - `harhub_audit_events` 保存 workspace-scoped、append-only 的 Asset、Project、share 和 repository sync 事件。
 - GitHub installations、Project repository connections、scan jobs、inventory snapshots/files、binding policies、change proposals 和 webhook deliveries 保存于独立 normalized tables。
-- Imported Skill files 按 Skill 和版本分隔存储在 S3/S3-compatible object storage，不进入数据库，也不保留源 zip。当前保留窗口为每个 Skill 最近五个版本。
+- Imported Skill files 与 MCP JSON 按 Asset 和版本分隔存储在 S3/S3-compatible object storage，不进入数据库。Skill 不保留源 zip；MCP 保留原始 JSON。当前保留窗口为每个 Asset 最近五个版本。
 - 当未配置 `HARHUB_DATABASE_URL` 时，本地 `.harhub` JSON 文件仅作为 self-host demo 和开发 fallback。
 
 ### Catalog API
 
-当前 Catalog API 覆盖 workspace Skills Library、Project repository inventory、Skill fork diff、Forge sessions 和 audit events。跨资产类型的统一 Library catalog、dependency/usage query 和 recommendation engine 仍未实现。
+当前 Catalog API 覆盖 workspace Skill/MCP Library、Project repository inventory、Skill fork diff、Forge sessions 和 audit events。Rules/Instructions Library lifecycle、dependency/usage query 和 recommendation engine 仍未实现。
 
 职责：
 
@@ -405,7 +405,8 @@ Harhub 不在当前产品中定义任何新的 Skill 标准或用户必须采用
 - `/api/account`：profile 和 password mutation。
 - `/api/workspaces`：workspace 创建、重命名和当前账号可访问列表。
 - `/api/workspaces/{workspaceId}/members`：成员、角色和 invitations。
-- `/api/workspaces/{workspaceId}/assets`：列表、详情、文件 preview、multi-Skill upload、validate、最近五版 download/rollback、bulk validate/delete 和 delete。
+- `/api/workspaces/{workspaceId}/assets`：Skill/MCP 列表、详情、文件 preview、validate、最近五版 download/rollback、bulk validate/delete 和 delete。
+- `/api/workspaces/{workspaceId}/assets/mcp`：上传并校验单个 MCP JSON。
 - `/api/workspaces/{workspaceId}/assets/import/preview`：安全扫描任意 zip 中所有嵌套的 `SKILL.md`，返回可选择的导入候选。
 - `/api/workspaces/{workspaceId}/assets/{query}/share`：创建、读取和撤销公开分享。
 - `/api/public/shares/{token}`：无需登录的分享元数据与文件 preview。
@@ -443,7 +444,7 @@ Harhub 不在当前产品中定义任何新的 Skill 标准或用户必须采用
 CLI 当前支持：
 
 - 本地 Skills scan、validate、list、show、create、update 和 delete。
-- Workspace assets/Skills list、show、upload、edit-to-new-version、revalidate、version download、delete、share/unshare 和 public install。
+- Workspace assets/Skills/MCP list、show、upload、revalidate、version download 和 delete；Skill 另支持 edit-to-new-version、share/unshare 和 public install。
 - Project create/connect/inventory/scan/diff/publish、proposal/PR、sync-token rotation 和 archive。
 - GitHub App authorization、installation/repository listing、import/connect、ownership policy 和 PR delivery。
 - Persistent Forge session create/list/show/follow-up/generate/download/freeze/delete；流式 operation 在 `--json` 下输出 NDJSON。
@@ -455,7 +456,9 @@ Uploaded Skill 版本不支持原地覆盖；`skills edit` 下载当前包、替
 
 npm package 同时提供 `harhub-mcp` stdio server。它复用 CLI 登录信息，暴露 Library、Project、GitHub 和 Forge 的 authenticated remote operations；本地文件参数受 `HARHUB_MCP_ALLOWED_ROOTS` 限制，高影响 mutation 需要显式 `confirm: true`。仓库 `skills/` 下提供三套操作 Skills，帮助 agents 安全编排这些工具。
 
-Skills-first 的当前产品路径围绕上传、分享、安装和撤销形成闭环。
+Skill 的公开分发路径围绕上传、分享、安装和撤销形成闭环；MCP 的私有
+采用路径围绕上传、版本、Project binding/PR 和 Forge materialization
+形成闭环。
 
 ### 目标 CLI 与 MCP
 

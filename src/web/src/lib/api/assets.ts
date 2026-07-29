@@ -60,6 +60,29 @@ export async function uploadWorkspaceSkillZip(
   );
 }
 
+export async function uploadWorkspaceMcp(
+  token: string,
+  workspaceId: string,
+  input: {
+    name: string;
+    description: string;
+    file: File;
+  }
+): Promise<AssetUploadResponse> {
+  const form = new FormData();
+  form.set("name", input.name);
+  form.set("description", input.description);
+  form.set("file", input.file);
+  return request<AssetUploadResponse>(
+    `/api/workspaces/${workspaceId}/assets/mcp`,
+    {
+      token,
+      method: "POST",
+      body: form
+    }
+  );
+}
+
 export async function previewWorkspaceSkillZip(
   token: string,
   workspaceId: string,

@@ -4,6 +4,8 @@ export type View =
   | "share"
   | "assets"
   | "asset-detail"
+  | "mcps"
+  | "mcp-detail"
   | "projects"
   | "project-detail"
   | "forge"

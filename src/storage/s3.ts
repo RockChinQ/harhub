@@ -10,26 +10,32 @@ import path from "node:path";
 
 import { slugify } from "../shared/markdown.js";
 import {
+  MCP_CONFIG_CHECKSUM_ALGORITHM,
   SKILL_FILES_CHECKSUM_ALGORITHM,
+  type AssetKind,
   type StorageStatus,
   type StoredObject
 } from "../shared/types.js";
 
 const DEFAULT_REGION = "us-east-1";
-const DIRECTORY_CONTENT_TYPE = "application/vnd.harhub.skill-directory" as const;
 const S3_BATCH_SIZE = 1000;
 const IO_CONCURRENCY = 16;
 
-export interface StoredSkillFile {
+export interface StoredAssetFile {
   path: string;
   content: Buffer;
 }
+export type StoredSkillFile = StoredAssetFile;
 
-export interface UploadSkillFilesInput {
+export interface UploadAssetFilesInput {
   workspaceId: string;
-  skillName: string;
-  files: StoredSkillFile[];
+  kind: AssetKind;
+  assetName: string;
+  files: StoredAssetFile[];
   checksum: string;
+  checksumAlgorithm:
+    | typeof SKILL_FILES_CHECKSUM_ALGORITHM
+    | typeof MCP_CONFIG_CHECKSUM_ALGORITHM;
 }
 
 export function getStorageStatus(): StorageStatus {
@@ -45,15 +51,23 @@ export function getStorageStatus(): StorageStatus {
   };
 }
 
-export async function uploadSkillFiles(input: UploadSkillFilesInput): Promise<StoredObject> {
+export async function uploadAssetFiles(input: UploadAssetFilesInput): Promise<StoredObject> {
   const config = readStorageConfig();
   if (!config.bucket) {
-    throw new Error("S3 storage is not configured. Set HARHUB_S3_BUCKET before uploading skills.");
+    throw new Error("S3 storage is not configured. Set HARHUB_S3_BUCKET before uploading assets.");
   }
-  if (input.files.length === 0) throw new Error("A Skill must contain at least one file.");
+  if (input.files.length === 0) throw new Error("An asset must contain at least one file.");
 
-  const key = buildSkillDirectoryKey(config.prefix, input.workspaceId, input.skillName);
+  const key = buildAssetDirectoryKey(
+    config.prefix,
+    input.workspaceId,
+    input.kind,
+    input.assetName
+  );
   const client = createS3Client(config);
+  const contentType = input.kind === "skill"
+    ? "application/vnd.harhub.skill-directory" as const
+    : "application/vnd.harhub.mcp-config" as const;
   const storage: StoredObject = {
     provider: "s3",
     layout: "files",
@@ -63,9 +77,9 @@ export async function uploadSkillFiles(input: UploadSkillFilesInput): Promise<St
     endpoint: config.endpoint,
     size: input.files.reduce((total, file) => total + file.content.byteLength, 0),
     fileCount: input.files.length,
-    contentType: DIRECTORY_CONTENT_TYPE,
+    contentType,
     checksum: input.checksum,
-    checksumAlgorithm: SKILL_FILES_CHECKSUM_ALGORITHM,
+    checksumAlgorithm: input.checksumAlgorithm,
     uploadedAt: new Date().toISOString()
   };
 
@@ -78,9 +92,10 @@ export async function uploadSkillFiles(input: UploadSkillFilesInput): Promise<St
         ContentType: fileContentType(file.path),
         Metadata: {
           workspace: input.workspaceId,
-          skill: input.skillName,
+          asset: input.assetName,
+          kind: input.kind,
           checksum: input.checksum,
-          "checksum-algorithm": SKILL_FILES_CHECKSUM_ALGORITHM
+          "checksum-algorithm": input.checksumAlgorithm
         }
       }));
     });
@@ -92,6 +107,22 @@ export async function uploadSkillFiles(input: UploadSkillFilesInput): Promise<St
   return storage;
 }
 
+export function uploadSkillFiles(input: {
+  workspaceId: string;
+  skillName: string;
+  files: StoredSkillFile[];
+  checksum: string;
+}): Promise<StoredObject> {
+  return uploadAssetFiles({
+    workspaceId: input.workspaceId,
+    kind: "skill",
+    assetName: input.skillName,
+    files: input.files,
+    checksum: input.checksum,
+    checksumAlgorithm: SKILL_FILES_CHECKSUM_ALGORITHM
+  });
+}
+
 export async function deleteStoredObject(object: StoredObject): Promise<void> {
   if (object.provider !== "s3") return;
   const config = configForStoredObject(object);
@@ -101,7 +132,7 @@ export async function deleteStoredObject(object: StoredObject): Promise<void> {
   await deletePrefix(createS3Client(config), bucket, object.key);
 }
 
-export async function readStoredSkillFiles(object: StoredObject): Promise<StoredSkillFile[]> {
+export async function readStoredAssetFiles(object: StoredObject): Promise<StoredAssetFile[]> {
   if (object.provider !== "s3") {
     throw new Error(`Unsupported storage provider: ${object.provider}`);
   }
@@ -112,9 +143,9 @@ export async function readStoredSkillFiles(object: StoredObject): Promise<Stored
 
   const client = createS3Client(config);
   const keys = await listPrefixKeys(client, bucket, object.key);
-  if (keys.length === 0) throw new Error("Stored Skill directory is empty or missing.");
+  if (keys.length === 0) throw new Error("Stored asset directory is empty or missing.");
 
-  const files: StoredSkillFile[] = [];
+  const files: StoredAssetFile[] = [];
   await forEachConcurrent(keys, IO_CONCURRENCY, async (key) => {
     const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
     files.push({
@@ -125,6 +156,8 @@ export async function readStoredSkillFiles(object: StoredObject): Promise<Stored
 
   return files.sort((left, right) => left.path.localeCompare(right.path));
 }
+
+export const readStoredSkillFiles = readStoredAssetFiles;
 
 async function deletePrefix(client: S3Client, bucket: string, prefix: string): Promise<void> {
   const keys = await listPrefixKeys(client, bucket, prefix);
@@ -218,9 +251,15 @@ function createS3Client(config: ReturnType<typeof readStorageConfig>): S3Client 
   });
 }
 
-function buildSkillDirectoryKey(prefix: string, workspaceId: string, skillName: string): string {
-  const slug = slugify(skillName) || "skill";
-  return `${prefix}workspaces/${workspaceId}/skills/${slug}/${Date.now()}-${randomUUID()}/`;
+function buildAssetDirectoryKey(
+  prefix: string,
+  workspaceId: string,
+  kind: AssetKind,
+  assetName: string
+): string {
+  const slug = slugify(assetName) || kind;
+  const directory = kind === "skill" ? "skills" : "mcps";
+  return `${prefix}workspaces/${workspaceId}/${directory}/${slug}/${Date.now()}-${randomUUID()}/`;
 }
 
 function fileContentType(filePath: string): string {

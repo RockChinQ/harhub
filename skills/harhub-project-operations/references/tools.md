@@ -34,3 +34,7 @@
 
 Repository mutations should go through proposals and pull requests. A Project archive does not delete its GitHub repository.
 A Project deletion removes only Harhub's Project index and tracking history; it does not delete the GitHub repository or workspace Library assets.
+
+`harhub_project_create_proposal` supports `add-library-skills`, `remove-skill`,
+`add-library-mcps`, and `remove-mcp`. MCP add proposals write the selected
+Library document to `.harness/mcp/<slug>.json`.

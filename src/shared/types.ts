@@ -4,7 +4,7 @@ export type WorkspaceRole = "owner" | "admin" | "member" | "viewer";
 
 export type AuthProvider = "google" | "github";
 
-export type AssetKind = "skill";
+export type AssetKind = "skill" | "mcp";
 
 export type AssetHealth = "valid" | "warning" | "error" | "unknown";
 
@@ -12,22 +12,27 @@ export type AssetVersionSource = "upload" | "project-sync" | "migration" | "roll
 
 export type StorageProvider = "s3";
 export const SKILL_FILES_CHECKSUM_ALGORITHM = "skill-files-v2" as const;
+export const MCP_CONFIG_CHECKSUM_ALGORITHM = "mcp-json-v1" as const;
 
 export interface StoredObject {
   provider: StorageProvider;
   layout: "files";
   bucket: string;
-  /** S3 prefix containing one object per canonical Skill file. */
+  /** S3 prefix containing one object per canonical asset file. */
   key: string;
   region?: string;
   endpoint?: string;
   size: number;
   fileCount: number;
-  contentType: "application/vnd.harhub.skill-directory";
-  /** Digest of the sorted file paths and contents, used to key generated zip caches. */
+  contentType:
+    | "application/vnd.harhub.skill-directory"
+    | "application/vnd.harhub.mcp-config";
+  /** Digest of the canonical asset contents, used for version and relationship tracking. */
   checksum: string;
-  /** Absent for checksums created before canonical path ordering was versioned. */
-  checksumAlgorithm?: typeof SKILL_FILES_CHECKSUM_ALGORITHM;
+  /** Absent for checksums created before checksum algorithms were versioned. */
+  checksumAlgorithm?:
+    | typeof SKILL_FILES_CHECKSUM_ALGORITHM
+    | typeof MCP_CONFIG_CHECKSUM_ALGORITHM;
   uploadedAt: string;
 }
 
@@ -178,6 +183,12 @@ export interface AssetRecord {
     warnings: number;
   };
   validationIssues?: ValidationIssue[];
+  /** Safe MCP discovery metadata. Configuration values and environment secrets are never included. */
+  mcp?: {
+    serverCount: number;
+    serverNames: string[];
+    transports: string[];
+  };
   /** Monotonically increasing Harhub revision for this workspace asset. */
   version?: number;
   createdAt?: string;
@@ -455,6 +466,7 @@ export interface HarnessWorkspaceAssetSummary {
   health: AssetHealth;
   fileCount: number;
   size: number;
+  mcp?: AssetRecord["mcp"];
 }
 
 export interface HarnessTemplateAssetSelection extends HarnessWorkspaceAssetSummary {
@@ -772,7 +784,9 @@ export interface GitHubRepositorySummary {
 export type ProjectChangeProposalKind =
   | "bootstrap"
   | "add-library-skills"
-  | "remove-skill";
+  | "remove-skill"
+  | "add-library-mcps"
+  | "remove-mcp";
 export type ProjectChangeProposalStatus =
   | "preview"
   | "creating"

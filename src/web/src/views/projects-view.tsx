@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 
 import type {
+  AssetKind,
   AssetRecord,
   HarhubProject,
   GitHubInstallation,
@@ -80,6 +81,8 @@ import {
   connectProjectRepository,
   connectProjectGitHubApp,
   createProjectBootstrapProposal,
+  createProjectMcpAddProposal,
+  createProjectMcpRemoveProposal,
   createProjectSkillAddProposal,
   createProjectSkillRemoveProposal,
   deleteProject,
@@ -157,6 +160,7 @@ export function ProjectsView({
   const [connectingExistingProject, setConnectingExistingProject] = useState(false);
   const [projectSkillSearch, setProjectSkillSearch] = useState("");
   const [librarySkillOpen, setLibrarySkillOpen] = useState(false);
+  const [libraryAssetKind, setLibraryAssetKind] = useState<AssetKind>("skill");
   const [librarySkills, setLibrarySkills] = useState<AssetRecord[]>([]);
   const [librarySkillSearch, setLibrarySkillSearch] = useState("");
   const [selectedLibrarySkillIds, setSelectedLibrarySkillIds] = useState<string[]>([]);
@@ -200,6 +204,12 @@ export function ProjectsView({
     ),
     [project?.bindings]
   );
+  const projectMcps = useMemo(
+    () => (project?.bindings ?? []).filter((binding) =>
+      binding.kind === "mcp" && binding.status !== "missing"
+    ),
+    [project?.bindings]
+  );
   const filteredProjectSkills = useMemo(() => {
     const query = projectSkillSearch.trim().toLowerCase();
     if (!query) return projectSkills;
@@ -208,15 +218,18 @@ export function ProjectsView({
     );
   }, [projectSkillSearch, projectSkills]);
   const otherBindings = useMemo(
-    () => (project?.bindings ?? []).filter((binding) => binding.kind !== "skill"),
+    () => (project?.bindings ?? []).filter((binding) =>
+      binding.kind !== "skill" && binding.kind !== "mcp"
+    ),
     [project?.bindings]
   );
   const existingLibrarySkillIds = useMemo(() => new Set([
-    ...projectSkills.flatMap((binding) => binding.assetId ? [binding.assetId] : []),
+    ...(libraryAssetKind === "skill" ? projectSkills : projectMcps)
+      .flatMap((binding) => binding.assetId ? [binding.assetId] : []),
     ...(inventory?.latestSnapshot?.artifacts ?? []).flatMap((artifact) =>
-      artifact.kind === "skill" && artifact.libraryAssetId ? [artifact.libraryAssetId] : []
+      artifact.kind === libraryAssetKind && artifact.libraryAssetId ? [artifact.libraryAssetId] : []
     )
-  ]), [inventory?.latestSnapshot?.artifacts, projectSkills]);
+  ]), [inventory?.latestSnapshot?.artifacts, libraryAssetKind, projectMcps, projectSkills]);
   const filteredLibrarySkills = useMemo(() => {
     const query = librarySkillSearch.trim().toLowerCase();
     return librarySkills.filter((asset) =>
@@ -234,11 +247,11 @@ export function ProjectsView({
     inventory
   );
   const projectSkillMutationDisabledReason = isCreatingProposal
-    ? "A Skill change is being prepared."
+    ? "A Library asset change is being prepared."
     : activeSkillProposal?.status === "open"
-      ? "Merge or close the current Skill change before starting another."
+      ? "Merge or close the current asset change before starting another."
       : activeSkillProposal
-        ? "Finish the current Skill change before starting another."
+        ? "Finish the current asset change before starting another."
         : projectSkillManagementDisabledReason;
 
   async function refresh() {
@@ -411,14 +424,15 @@ export function ProjectsView({
     }
   }
 
-  async function openLibrarySkillPicker() {
+  async function openLibrarySkillPicker(kind: AssetKind = "skill") {
+    setLibraryAssetKind(kind);
     setLibrarySkillOpen(true);
     setLibrarySkillSearch("");
     setSelectedLibrarySkillIds([]);
     setIsLoadingLibrarySkills(true);
     setError(undefined);
     try {
-      const result = await getWorkspaceAssets(token, workspace.id, { kind: "skill" });
+      const result = await getWorkspaceAssets(token, workspace.id, { kind });
       setLibrarySkills(result.assets.filter((asset) => asset.health !== "error" && Boolean(asset.storage)));
     } catch (caught) {
       setError(errorMessage(caught));
@@ -441,12 +455,19 @@ export function ProjectsView({
     setIsCreatingProposal(true);
     setError(undefined);
     try {
-      const created = await createProjectSkillAddProposal(
-        token,
-        workspace.id,
-        project.id,
-        selectedLibrarySkillIds
-      );
+      const created = libraryAssetKind === "skill"
+        ? await createProjectSkillAddProposal(
+            token,
+            workspace.id,
+            project.id,
+            selectedLibrarySkillIds
+          )
+        : await createProjectMcpAddProposal(
+            token,
+            workspace.id,
+            project.id,
+            selectedLibrarySkillIds
+          );
       setProposal(created);
       setLibrarySkillOpen(false);
       setProposalOpen(true);
@@ -468,12 +489,19 @@ export function ProjectsView({
     setIsCreatingProposal(true);
     setError(undefined);
     try {
-      const created = await createProjectSkillRemoveProposal(
-        token,
-        workspace.id,
-        project.id,
-        removeSkillBinding.id
-      );
+      const created = removeSkillBinding.kind === "mcp"
+        ? await createProjectMcpRemoveProposal(
+            token,
+            workspace.id,
+            project.id,
+            removeSkillBinding.id
+          )
+        : await createProjectSkillRemoveProposal(
+            token,
+            workspace.id,
+            project.id,
+            removeSkillBinding.id
+          );
       setProposal(created);
       setRemoveSkillOpen(false);
       setRemoveSkillBinding(undefined);
@@ -691,6 +719,15 @@ export function ProjectsView({
                   Skills
                   <Badge variant="secondary" className="h-5 min-w-5 justify-center px-1.5 text-[10px]">
                     {projectSkills.length}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="mcps"
+                  className="gap-2 rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:border-blue-700 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                >
+                  MCPs
+                  <Badge variant="secondary" className="h-5 min-w-5 justify-center px-1.5 text-[10px]">
+                    {projectMcps.length}
                   </Badge>
                 </TabsTrigger>
                 <TabsTrigger
@@ -1011,6 +1048,58 @@ export function ProjectsView({
                     </CardContent>
                   </Card>
                 ) : null}
+              </TabsContent>
+
+              <TabsContent value="mcps" className="mt-4">
+                <TooltipProvider delayDuration={250}>
+                  <Card className="shadow-sm">
+                    <CardHeader className="border-b">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <FileJson2 className="h-4 w-4 text-blue-700" aria-hidden="true" />
+                            Project MCPs
+                          </CardTitle>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            MCP configurations linked to this repository.
+                          </p>
+                        </div>
+                        <DisabledControlTooltip
+                          label="Add MCP from Library"
+                          reason={projectSkillMutationDisabledReason}
+                        >
+                          <Button
+                            type="button"
+                            disabled={Boolean(projectSkillMutationDisabledReason)}
+                            onClick={() => void openLibrarySkillPicker("mcp")}
+                          >
+                            <Plus className="h-4 w-4" aria-hidden="true" />
+                            Add from Library
+                          </Button>
+                        </DisabledControlTooltip>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      {projectMcps.length ? (
+                        <div className="max-h-[56vh] divide-y overflow-y-auto">
+                          {projectMcps.map((binding) => (
+                            <ProjectSkillRow
+                              key={binding.id}
+                              binding={binding}
+                              onReview={() => undefined}
+                              onRemove={() => confirmRemoveSkill(binding)}
+                              removeDisabledReason={projectSkillMutationDisabledReason}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="p-6 text-sm text-muted-foreground">
+                          No MCP configurations are present in the latest Project state.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TooltipProvider>
               </TabsContent>
 
               <TabsContent value="settings" className="mt-4">
@@ -1339,9 +1428,11 @@ export function ProjectsView({
         <Dialog open={librarySkillOpen} onOpenChange={setLibrarySkillOpen}>
           <DialogContent className="flex max-h-[80vh] max-w-3xl flex-col overflow-hidden">
             <DialogHeader>
-              <DialogTitle>Add Skills from the Library</DialogTitle>
+              <DialogTitle>
+                Add {libraryAssetKind === "skill" ? "Skills" : "MCPs"} from the Library
+              </DialogTitle>
               <DialogDescription>
-                Select one or more workspace Skills to add to this Project.
+                Select one or more workspace {libraryAssetKind === "skill" ? "Skills" : "MCP configurations"} to add to this Project.
               </DialogDescription>
             </DialogHeader>
             <div className="relative">
@@ -1350,14 +1441,14 @@ export function ProjectsView({
                 value={librarySkillSearch}
                 onChange={(event) => setLibrarySkillSearch(event.target.value)}
                 className="pl-9"
-                placeholder="Search Library Skills"
+                placeholder={`Search Library ${libraryAssetKind === "skill" ? "Skills" : "MCPs"}`}
               />
             </div>
             <div className="min-h-0 flex-1 overflow-auto rounded-lg border">
               {isLoadingLibrarySkills ? (
                 <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                  Loading Library Skills…
+                  Loading Library {libraryAssetKind === "skill" ? "Skills" : "MCPs"}…
                 </div>
               ) : filteredLibrarySkills.length ? (
                 <div className="divide-y">
@@ -1387,8 +1478,8 @@ export function ProjectsView({
               ) : (
                 <p className="p-6 text-center text-sm text-muted-foreground">
                   {librarySkills.length
-                    ? "No available Library Skills match this search."
-                    : "Every available Library Skill is already linked to this Project."}
+                    ? `No available Library ${libraryAssetKind === "skill" ? "Skills" : "MCPs"} match this search.`
+                    : `Every available Library ${libraryAssetKind === "skill" ? "Skill" : "MCP"} is already linked to this Project.`}
                 </p>
               )}
             </div>
@@ -1413,8 +1504,8 @@ export function ProjectsView({
             <AlertDialogHeader>
               <AlertDialogTitle>Remove {removeSkillBinding?.name} from this Project?</AlertDialogTitle>
               <AlertDialogDescription>
-                This removes the Skill package from the Project through a GitHub pull request.
-                The workspace Library Skill, if any, is not deleted.
+                This removes the {removeSkillBinding?.kind === "mcp" ? "MCP configuration" : "Skill package"} from the Project through a GitHub pull request.
+                The workspace Library asset, if any, is not deleted.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -1809,7 +1900,7 @@ function ProjectSkillRow({
           </ProjectSkillIconAction>
         ) : null}
         <ProjectSkillIconAction
-          label="Remove Skill"
+          label={binding.kind === "mcp" ? "Remove MCP" : "Remove Skill"}
           disabledReason={removeDisabledReason}
           className="hover:text-destructive"
           onClick={onRemove}
@@ -1899,7 +1990,7 @@ function getProjectSkillManagementDisabledReason(
   project?: HarhubProject,
   inventory?: ProjectInventoryResponse
 ): string | undefined {
-  if (!project) return "Open a Project before managing its Skills.";
+  if (!project) return "Open a Project before managing its Library assets.";
   if (project.status === "archived") return "Archived Projects cannot be changed.";
   if (!inventory?.connection || inventory.connection.mode !== "github-app") {
     return "Connect this Project with the GitHub App to manage its Skills.";
@@ -1911,10 +2002,10 @@ function getProjectSkillManagementDisabledReason(
     return "Reconnect the GitHub App before changing Project Skills.";
   }
   if (inventory.connection.permissionMode !== "write") {
-    return "Grant managed change permissions before changing Project Skills.";
+    return "Grant managed change permissions before changing Project assets.";
   }
   if (!inventory.latestSnapshot) {
-    return "Wait for the first repository scan before changing Project Skills.";
+    return "Wait for the first repository scan before changing Project assets.";
   }
   return undefined;
 }
@@ -1922,6 +2013,8 @@ function getProjectSkillManagementDisabledReason(
 function proposalDialogTitle(proposal?: ProjectChangeProposal): string {
   if (proposal?.kind === "add-library-skills") return "Add Library Skills";
   if (proposal?.kind === "remove-skill") return "Remove Project Skill";
+  if (proposal?.kind === "add-library-mcps") return "Add Library MCPs";
+  if (proposal?.kind === "remove-mcp") return "Remove Project MCP";
   return "Managed repository configuration";
 }
 

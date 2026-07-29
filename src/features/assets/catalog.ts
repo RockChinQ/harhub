@@ -159,7 +159,7 @@ function healthFromIssueCounts(errors: number, warnings: number): AssetHealth {
 function normalizeAssetRecord(asset: AssetRecord): AssetRecord {
   return normalizeAssetVersioning({
     id: asset.id,
-    kind: "skill",
+    kind: asset.kind === "mcp" ? "mcp" : "skill",
     name: asset.name,
     displayName: asset.displayName,
     slug: asset.slug,
@@ -168,6 +168,7 @@ function normalizeAssetRecord(asset: AssetRecord): AssetRecord {
     ...(asset.storage ? { storage: asset.storage } : {}),
     validation: asset.validation,
     ...(asset.validationIssues ? { validationIssues: asset.validationIssues } : {}),
+    ...(asset.mcp ? { mcp: asset.mcp } : {}),
     ...(asset.version ? { version: asset.version } : {}),
     ...(asset.createdAt ? { createdAt: asset.createdAt } : {}),
     ...(asset.updatedAt ? { updatedAt: asset.updatedAt } : {}),

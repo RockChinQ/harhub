@@ -108,10 +108,11 @@ export async function syncProjectRepositoryFiles(input: {
     for (const observed of request.bindings.filter((binding) => binding.kind === "skill")) {
       const candidate = candidatesByPath.get(observed.path);
       const explicitlyBound = input.baselineAssetIds?.[observed.path];
-      const baseAsset = resolveExplicitLibraryAsset(catalog, {
+      const resolvedBaseAsset = resolveExplicitLibraryAsset(catalog, {
         libraryAssetId: explicitlyBound,
         repositoryOwned: input.repositoryOwnedPaths?.has(observed.path)
       });
+      const baseAsset = resolvedBaseAsset?.kind === "skill" ? resolvedBaseAsset : undefined;
       const pinnedVersion = input.baselineVersions?.[observed.path];
       const baseVersion = pinnedVersion
         ? baseAsset?.versionHistory?.find((version) => version.version === pinnedVersion)
@@ -154,6 +155,29 @@ export async function syncProjectRepositoryFiles(input: {
         storage
       });
     }
+    for (const observed of request.bindings.filter((binding) => binding.kind === "mcp")) {
+      const resolvedBaseAsset = resolveExplicitLibraryAsset(catalog, {
+        libraryAssetId: input.baselineAssetIds?.[observed.path],
+        repositoryOwned: input.repositoryOwnedPaths?.has(observed.path)
+      });
+      const baseAsset = resolvedBaseAsset?.kind === "mcp" ? resolvedBaseAsset : undefined;
+      const pinnedVersion = input.baselineVersions?.[observed.path];
+      const baseVersion = pinnedVersion
+        ? baseAsset?.versionHistory?.find((version) => version.version === pinnedVersion)
+        : undefined;
+      if (pinnedVersion && !baseVersion?.storage) {
+        throw new Error(`Pinned Library version ${pinnedVersion} is unavailable for ${observed.path}.`);
+      }
+      const baseStorage = baseVersion?.storage ?? baseAsset?.storage;
+      baselineUpdates.push({
+        path: observed.path,
+        ...(baseAsset ? { assetId: baseAsset.id } : {}),
+        ...(baseStorage?.checksum
+          ? { digest: baseStorage.checksum }
+          : {}),
+        ...(baseVersion ? { version: baseVersion.version } : {})
+      });
+    }
     const result = await syncProjectFromGitHubApp(
       input.workspaceId,
       input.projectId,
@@ -191,9 +215,7 @@ export async function syncProjectRepositoryBundle(input: {
     : [];
   const candidatesByPath = validateSkillBundle(input.request, candidates, Boolean(input.skillArchive));
   const bindingsByPath = new Map(
-    authorization.bindings
-      .filter((binding) => binding.kind === "skill")
-      .map((binding) => [binding.path, binding])
+    authorization.bindings.map((binding) => [binding.path, binding])
   );
   const existingForks = new Map(authorization.skillForks.map((fork) => [fork.path, fork]));
   const newStorage: StoredObject[] = [];
@@ -269,6 +291,23 @@ export async function syncProjectRepositoryBundle(input: {
         validationIssues: candidate.validationIssues,
         updatedAt: new Date().toISOString(),
         storage
+      });
+    }
+    for (const observed of input.request.bindings.filter((binding) => binding.kind === "mcp")) {
+      const existingBinding = bindingsByPath.get(observed.path);
+      const baseAsset = existingBinding?.assetId
+        ? catalog.assets.find((asset) =>
+            asset.id === existingBinding.assetId && asset.kind === "mcp"
+          )
+        : undefined;
+      baselineUpdates.push({
+        path: observed.path,
+        ...(baseAsset ? { assetId: baseAsset.id } : {}),
+        ...(baseAsset?.storage?.checksum
+          ? { digest: baseAsset.storage.checksum }
+          : existingBinding?.sourceDigest
+            ? { digest: existingBinding.sourceDigest }
+            : {})
       });
     }
 

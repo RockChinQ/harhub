@@ -21,6 +21,7 @@ import {
   resolveHarhubApiUrl,
   resolveHarhubToken,
   resolveHarhubWorkspaceId,
+  uploadMcpConfiguration,
   uploadSkillZip
 } from "../api.js";
 import {
@@ -168,12 +169,13 @@ export function runAssetsCreate(parsed: ParsedArgs): number {
 
 export async function runAssetsUpload(parsed: ParsedArgs): Promise<number> {
   const zipPath = parsed.positionals[0];
+  const kind = optionString(parsed, "kind") ?? "skill";
   const workspaceId = resolveHarhubWorkspaceId(parsed);
   const token = resolveHarhubToken(parsed);
   const apiUrl = resolveHarhubApiUrl(parsed);
 
   if (!zipPath || !workspaceId) {
-    console.error("Usage: harhub assets upload <archive.zip> [--share] [--workspace <workspace-id>] [--token <token>] [--url <harhub-url>]");
+    console.error("Usage: harhub assets upload <file> [--kind skill|mcp] [--name text] [--description text] [remote options]");
     return 1;
   }
 
@@ -185,17 +187,39 @@ export async function runAssetsUpload(parsed: ParsedArgs): Promise<number> {
   const absolutePath = path.resolve(process.cwd(), zipPath);
   let data: Record<string, any>;
   try {
-    data = await uploadSkillZip({
-      apiUrl,
-      workspaceId,
-      token,
-      fileName: path.basename(absolutePath),
-      buffer: readFileSync(absolutePath)
-    });
-    if (!Array.isArray(data.uploaded) || data.uploaded.length === 0) {
-      throw new Error("Harhub did not import any Skills from this zip.");
+    if (kind === "mcp") {
+      const name = optionString(parsed, "name");
+      const description = optionString(parsed, "description");
+      if (!name || !description) {
+        throw new Error("MCP upload requires --name and --description.");
+      }
+      if (hasBooleanOption(parsed, "share")) {
+        throw new Error("MCP configurations cannot be shared publicly.");
+      }
+      data = await uploadMcpConfiguration({
+        apiUrl,
+        workspaceId,
+        token,
+        name,
+        description,
+        fileName: path.basename(absolutePath),
+        buffer: readFileSync(absolutePath)
+      });
+    } else if (kind === "skill") {
+      data = await uploadSkillZip({
+        apiUrl,
+        workspaceId,
+        token,
+        fileName: path.basename(absolutePath),
+        buffer: readFileSync(absolutePath)
+      });
+    } else {
+      throw new Error("Asset upload kind must be skill or mcp.");
     }
-    if (hasBooleanOption(parsed, "share")) {
+    if (!Array.isArray(data.uploaded) || data.uploaded.length === 0) {
+      throw new Error(`Harhub did not import any ${kind === "skill" ? "Skills" : "MCP configurations"}.`);
+    }
+    if (kind === "skill" && hasBooleanOption(parsed, "share")) {
       data.shares = await Promise.all((data.uploaded as Array<Record<string, any>>).map((asset) =>
         createWorkspaceAssetShare({
           apiUrl,

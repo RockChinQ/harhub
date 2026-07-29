@@ -83,6 +83,22 @@ export function AppContent({
             onRefresh={onRefreshAssets}
           />
         ) : null}
+        {view === "mcps" && activeWorkspace ? (
+          <AssetsView
+            workspace={activeWorkspace}
+            token={token}
+            assets={assets}
+            storage={storage}
+            query={query}
+            isLoading={isLoading}
+            selectedId={selectedId}
+            kind="mcp"
+            onQueryChange={onQueryChange}
+            onSelect={onSelectAsset}
+            onOpenDetail={onOpenAssetDetail}
+            onRefresh={onRefreshAssets}
+          />
+        ) : null}
         {view === "asset-detail" && activeWorkspace ? (
           <SkillDetailView
             workspace={activeWorkspace}
@@ -92,6 +108,17 @@ export function AppContent({
             onBack={() => onNavigate({ view: "assets" })}
             onChanged={onRefreshAssets}
             onDeleted={() => onNavigate({ view: "assets" })}
+          />
+        ) : null}
+        {view === "mcp-detail" && activeWorkspace ? (
+          <SkillDetailView
+            workspace={activeWorkspace}
+            token={token}
+            asset={selectedAsset?.kind === "mcp" ? selectedAsset : undefined}
+            issues={issues}
+            onBack={() => onNavigate({ view: "mcps" })}
+            onChanged={onRefreshAssets}
+            onDeleted={() => onNavigate({ view: "mcps" })}
           />
         ) : null}
         {view === "forge" && activeWorkspace ? (

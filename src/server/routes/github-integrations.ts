@@ -1,6 +1,9 @@
 import type { Express, Request } from "express";
 
-import type { ProjectBindingOwnership } from "../../shared/types.js";
+import type {
+  ProjectBindingOwnership,
+  ProjectChangeProposal
+} from "../../shared/types.js";
 import {
   consumeGitHubInstallationAuthorization,
   createGitHubInstallationAuthorization,
@@ -33,12 +36,14 @@ import {
   queueProjectRepositoryScan
 } from "../services/project-repository-inventory.js";
 import {
+  createAddLibraryMcpsProposal,
   createAddLibrarySkillsProposal,
   createBootstrapProposal,
+  createRemoveMcpProposal,
   createRemoveSkillProposal,
   openProjectChangeProposal
 } from "../services/project-repository-proposals.js";
-import { loadStoredSkill } from "../services/skill-packages.js";
+import { loadStoredMcp, loadStoredSkill } from "../services/skill-packages.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "../services/workspace-catalogs.js";
 import { sendError, setPrivateNoStore } from "../utils/http.js";
 
@@ -268,7 +273,12 @@ export function registerGitHubIntegrationRoutes(app: Express): void {
       const installation = await getGitHubInstallationForAccount(context.account.id, context.workspace.id, connection.installationId);
       if (!installation) throw new Error("GitHub installation is unavailable.");
       const kind = req.body?.kind;
-      let proposal;
+      let proposal: ProjectChangeProposal;
+      let libraryPolicies: Array<{
+        artifactPath: string;
+        libraryAssetId: string;
+        pinnedVersion?: number;
+      }> = [];
       if (kind === "bootstrap") {
         proposal = createBootstrapProposal({
           project,
@@ -300,6 +310,16 @@ export function registerGitHubIntegrationRoutes(app: Express): void {
           skills,
           accountId: context.account.id
         });
+        libraryPolicies = assets.map((asset) => {
+          const suffix = `/${asset.slug}/SKILL.md`;
+          const skillFile = proposal.files.find((file) => file.path.endsWith(suffix));
+          if (!skillFile) throw new Error(`Could not resolve the Project path for ${asset.displayName}.`);
+          return {
+            artifactPath: skillFile.path.slice(0, -"/SKILL.md".length),
+            libraryAssetId: asset.id,
+            ...(asset.version ? { pinnedVersion: asset.version } : {})
+          };
+        });
       } else if (kind === "remove-skill") {
         const bindingId = requiredBodyString(req.body, "bindingId");
         const binding = project.bindings.find((candidate) => candidate.id === bindingId);
@@ -324,10 +344,64 @@ export function registerGitHubIntegrationRoutes(app: Express): void {
           filePaths,
           accountId: context.account.id
         });
+      } else if (kind === "add-library-mcps") {
+        const assetIds = readStringArray(req.body?.assetIds, "assetIds", 20);
+        const catalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
+        const assetsById = new Map(catalog.assets.map((asset) => [asset.id, asset]));
+        const assets = assetIds.map((assetId) => {
+          const asset = assetsById.get(assetId);
+          if (!asset || asset.kind !== "mcp") {
+            throw new Error(`Library MCP ${assetId} was not found.`);
+          }
+          if (!asset.storage) {
+            throw new Error(`Library MCP ${asset.displayName} has no stored configuration.`);
+          }
+          return asset;
+        });
+        const mcps = await Promise.all(assets.map(async (asset) => ({
+          asset,
+          content: (await loadStoredMcp(asset.storage!)).analyzed.content
+        })));
+        proposal = createAddLibraryMcpsProposal({
+          project,
+          connection,
+          installation,
+          snapshot: inventory.latestSnapshot,
+          mcps,
+          accountId: context.account.id
+        });
+        libraryPolicies = assets.map((asset) => ({
+          artifactPath: `.harness/mcp/${asset.slug}.json`,
+          libraryAssetId: asset.id,
+          ...(asset.version ? { pinnedVersion: asset.version } : {})
+        }));
+      } else if (kind === "remove-mcp") {
+        const bindingId = requiredBodyString(req.body, "bindingId");
+        const binding = project.bindings.find((candidate) => candidate.id === bindingId);
+        if (!binding) throw new Error("Project MCP binding was not found.");
+        proposal = createRemoveMcpProposal({
+          project,
+          connection,
+          installation,
+          snapshot: inventory.latestSnapshot,
+          binding,
+          accountId: context.account.id
+        });
       } else {
-        throw new Error("Proposal kind must be bootstrap, add-library-skills, or remove-skill.");
+        throw new Error(
+          "Proposal kind must be bootstrap, add-library-skills, remove-skill, add-library-mcps, or remove-mcp."
+        );
       }
       await saveProjectChangeProposal(proposal);
+      await Promise.all(libraryPolicies.map((policy) => upsertProjectBindingPolicy({
+        projectId,
+        artifactPath: policy.artifactPath,
+        ownership: "library",
+        libraryAssetId: policy.libraryAssetId,
+        ...(policy.pinnedVersion ? { pinnedVersion: policy.pinnedVersion } : {}),
+        decidedByAccountId: context.account.id,
+        decidedAt: new Date().toISOString()
+      })));
       await recordWorkspaceAuditEvent({
         workspaceId: context.workspace.id,
         eventType: "project.proposal.created",

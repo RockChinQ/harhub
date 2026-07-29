@@ -7,6 +7,7 @@ import type {
 
 export interface ForgeSelectedSkillTree {
   assetId: string;
+  kind?: HarnessTemplateAssetSelection["kind"];
   installPath: string;
   tree: AssetFileTreeNode[];
 }
@@ -28,7 +29,9 @@ export function buildForgeFrameworkTree(
   for (const skill of skillTrees) {
     for (const file of flattenFiles(skill.tree)) {
       entries.push({
-        path: joinPath(skill.installPath, file.path),
+        path: skill.kind === "mcp"
+          ? skill.installPath
+          : joinPath(skill.installPath, file.path),
         size: file.size
       });
     }
@@ -45,6 +48,9 @@ export function resolveForgeSkillFile(
 
   for (const asset of selectedAssets) {
     const installPath = trimSlashes(asset.installPath);
+    if (asset.kind === "mcp" && selectedPath === installPath) {
+      return { assetId: asset.id, installPath, relativePath: "mcp.json" };
+    }
     const prefix = `${installPath}/`;
     if (!selectedPath.startsWith(prefix)) continue;
 
@@ -58,11 +64,12 @@ export function resolveForgeSkillFile(
 
 export function prefixForgeSkillFilePreview(
   file: AssetFilePreview,
-  installPath: string
+  installPath: string,
+  exactPath = false
 ): AssetFilePreview {
   return {
     ...file,
-    path: joinPath(installPath, file.path)
+    path: exactPath ? installPath : joinPath(installPath, file.path)
   };
 }
 

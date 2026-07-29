@@ -133,7 +133,19 @@ export function proposalBody(kind: string | undefined, parsed: ParsedArgs): Reco
     if (!bindingId) throw new Error("remove-skill requires --binding <binding-id>.");
     return { kind, bindingId };
   }
-  throw new Error("Proposal kind must be bootstrap, add-library-skills, or remove-skill.");
+  if (kind === "add-library-mcps") {
+    const assetIds = optionStrings(parsed, "asset");
+    if (assetIds.length === 0) throw new Error("add-library-mcps requires at least one --asset <asset-id>.");
+    return { kind, assetIds };
+  }
+  if (kind === "remove-mcp") {
+    const bindingId = optionString(parsed, "binding") ?? parsed.positionals[2];
+    if (!bindingId) throw new Error("remove-mcp requires --binding <binding-id>.");
+    return { kind, bindingId };
+  }
+  throw new Error(
+    "Proposal kind must be bootstrap, add-library-skills, remove-skill, add-library-mcps, or remove-mcp."
+  );
 }
 
 function projectPath(parsed: ParsedArgs): string {

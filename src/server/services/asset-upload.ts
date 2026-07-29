@@ -6,6 +6,11 @@ import {
   upsertAsset
 } from "../../features/assets/index.js";
 import {
+  analyzeMcpConfiguration,
+  createImportedMcpAsset,
+  MCP_CONFIG_FILE_NAME
+} from "../../features/mcp/index.js";
+import {
   discoverSkillsInArchive,
   type DiscoveredSkill
 } from "../../features/skills/index.js";
@@ -16,13 +21,16 @@ import type {
   SkillImportPreview,
   StoredObject
 } from "../../shared/types.js";
+import { slugify } from "../../shared/markdown.js";
 import { writeWorkspaceAssetCatalog } from "../../state/index.js";
 import type { WorkspaceContext } from "../../state/types.js";
 import { assertWorkspaceAdminContext } from "../authorization.js";
 import {
   deleteStoredObject,
+  uploadAssetFiles,
   uploadSkillFiles
 } from "../../storage/index.js";
+import { MCP_CONFIG_CHECKSUM_ALGORITHM } from "../../shared/types.js";
 import { sendError } from "../utils/http.js";
 import { assetListPayload } from "./asset-responses.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
@@ -119,6 +127,81 @@ export async function handleAssetUpload(
   }
 }
 
+export async function handleMcpAssetUpload(
+  req: Request,
+  res: Response,
+  context: WorkspaceContext
+): Promise<void> {
+  assertWorkspaceAdminContext(context);
+  const file = req.file;
+  if (!file) {
+    res.status(400).json({ error: "An MCP JSON configuration file is required." });
+    return;
+  }
+
+  const displayName = requiredText(req.body?.name, "name", 120);
+  const name = slugify(displayName);
+  if (!name) {
+    res.status(400).json({ error: "MCP name must contain letters or numbers." });
+    return;
+  }
+  const description = requiredText(req.body?.description, "description", 1_000);
+  let storage: StoredObject | undefined;
+  try {
+    const analyzed = analyzeMcpConfiguration(file.buffer);
+    if (analyzed.validation.errors > 0) {
+      throw new Error(
+        analyzed.validationIssues.find((issue) => issue.severity === "error")?.message ??
+        "MCP configuration validation failed."
+      );
+    }
+    const originalCatalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
+    const assetId = `asset:mcp:${context.workspace.id}:${name}`;
+    const previous = originalCatalog.assets.find((item) => item.id === assetId);
+    const hasSameConfig = previous?.storage?.checksum === analyzed.checksum;
+    storage = hasSameConfig && previous.storage
+      ? previous.storage
+      : await uploadAssetFiles({
+          workspaceId: context.workspace.id,
+          kind: "mcp",
+          assetName: name,
+          files: [{ path: MCP_CONFIG_FILE_NAME, content: analyzed.content }],
+          checksum: analyzed.checksum,
+          checksumAlgorithm: MCP_CONFIG_CHECKSUM_ALGORITHM
+        });
+    const asset = createImportedMcpAsset({
+      workspaceId: context.workspace.id,
+      name,
+      displayName,
+      description,
+      analyzed,
+      storage,
+      previous,
+      createdByAccountId: context.account.id
+    });
+    const catalog = upsertAsset(originalCatalog, asset);
+    await writeWorkspaceAssetCatalog(context.workspace.id, catalog);
+    await Promise.all(obsoleteAssetStorageObjects(
+      previous ? [previous] : [],
+      [asset]
+    ).map((candidate) => deleteStoredObject(candidate).catch(() => undefined)));
+    res.status(201).json({
+      ...assetListPayload(context.workspace, catalog.generatedAt, catalog.assets),
+      uploaded: [asset],
+      issues: asset.validationIssues ?? []
+    });
+  } catch (error) {
+    if (storage) {
+      const catalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace).catch(() => undefined);
+      const retained = catalog?.assets.some((asset) =>
+        asset.storage?.bucket === storage?.bucket && asset.storage?.key === storage?.key
+      );
+      if (!retained) await deleteStoredObject(storage).catch(() => undefined);
+    }
+    sendError(res, error, 400);
+  }
+}
+
 function selectCandidates(
   candidates: DiscoveredSkill[],
   rawSelection: unknown
@@ -186,4 +269,13 @@ function toImportCandidate(skill: DiscoveredSkill): SkillImportCandidate {
     fileCount: skill.fileCount,
     size: skill.size
   };
+}
+
+function requiredText(value: unknown, label: string, maxLength: number): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${label} is required.`);
+  }
+  const text = value.trim();
+  if (text.length > maxLength) throw new Error(`${label} is too long.`);
+  return text;
 }

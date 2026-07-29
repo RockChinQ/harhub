@@ -43,7 +43,11 @@ export function recordAssetVersion(input: {
     ...(input.createdByAccountId
       ? { createdByAccountId: input.createdByAccountId }
       : {}),
-    summary: input.summary ?? defaultVersionSummary(input.source, Boolean(previous)),
+    summary: input.summary ?? defaultVersionSummary(
+      input.asset.kind,
+      input.source,
+      Boolean(previous)
+    ),
     changes: describeChanges(previous, input.asset),
     ...(input.asset.storage?.checksum
       ? { checksum: input.asset.storage.checksum }
@@ -166,8 +170,8 @@ function legacyVersion(
     version,
     createdAt,
     source: "migration",
-    summary: "Version history initialized from an existing Skill",
-    changes: ["Existing package registered as the initial tracked version"],
+    summary: `Version history initialized from an existing ${asset.kind === "skill" ? "Skill" : "MCP asset"}`,
+    changes: [`Existing ${asset.kind === "skill" ? "package" : "configuration"} registered as the initial tracked version`],
     ...(asset.storage?.checksum ? { checksum: asset.storage.checksum } : {}),
     ...(asset.storage
       ? { fileCount: asset.storage.fileCount, size: asset.storage.size }
@@ -181,17 +185,26 @@ function legacyVersion(
 }
 
 function defaultVersionSummary(
+  kind: AssetRecord["kind"],
   source: Exclude<AssetVersionSource, "migration">,
   isUpdate: boolean
 ): string {
   if (source === "project-sync") {
     return isUpdate
-      ? "Published Project changes to the Library Skill"
-      : "Published a Project Skill to the Library";
+      ? `Published Project changes to the Library ${kind === "skill" ? "Skill" : "MCP configuration"}`
+      : `Published a Project ${kind === "skill" ? "Skill" : "MCP configuration"} to the Library`;
   }
-  if (source === "rollback") return "Restored a retained Skill version";
-  if (source === "scan") return isUpdate ? "Rescanned the local Skill" : "Indexed the local Skill";
-  return isUpdate ? "Uploaded an updated Skill package" : "Imported the Skill package";
+  if (source === "rollback") {
+    return `Restored a retained ${kind === "skill" ? "Skill" : "MCP"} version`;
+  }
+  if (source === "scan") {
+    return isUpdate
+      ? `Rescanned the local ${kind === "skill" ? "Skill" : "MCP configuration"}`
+      : `Indexed the local ${kind === "skill" ? "Skill" : "MCP configuration"}`;
+  }
+  return isUpdate
+    ? `Uploaded an updated ${kind === "skill" ? "Skill package" : "MCP configuration"}`
+    : `Imported the ${kind === "skill" ? "Skill package" : "MCP configuration"}`;
 }
 
 function storageIdentity(storage: StoredObject): string {
@@ -208,7 +221,7 @@ function describeChanges(previous: AssetRecord | undefined, asset: AssetRecord):
 
   const changes: string[] = [];
   if (previous.storage?.checksum !== asset.storage?.checksum) {
-    changes.push("Package contents changed");
+    changes.push(asset.kind === "skill" ? "Package contents changed" : "Configuration changed");
   }
   if (previous.displayName !== asset.displayName) changes.push("Display name changed");
   if (previous.description !== asset.description) changes.push("Description changed");
@@ -223,5 +236,7 @@ function describeChanges(previous: AssetRecord | undefined, asset: AssetRecord):
   ) {
     changes.push("Validation result changed");
   }
-  return changes.length > 0 ? changes : ["Package metadata refreshed"];
+  return changes.length > 0
+    ? changes
+    : [asset.kind === "skill" ? "Package metadata refreshed" : "Configuration metadata refreshed"];
 }

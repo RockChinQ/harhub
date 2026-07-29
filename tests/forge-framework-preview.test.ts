@@ -86,6 +86,47 @@ test("prefixes lazy-loaded Skill file previews with their framework path", () =>
   assert.equal(preview.content, "# Discovery");
 });
 
+test("maps a selected MCP configuration to its exact framework file path", () => {
+  const mcp: HarnessTemplateAssetSelection = {
+    ...selectedSkill,
+    id: "mcp-1",
+    kind: "mcp",
+    name: "github",
+    displayName: "GitHub",
+    slug: "github",
+    installPath: ".harness/mcp/github.json"
+  };
+  const mcpTree: AssetFileTreeNode[] = [{
+    name: "mcp.json",
+    path: "mcp.json",
+    type: "file",
+    size: 48
+  }];
+  const tree = buildForgeFrameworkTree([], [{
+    assetId: mcp.id,
+    kind: "mcp",
+    installPath: mcp.installPath,
+    tree: mcpTree
+  }]);
+  assert.deepEqual(flattenFilePaths(tree), [".harness/mcp/github.json"]);
+  assert.deepEqual(resolveForgeSkillFile([mcp], ".harness/mcp/github.json"), {
+    assetId: "mcp-1",
+    installPath: ".harness/mcp/github.json",
+    relativePath: "mcp.json"
+  });
+  assert.equal(
+    prefixForgeSkillFilePreview({
+      path: "mcp.json",
+      name: "mcp.json",
+      size: 48,
+      isText: true,
+      truncated: false,
+      content: "{}"
+    }, mcp.installPath, true).path,
+    ".harness/mcp/github.json"
+  );
+});
+
 function flattenFilePaths(nodes: AssetFileTreeNode[]): string[] {
   return nodes.flatMap((node) => node.type === "file"
     ? [node.path]

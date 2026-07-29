@@ -16,8 +16,9 @@ import { AllowedPaths } from "../src/mcp/paths.js";
 test("advertises the full CLI-equivalent Harhub tool surface with safety hints", async () => {
   await withMcpClient("http://127.0.0.1:1", async (client) => {
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 40);
+    assert.equal(listed.tools.length, 41);
     assert.ok(listed.tools.some((tool) => tool.name === "harhub_assets_list"));
+    assert.ok(listed.tools.some((tool) => tool.name === "harhub_mcp_upload"));
     assert.ok(listed.tools.some((tool) => tool.name === "harhub_project_create_proposal"));
     assert.ok(listed.tools.some((tool) => tool.name === "harhub_forge_generate"));
 

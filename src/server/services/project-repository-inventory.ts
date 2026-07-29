@@ -476,18 +476,24 @@ function resolveRelationships(
     if (artifact.validation.errors > 0) return { ...artifact, relationship: "blocked" };
     const policy = policyByPath.get(artifact.path);
     if (policy?.ownership === "ignored") return { ...artifact, relationship: "ignored" };
-    if (policy?.ownership === "repository" || artifact.kind !== "skill") {
+    if (
+      policy?.ownership === "repository" ||
+      (artifact.kind !== "skill" && artifact.kind !== "mcp")
+    ) {
       return { ...artifact, relationship: "repository-owned" };
     }
-    const skill = skillAtPath(files, artifact.path);
     const base = resolveExplicitLibraryAsset(catalog, {
       libraryAssetId: policy?.ownership === "library" ? policy.libraryAssetId : undefined
     });
+    if (base?.kind !== artifact.kind) {
+      return { ...artifact, relationship: "repository-owned" };
+    }
     const version = policy?.pinnedVersion
       ? base?.versionHistory?.find((candidate) => candidate.version === policy.pinnedVersion)
       : undefined;
     const baseStorage = version?.storage ?? base?.storage;
-    const digest = baseStorage && skill
+    const skill = artifact.kind === "skill" ? skillAtPath(files, artifact.path) : undefined;
+    const digest = artifact.kind === "skill" && baseStorage && skill
       ? canonicalSkillFilesChecksumForStorage(skill.files, baseStorage) ?? baseStorage.checksum
       : version?.checksum ?? base?.storage?.checksum;
     if (!base || !digest) return { ...artifact, relationship: "repository-owned" };

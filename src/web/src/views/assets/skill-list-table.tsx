@@ -1,6 +1,6 @@
-import { Eye, FileArchive, Loader2, PackageOpen } from "lucide-react";
+import { Eye, FileArchive, FileJson2, Loader2, PackageOpen } from "lucide-react";
 
-import type { AssetRecord } from "../../../../shared/types";
+import type { AssetKind, AssetRecord } from "../../../../shared/types";
 import { healthBadgeClass } from "../../app/format";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -9,6 +9,7 @@ import { cn } from "../../lib/utils";
 
 export function SkillListTable({
   assets,
+  kind,
   selectedId,
   selectedAssetIds,
   isLoading,
@@ -18,6 +19,7 @@ export function SkillListTable({
   onOpenDetail
 }: {
   assets: AssetRecord[];
+  kind: AssetKind;
   selectedId?: string;
   selectedAssetIds: Set<string>;
   isLoading: boolean;
@@ -30,7 +32,7 @@ export function SkillListTable({
     return (
       <div className="flex min-h-60 min-w-0 items-center justify-center rounded-lg border bg-card text-sm text-muted-foreground xl:h-full xl:min-h-0">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-        Loading skills
+        Loading {kind === "skill" ? "skills" : "MCPs"}
       </div>
     );
   }
@@ -39,7 +41,7 @@ export function SkillListTable({
     return (
       <div className="flex min-h-60 min-w-0 flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-card text-sm text-muted-foreground xl:h-full xl:min-h-0">
         <PackageOpen className="h-7 w-7" aria-hidden="true" />
-        No imported Skills matched the current filters.
+        No uploaded {kind === "skill" ? "Skills" : "MCPs"} matched the current filters.
       </div>
     );
   }
@@ -59,10 +61,10 @@ export function SkillListTable({
               checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
               onCheckedChange={(checked) => onToggleAllVisible(checked === true)}
               disabled={selectableVisibleAssets.length === 0}
-              aria-label="Select all visible skills"
+              aria-label={`Select all visible ${kind === "skill" ? "skills" : "MCPs"}`}
             />
           </div>
-          <div className="font-medium">Skill</div>
+          <div className="font-medium">{kind === "skill" ? "Skill" : "MCP"}</div>
           <div className="font-medium">Status</div>
         </div>
         <div className="min-w-0">
@@ -94,13 +96,23 @@ export function SkillListTable({
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-start gap-3">
                     <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-600 text-white">
-                      <FileArchive className="h-4 w-4" aria-hidden="true" />
+                      {asset.kind === "skill"
+                        ? <FileArchive className="h-4 w-4" aria-hidden="true" />
+                        : <FileJson2 className="h-4 w-4" aria-hidden="true" />}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium">{asset.displayName}</div>
                       <div className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
                         {asset.description || asset.name}
                       </div>
+                      {asset.kind === "mcp" && asset.mcp ? (
+                        <div className="mt-1 text-[11px] text-muted-foreground">
+                          {asset.mcp.serverCount} server{asset.mcp.serverCount === 1 ? "" : "s"}
+                          {asset.mcp.transports.length
+                            ? ` · ${asset.mcp.transports.join(", ")}`
+                            : ""}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </div>

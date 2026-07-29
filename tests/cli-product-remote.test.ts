@@ -131,7 +131,7 @@ test("keeps Project archive and confirmed index deletion distinct", async () => 
   ]);
 });
 
-test("updates repository ownership policy and creates add-skill proposals", async () => {
+test("updates repository ownership policy and creates Library asset proposals", async () => {
   const seen: Array<{ url: string; method: string; body: unknown }> = [];
   await withServer(async (request, response) => {
     seen.push({ url: request.url!, method: request.method!, body: await readJson(request) });
@@ -155,6 +155,18 @@ test("updates repository ownership policy and creates add-skill proposals", asyn
       "asset_1",
       "--asset=asset_2"
     ])))).code, 0);
+    assert.equal((await captureLog(() => runRepositoryCommand("propose", args(baseUrl, [
+      "project_1",
+      "add-library-mcps",
+      "--asset",
+      "mcp_1"
+    ])))).code, 0);
+    assert.equal((await captureLog(() => runRepositoryCommand("propose", args(baseUrl, [
+      "project_1",
+      "remove-mcp",
+      "--binding",
+      "binding_1"
+    ])))).code, 0);
   });
 
   assert.deepEqual(seen[0], {
@@ -171,6 +183,16 @@ test("updates repository ownership policy and creates add-skill proposals", asyn
     url: "/api/workspaces/ws_demo/projects/project_1/proposals",
     method: "POST",
     body: { kind: "add-library-skills", assetIds: ["asset_1", "asset_2"] }
+  });
+  assert.deepEqual(seen[2], {
+    url: "/api/workspaces/ws_demo/projects/project_1/proposals",
+    method: "POST",
+    body: { kind: "add-library-mcps", assetIds: ["mcp_1"] }
+  });
+  assert.deepEqual(seen[3], {
+    url: "/api/workspaces/ws_demo/projects/project_1/proposals",
+    method: "POST",
+    body: { kind: "remove-mcp", bindingId: "binding_1" }
   });
 });
 

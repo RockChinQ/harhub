@@ -154,6 +154,9 @@ async function requireStoredWorkspaceAsset(
 ): Promise<AssetRecord> {
   const asset = findAsset(await loadOrCreateWorkspaceAssetCatalog(workspace), assetQuery);
   if (!asset) throw new Error("Asset not found.");
-  if (!asset.storage) throw new Error("Only uploaded skill packages can be shared.");
+  if (asset.kind !== "skill") {
+    throw new Error("MCP configurations cannot be shared publicly.");
+  }
+  if (!asset.storage) throw new Error("Only uploaded Skill packages can be shared.");
   return asset;
 }

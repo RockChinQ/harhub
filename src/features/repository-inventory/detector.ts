@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { analyzeStoredSkillFiles, type SkillPackageFile } from "../skills/index.js";
+import { analyzeMcpConfiguration } from "../mcp/index.js";
 import { contentHash, parseMarkdown } from "../../shared/markdown.js";
 import type {
   AssetHealth,
@@ -225,32 +226,28 @@ function mcpArtifact(
   file: RepositorySourceFile,
   format: ProjectInventoryArtifactFormat
 ): ProjectInventoryArtifact {
-  const issues: Array<{ severity: SkillValidationSeverity; message: string }> = [];
-  if (file.content.byteLength > MAX_CANDIDATE_BYTES) {
-    issues.push({ severity: "error", message: "File exceeds the 1 MB repository inventory limit." });
-  } else if (file.path.endsWith(".json")) {
-    try {
-      const value = JSON.parse(file.content.toString("utf8"));
-      if (!value || typeof value !== "object" || Array.isArray(value)) {
-        issues.push({ severity: "error", message: "MCP configuration must be a JSON object." });
-      }
-    } catch {
-      issues.push({ severity: "error", message: "MCP configuration is not valid JSON." });
-    }
-  }
-  const errors = issues.length;
+  const analyzed = analyzeMcpConfiguration(file.content);
+  const issues = analyzed.validationIssues.map((issue) => ({
+    severity: issue.severity,
+    message: issue.message
+  }));
+  const errors = analyzed.validation.errors;
   return {
     id: artifactId("mcp", file.path),
     kind: "mcp",
     format,
     path: file.path,
-    name: friendlyFileName(file.path),
-    description: "Repository MCP configuration.",
+    name: analyzed.metadata.serverNames.length === 1
+      ? analyzed.metadata.serverNames[0]!
+      : friendlyFileName(file.path),
+    description: analyzed.metadata.serverNames.length
+      ? `MCP configuration for ${analyzed.metadata.serverNames.join(", ")}.`
+      : "Repository MCP configuration.",
     digest: contentHash(file.content),
     fileCount: 1,
     size: file.content.byteLength,
-    health: errors ? "error" : "valid",
-    validation: { errors, warnings: 0 },
+    health: analyzed.health,
+    validation: analyzed.validation,
     issues,
     relationship: errors ? "blocked" : "review-required"
   };

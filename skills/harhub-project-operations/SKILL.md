@@ -1,6 +1,6 @@
 ---
 name: harhub-project-operations
-description: Operate Harhub Projects, GitHub repository integrations, tracked asset bindings, repository scans, ownership policies, diffs, and pull-request proposals. Use when onboarding an existing repository or changing the Skills tracked by a Harhub Project.
+description: Operate Harhub Projects, GitHub repository integrations, tracked Skill and MCP bindings, repository scans, ownership policies, diffs, and pull-request proposals. Use when onboarding an existing repository or changing the Library assets tracked by a Harhub Project.
 ---
 
 # Harhub Project Operations
@@ -22,15 +22,22 @@ Treat a Project as the durable relationship between a repository and its Harhub 
 5. Run `harhub_project_scan`, then read `harhub_project_inventory`.
 6. Apply ownership with `harhub_repository_policy_set` only when the intended source of truth is clear.
 
-## Change Repository Skills
+## Change Repository Assets
 
 Repository changes are staged as proposals:
 
 - Initialize the Harhub structure: `kind: "bootstrap"`.
 - Add Library Skills: `kind: "add-library-skills"` with every selected asset ID.
 - Remove a tracked Skill: `kind: "remove-skill"` with its binding ID.
+- Add Library MCP configurations: `kind: "add-library-mcps"` with every
+  selected asset ID.
+- Remove a tracked MCP configuration: `kind: "remove-mcp"` with its binding ID.
 
 Call `harhub_project_create_proposal`, inspect the response, then call `harhub_project_open_proposal` only when the user has approved opening the pull request. Do not describe implementation details such as branch plumbing unless asked.
+
+Library MCP configurations are installed at `.harness/mcp/<slug>.json`. Treat
+the proposal diff as sensitive configuration and verify it does not introduce
+literal credentials before opening the pull request.
 
 Publishing a repository fork to the global Library, opening a pull request,
 archiving or deleting a Project, and rotating a sync token require

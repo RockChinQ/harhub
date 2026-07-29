@@ -778,21 +778,22 @@ test("generates a blueprint with project-driven Skill selection", async (context
 
   const userMessage = receivedBody?.messages?.find((message) => message.role === "user");
   const userInput = JSON.parse(userMessage?.content ?? "{}") as {
-    availableSkills?: Array<Record<string, unknown>>;
+    availableAssets?: Array<Record<string, unknown>>;
   };
   const systemMessage = receivedBody?.messages?.find((message) => message.role === "system");
   assert.equal(receivedBody?.max_completion_tokens, 3_200);
-  assert.equal(userInput.availableSkills?.length, 8);
-  assert.deepEqual(Object.keys(userInput.availableSkills?.[0] ?? {}).sort(), [
+  assert.equal(userInput.availableAssets?.length, 8);
+  assert.deepEqual(Object.keys(userInput.availableAssets?.[0] ?? {}).sort(), [
     "description",
     "id",
+    "kind",
     "name",
     "sizeBytes"
   ]);
   assert.match(systemMessage?.content ?? "", /must not stop at 4 by default/);
   assert.match(systemMessage?.content ?? "", /does not impose a count on selectedAssets/);
   assert.match(systemMessage?.content ?? "", /Never reproduce, summarize, rewrite, or generate Skill/);
-  assert.match(systemMessage?.content ?? "", /copies the original stored Skill package later/);
+  assert.match(systemMessage?.content ?? "", /copies the original stored asset later/);
   assert.equal(template.profile.name, "Release Assistant");
   assert.equal(template.selectedAssets.length, 8);
   assert.deepEqual(
@@ -851,6 +852,52 @@ test("builds a framework that records selected workspace Skills", () => {
   assert.match(catalog?.content ?? "", /asset:skill:release-notes/);
 });
 
+test("builds a framework that records selected MCP configurations without their values", () => {
+  const mcp: HarnessWorkspaceAssetSummary = {
+    id: "asset:mcp:ws_demo:github",
+    kind: "mcp",
+    name: "github",
+    displayName: "GitHub",
+    slug: "github",
+    description: "Provides GitHub repository operations.",
+    health: "valid",
+    fileCount: 1,
+    size: 128,
+    mcp: {
+      serverCount: 1,
+      serverNames: ["github"],
+      transports: ["stdio"]
+    }
+  };
+  const template = buildHarnessTemplate({
+    name: "Repository Assistant",
+    summary: "Maintains repository work.",
+    targetUsers: ["Maintainers"],
+    goals: ["Automate repository workflows"],
+    constraints: ["Credentials stay in environment variables"],
+    successCriteria: ["Repository operations are auditable"],
+    stackNotes: [],
+    agentRules: ["Never commit credentials"],
+    selectedAssets: [{ assetId: mcp.id, reason: "Repository operations are required." }],
+    workflow: {
+      name: "Repository workflow",
+      objective: "Make a reviewed repository change",
+      steps: ["Inspect", "Change", "Verify"],
+      verification: ["Checks pass"]
+    }
+  }, [mcp]);
+
+  assert.equal(template.selectedAssets[0]?.installPath, ".harness/mcp/github.json");
+  assert.match(
+    template.files.find((file) => file.path === ".harness/catalog/mcps.json")?.content ?? "",
+    /asset:mcp:ws_demo:github/
+  );
+  assert.equal(
+    template.files.some((file) => file.path.startsWith(".harness/mcp/")),
+    false
+  );
+});
+
 test("creates a safe ZIP for generated framework files", async () => {
   const archive = await createHarnessTemplateArchive(emptyCatalog(), {
     name: "Release Assistant",
@@ -883,14 +930,28 @@ test("creates a safe ZIP for generated framework files", async () => {
   assert.equal(localizedArchive.fileName, "发票审核系统-harness.zip");
 });
 
-test("offers only stored non-error Skills to the builder", () => {
+test("offers stored non-error Skills and MCPs to the builder", () => {
   const valid = catalogAsset("valid-skill", "valid");
   const invalid = catalogAsset("invalid-skill", "error");
   const unstored = { ...catalogAsset("unstored-skill", "valid"), storage: undefined };
+  const mcp = {
+    ...catalogAsset("github", "valid"),
+    id: "asset:mcp:github",
+    kind: "mcp" as const,
+    storage: {
+      ...catalogAsset("github", "valid").storage!,
+      contentType: "application/vnd.harhub.mcp-config" as const
+    },
+    mcp: {
+      serverCount: 1,
+      serverNames: ["github"],
+      transports: ["stdio"]
+    }
+  };
 
   assert.deepEqual(
-    workspaceAssetSummaries([valid, invalid, unstored]).map((asset) => asset.id),
-    [valid.id]
+    workspaceAssetSummaries([valid, invalid, unstored, mcp]).map((asset) => asset.id),
+    [valid.id, mcp.id]
   );
 });
 

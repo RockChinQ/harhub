@@ -13,6 +13,10 @@
 
 An answer contains `question` and `answer`, plus optional `lens`, `gap`, and `intent` when those fields were returned by Forge.
 
+Generated frameworks may include complete Library Skill packages and selected
+MCP JSON files. MCP configuration values are materialized from storage and are
+not part of the AI selection prompt.
+
 ## Recovery
 
 - On a failed or interrupted operation, read the session again before retrying.

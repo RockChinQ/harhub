@@ -23,15 +23,12 @@
 
 Harhub is an open-source control plane for a team's agent harness.
 
-The workspace Library manages reusable Agent Skills: teams can upload, validate,
-preview, version, share, and install standard Skill packages. Forge turns a
-project brief into a repository-ready harness using those Skills. Projects then
-connect that harness to an existing GitHub repository, inventory its Skills,
-MCP configuration, rules, and agent instructions, and track repository drift.
-
-The managed Library remains intentionally Skills-first. Non-Skill artifacts are
-currently visible and classifiable inside Projects, but they do not yet have the
-same Library publishing and version lifecycle as Skills.
+The workspace Library manages reusable Agent Skills and MCP configurations:
+teams can upload, validate, preview, and version both asset kinds. Standard
+Skill packages can also be publicly shared and installed. Forge turns a project
+brief into a repository-ready harness using relevant Library Skills and MCP
+configurations. Projects connect that harness to GitHub, bind Library assets to
+repository files, inventory rules and agent instructions, and track drift.
 
 ## What You Can Do
 
@@ -40,13 +37,15 @@ same Library publishing and version lifecycle as Skills.
 - Search and browse Skills in a workspace.
 - Preview Skill metadata and package files.
 - Download or restore any of the five retained immutable Skill versions.
+- Upload, validate, preview, download, and restore versioned MCP JSON
+  configurations without exposing their values to Forge AI.
 - Use Forge's adaptive AI interview to compose a downloadable project harness
-  from the current workspace's Skills.
+  from the current workspace's Skills and MCP configurations.
 - Resume URL-bound Forge sessions after navigation or restart, then freeze a
   completed session as a durable Project.
 - Import an existing repository through a GitHub App, inventory supported
-  harness files, review Skill-fork diffs, and deliver approved add/remove
-  changes through pull requests.
+  harness files, review repository drift, and deliver approved Skill or MCP
+  add/remove changes through pull requests.
 - Publish revocable public share pages with verified zip downloads and Harhub or
   Agent Skills CLI install commands.
 - Manage Harhub from the Web UI, CLI, or the authenticated Agent Operations MCP
@@ -70,6 +69,18 @@ code-review/
 
 Harhub does not define a competing Skill format. It stores package files and the
 runtime state needed to manage them in a workspace.
+
+## MCP Configurations
+
+An MCP Library asset is one JSON file with an `mcpServers` or `servers` object.
+Harhub stores the original configuration and retains its five latest immutable
+versions. Forge sees only safe metadata (server names, count, and transport),
+then copies the selected original file into `.harness/mcp/` during framework
+materialization. It never sends configuration values to the AI provider.
+
+Use environment-variable placeholders for credentials. Harhub warns when a
+secret-like environment key contains a literal value. MCP configurations cannot
+be publicly shared.
 
 ## Quick Start
 
@@ -199,6 +210,14 @@ imports every valid `SKILL.md` it finds, including files in nested directories:
 harhub assets upload /path/to/repository-export.zip
 ```
 
+Upload one MCP configuration:
+
+```bash
+harhub assets upload ./mcp.json --kind mcp \
+  --name "Issue tracker" \
+  --description "Use for projects that manage work in the team issue tracker."
+```
+
 The Web upload dialog previews every discovered Skill and lets you choose which
 ones to import.
 
@@ -244,6 +263,7 @@ harhub skills list --remote
 harhub skills show <id|name|slug> --remote
 harhub skills edit <id|name|slug> [--file SKILL.md]
 harhub assets list --remote
+harhub assets list --remote --kind mcp
 harhub download <id|name|slug> [-v 2] [-o skill.zip]
 harhub projects list
 harhub repositories status
@@ -300,7 +320,7 @@ configuration, filesystem boundaries, tool groups, and confirmation rules.
 
 ## Configuration
 
-Skill uploads require S3-compatible object storage:
+Asset uploads require S3-compatible object storage:
 
 ```bash
 export HARHUB_S3_BUCKET=harhub-assets
