@@ -33,6 +33,8 @@ import type {
   GitHubIntegrationStatus,
   GitHubRepositorySummary,
   ProjectBinding,
+  ProjectBindingOwnership,
+  ProjectBindingPolicy,
   ProjectBindingStatus,
   ProjectChangeProposal,
   ProjectInventoryArtifact,
@@ -68,6 +70,13 @@ import {
   DialogTitle
 } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import {
   Tooltip,
@@ -227,6 +236,27 @@ export function ProjectsView({
     ),
     [project?.bindings]
   );
+  const repositoryArtifacts = useMemo(
+    () => inventory?.latestSnapshot?.artifacts ?? [],
+    [inventory?.latestSnapshot?.artifacts]
+  );
+  const artifactsByBindingId = useMemo(() => new Map(
+    repositoryArtifacts.flatMap((artifact) =>
+      artifact.bindingId ? [[artifact.bindingId, artifact] as const] : []
+    )
+  ), [repositoryArtifacts]);
+  const artifactsByPath = useMemo(() => new Map(
+    repositoryArtifacts.map((artifact) => [artifact.path, artifact] as const)
+  ), [repositoryArtifacts]);
+  const otherArtifacts = useMemo(
+    () => repositoryArtifacts.filter((artifact) =>
+      artifact.kind !== "skill" && artifact.kind !== "mcp"
+    ),
+    [repositoryArtifacts]
+  );
+  const otherAssetCount = inventory?.latestSnapshot
+    ? otherArtifacts.length
+    : otherBindings.length;
   const existingLibrarySkillIds = useMemo(() => new Set([
     ...(libraryAssetKind === "skill" ? projectSkills : projectMcps)
       .flatMap((binding) => binding.assetId ? [binding.assetId] : []),
@@ -759,60 +789,28 @@ export function ProjectsView({
               </CardContent>
             </Card>
 
-            <Tabs value={projectDetailTab} onValueChange={setProjectDetailTab}>
-              <TabsList className="h-auto w-full justify-start gap-6 overflow-x-auto rounded-none border-b bg-transparent p-0">
-                <TabsTrigger
-                  value="skills"
-                  className="gap-2 rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:border-blue-700 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-                >
-                  Skills
-                  <Badge variant="secondary" className="h-5 min-w-5 justify-center px-1.5 text-[10px]">
-                    {projectSkills.length}
-                  </Badge>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="mcps"
-                  className="gap-2 rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:border-blue-700 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-                >
-                  MCPs
-                  <Badge variant="secondary" className="h-5 min-w-5 justify-center px-1.5 text-[10px]">
-                    {projectMcps.length}
-                  </Badge>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="inventory"
-                  className="gap-2 rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:border-blue-700 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-                >
-                  Inventory
-                  <Badge variant="secondary" className="h-5 min-w-5 justify-center px-1.5 text-[10px]">
-                    {inventory?.latestSnapshot?.artifacts.length ?? 0}
-                  </Badge>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="settings"
-                  className="rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:border-blue-700 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-                >
-                  Settings
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="inventory" className="mt-4">
-                {inventory?.connection?.mode === "github-app" ? (
-                  <Card className="shadow-sm">
-                <CardHeader className="border-b">
+            {inventory?.connection?.mode === "github-app" ? (
+              <Card className="shadow-sm">
+                <CardHeader className="border-b py-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <ScanSearch className="h-4 w-4 text-blue-700" aria-hidden="true" />
-                      Repository inventory
-                    </CardTitle>
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <ScanSearch className="h-4 w-4 text-blue-700" aria-hidden="true" />
+                        Repository tracking
+                      </CardTitle>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Latest GitHub scan used by the asset tabs below.
+                      </p>
+                    </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline">GitHub App</Badge>
                       {inventory.connection.status !== "active" ? (
                         <Badge variant="outline" className="border-red-300 text-red-700">
                           {inventory.connection.status === "permission-lost" ? "Permission lost" : "Disconnected"}
                         </Badge>
                       ) : null}
-                      <Badge variant="outline">{inventory.connection.permissionMode === "write" ? "Managed changes" : "Read only"}</Badge>
+                      <Badge variant="outline">
+                        {inventory.connection.permissionMode === "write" ? "Managed changes" : "Read only"}
+                      </Badge>
                       <Button
                         type="button"
                         variant="outline"
@@ -832,7 +830,7 @@ export function ProjectsView({
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <div className="grid gap-3 border-b p-5 sm:grid-cols-3">
+                  <div className="grid gap-3 p-5 sm:grid-cols-3">
                     <Metric label="Default branch" value={inventory.connection.defaultBranch} />
                     <Metric
                       label="Observed commit"
@@ -840,61 +838,23 @@ export function ProjectsView({
                     />
                     <Metric
                       label="Detected assets"
-                      value={String(inventory.latestSnapshot?.artifacts.length ?? 0)}
+                      value={String(repositoryArtifacts.length)}
                     />
                   </div>
                   {inventory.activeJob ? (
-                    <p className="border-b bg-blue-50 px-5 py-3 text-sm text-blue-900">
+                    <p className="border-t bg-blue-50 px-5 py-3 text-sm text-blue-900">
                       Reading the latest repository state. You can leave this page; the scan continues on the server.
                     </p>
                   ) : null}
                   {!inventory.activeJob && inventory.latestJob?.status === "failed" ? (
-                    <div className="border-b bg-red-50 px-5 py-3 text-sm text-red-900">
+                    <div className="border-t bg-red-50 px-5 py-3 text-sm text-red-900">
                       <p className="font-medium">Repository scan failed</p>
                       <p className="mt-1">{inventory.latestJob.failure?.message ?? "The repository could not be scanned."}</p>
                     </div>
                   ) : null}
-                  {inventory.latestSnapshot?.artifacts.length ? (
-                    <div className="max-h-[56vh] divide-y overflow-y-auto">
-                      {inventory.latestSnapshot.artifacts.map((artifact) => (
-                        <div
-                          key={artifact.id}
-                          className="grid gap-3 px-5 py-4 lg:grid-cols-[110px_minmax(0,1fr)_160px_190px] lg:items-center"
-                        >
-                          <Badge variant="outline" className="w-fit uppercase">{artifact.kind}</Badge>
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium">{artifact.name}</p>
-                            <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{artifact.path}</p>
-                            {artifact.issues[0] ? (
-                              <p className="mt-1 text-xs text-destructive">{artifact.issues[0].message}</p>
-                            ) : null}
-                          </div>
-                          <InventoryRelationshipBadge relationship={artifact.relationship} />
-                          <select
-                            className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-                            value={inventory.policies.find((policy) => policy.artifactPath === artifact.path)?.ownership ??
-                              (artifact.relationship === "ignored" ? "ignored" : artifact.relationship.startsWith("library-") ? "library" : "repository")}
-                            disabled={policyPath === artifact.path || artifact.relationship === "blocked"}
-                            onChange={(event) => void changeArtifactPolicy(
-                              artifact,
-                              event.target.value as "repository" | "library" | "ignored"
-                            )}
-                          >
-                            <option value="repository">Repository owned</option>
-                            {artifact.libraryAssetId ? <option value="library">Use Library baseline</option> : null}
-                            <option value="ignored">Ignore</option>
-                          </select>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="p-6 text-sm text-muted-foreground">
-                      {inventory.activeJob ? "The first inventory is being prepared." : "No supported harness assets were detected."}
-                    </p>
-                  )}
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/10 px-5 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/10 px-5 py-3">
                     <p className="text-xs text-muted-foreground">
-                      Read-only tracking requires no workflow and no repository secret.
+                      Skill and MCP scan results are shown directly in their asset tabs.
                     </p>
                     {inventory.connection.permissionMode === "write" && inventory.latestSnapshot ? (
                       bootstrapProposal?.status === "open" && bootstrapProposal.pullUrl ? (
@@ -902,11 +862,24 @@ export function ProjectsView({
                           href={bootstrapProposal.pullUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-accent"
+                          className="inline-flex h-8 items-center gap-2 rounded-md border bg-background px-3 text-xs font-medium hover:bg-accent"
                         >
-                          <GitPullRequest className="h-4 w-4" />
-                          Pull request #{bootstrapProposal.pullNumber}
+                          <GitPullRequest className="h-3.5 w-3.5" aria-hidden="true" />
+                          PR #{bootstrapProposal.pullNumber}
                         </a>
+                      ) : bootstrapProposal?.status === "preview" ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setProposal(bootstrapProposal);
+                            setProposalOpen(true);
+                          }}
+                        >
+                          <FileDiff className="h-4 w-4" aria-hidden="true" />
+                          Review managed config
+                        </Button>
                       ) : (
                         <Button
                           type="button"
@@ -915,8 +888,10 @@ export function ProjectsView({
                           disabled={isCreatingProposal}
                           onClick={() => void previewBootstrapProposal()}
                         >
-                          {isCreatingProposal ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileJson2 className="h-4 w-4" />}
-                          Preview managed config PR
+                          {isCreatingProposal
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <FileJson2 className="h-4 w-4" />}
+                          Preview managed config
                         </Button>
                       )
                     ) : null}
@@ -931,7 +906,7 @@ export function ProjectsView({
                         <Button
                           type="button"
                           variant="ghost"
-                          className="h-auto w-full justify-between rounded-none px-5 py-4 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                          className="h-auto w-full justify-between rounded-none px-5 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground"
                         >
                           <span>Recent scans · {inventory.jobs.length}</span>
                           <ChevronDown
@@ -962,25 +937,88 @@ export function ProjectsView({
                   ) : null}
                 </CardContent>
               </Card>
-                ) : (
-                  <Card className="shadow-sm">
-                    <CardContent className="flex min-h-56 flex-col items-center justify-center p-8 text-center">
-                      <ScanSearch className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
-                      <p className="mt-4 text-sm font-medium">Repository inventory is not available yet</p>
-                      <p className="mt-1 max-w-md text-sm leading-6 text-muted-foreground">
-                        Connect this Project through the GitHub App to scan and classify repository assets.
+            ) : null}
+
+            <Tabs value={projectDetailTab} onValueChange={setProjectDetailTab}>
+              <TabsList className="h-auto w-full justify-start gap-6 overflow-x-auto rounded-none border-b bg-transparent p-0">
+                <TabsTrigger
+                  value="skills"
+                  className="gap-2 rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:border-blue-700 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                >
+                  Skills
+                  <Badge variant="secondary" className="h-5 min-w-5 justify-center px-1.5 text-[10px]">
+                    {projectSkills.length}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="mcps"
+                  className="gap-2 rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:border-blue-700 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                >
+                  MCPs
+                  <Badge variant="secondary" className="h-5 min-w-5 justify-center px-1.5 text-[10px]">
+                    {projectMcps.length}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="other"
+                  className="gap-2 rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:border-blue-700 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                >
+                  Other assets
+                  <Badge variant="secondary" className="h-5 min-w-5 justify-center px-1.5 text-[10px]">
+                    {otherAssetCount}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="settings"
+                  className="rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:border-blue-700 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                >
+                  Settings
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="other" className="mt-4">
+                <Card className="shadow-sm">
+                  <CardHeader className="border-b">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <GitBranch className="h-4 w-4 text-blue-700" aria-hidden="true" />
+                      Other repository assets
+                    </CardTitle>
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      Rules and agent instructions are tracked at Project scope; they do not have a Library lifecycle yet.
+                    </p>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {otherArtifacts.length ? (
+                      <div className="max-h-[56vh] divide-y overflow-y-auto">
+                        {otherArtifacts.map((artifact) => (
+                          <RepositoryArtifactRow
+                            key={artifact.id}
+                            artifact={artifact}
+                            ownership={artifactOwnership(artifact, inventory?.policies ?? [])}
+                            policyChanging={policyPath === artifact.path}
+                            onOwnershipChange={(ownership) => void changeArtifactPolicy(artifact, ownership)}
+                          />
+                        ))}
+                      </div>
+                    ) : !inventory?.latestSnapshot && otherBindings.length ? (
+                      <div className="max-h-[56vh] divide-y overflow-y-auto">
+                        {otherBindings.map((binding) => (
+                          <BindingRow
+                            key={binding.id}
+                            binding={binding}
+                            onReview={() => void openSkillDiff(binding)}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="p-6 text-sm text-muted-foreground">
+                        {inventory?.activeJob
+                          ? "The first repository scan is being prepared."
+                          : "No repository-scoped rules or agent instructions were detected."}
                       </p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="mt-4"
-                        onClick={() => setProjectDetailTab("settings")}
-                      >
-                        Open settings
-                      </Button>
-                    </CardContent>
-                  </Card>
-                )}
+                    )}
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               <TabsContent value="skills" className="mt-4 space-y-4">
@@ -1103,6 +1141,8 @@ export function ProjectsView({
                       </div>
                       <div className="max-h-[56vh] divide-y overflow-y-auto">
                         {filteredProjectSkills.map((binding) => {
+                          const artifact = artifactsByBindingId.get(binding.id) ??
+                            artifactsByPath.get(binding.path);
                           const removeDisabledReason = binding.path === "."
                             ? "Repository-root Skills cannot be removed through Harhub."
                             : projectSkillMutationDisabledReason;
@@ -1110,6 +1150,14 @@ export function ProjectsView({
                             <ProjectSkillRow
                               key={binding.id}
                               binding={binding}
+                              artifact={artifact}
+                              ownership={artifact
+                                ? artifactOwnership(artifact, inventory?.policies ?? [])
+                                : undefined}
+                              policyChanging={artifact ? policyPath === artifact.path : false}
+                              onOwnershipChange={artifact
+                                ? (ownership) => void changeArtifactPolicy(artifact, ownership)
+                                : undefined}
                               selected={selectedProjectSkillIds.includes(binding.id)}
                               selectionDisabledReason={removeDisabledReason}
                               onSelectedChange={(checked) => toggleProjectSkillSelection(binding.id, checked)}
@@ -1133,28 +1181,6 @@ export function ProjectsView({
                 </CardContent>
               </Card>
             </TooltipProvider>
-
-                {otherBindings.length ? (
-                  <Card className="shadow-sm">
-                    <CardHeader className="border-b">
-                      <CardTitle className="flex items-center gap-2 text-base">
-                        <GitBranch className="h-4 w-4 text-blue-700" aria-hidden="true" />
-                        Other harness bindings
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-0">
-                      <div className="max-h-80 divide-y overflow-y-auto">
-                    {otherBindings.map((binding) => (
-                      <BindingRow
-                        key={binding.id}
-                        binding={binding}
-                        onReview={() => void openSkillDiff(binding)}
-                      />
-                    ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ) : null}
               </TabsContent>
 
               <TabsContent value="mcps" className="mt-4">
@@ -1189,15 +1215,27 @@ export function ProjectsView({
                     <CardContent className="p-0">
                       {projectMcps.length ? (
                         <div className="max-h-[56vh] divide-y overflow-y-auto">
-                          {projectMcps.map((binding) => (
-                            <ProjectSkillRow
-                              key={binding.id}
-                              binding={binding}
-                              onReview={() => undefined}
-                              onRemove={() => confirmRemoveSkill(binding)}
-                              removeDisabledReason={projectSkillMutationDisabledReason}
-                            />
-                          ))}
+                          {projectMcps.map((binding) => {
+                            const artifact = artifactsByBindingId.get(binding.id) ??
+                              artifactsByPath.get(binding.path);
+                            return (
+                              <ProjectSkillRow
+                                key={binding.id}
+                                binding={binding}
+                                artifact={artifact}
+                                ownership={artifact
+                                  ? artifactOwnership(artifact, inventory?.policies ?? [])
+                                  : undefined}
+                                policyChanging={artifact ? policyPath === artifact.path : false}
+                                onOwnershipChange={artifact
+                                  ? (ownership) => void changeArtifactPolicy(artifact, ownership)
+                                  : undefined}
+                                onReview={() => undefined}
+                                onRemove={() => confirmRemoveSkill(binding)}
+                                removeDisabledReason={projectSkillMutationDisabledReason}
+                              />
+                            );
+                          })}
                         </div>
                       ) : (
                         <p className="p-6 text-sm text-muted-foreground">
@@ -2004,8 +2042,101 @@ function BindingRow({
   );
 }
 
+function RepositoryArtifactRow({
+  artifact,
+  ownership,
+  policyChanging,
+  onOwnershipChange
+}: {
+  artifact: ProjectInventoryArtifact;
+  ownership: ProjectBindingOwnership;
+  policyChanging: boolean;
+  onOwnershipChange: (ownership: ProjectBindingOwnership) => void;
+}) {
+  return (
+    <div className="grid gap-3 px-5 py-4 lg:grid-cols-[110px_minmax(0,1fr)_160px_190px] lg:items-center">
+      <Badge variant="outline" className="w-fit uppercase">{artifact.kind}</Badge>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-medium">{artifact.name}</p>
+          {artifact.validation.errors > 0 || artifact.validation.warnings > 0 ? (
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-[10px]",
+                artifact.validation.errors > 0
+                  ? "border-red-300 text-red-700"
+                  : "border-amber-300 text-amber-800"
+              )}
+            >
+              {artifact.validation.errors > 0
+                ? `${artifact.validation.errors} errors`
+                : `${artifact.validation.warnings} warnings`}
+            </Badge>
+          ) : null}
+        </div>
+        <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{artifact.path}</p>
+        {artifact.issues[0] ? (
+          <p className="mt-1 text-xs text-destructive">{artifact.issues[0].message}</p>
+        ) : null}
+      </div>
+      <InventoryRelationshipBadge relationship={artifact.relationship} />
+      <ArtifactOwnershipSelect
+        artifact={artifact}
+        ownership={ownership}
+        disabled={policyChanging}
+        onChange={onOwnershipChange}
+      />
+    </div>
+  );
+}
+
+function ArtifactOwnershipSelect({
+  artifact,
+  ownership,
+  disabled,
+  onChange
+}: {
+  artifact: ProjectInventoryArtifact;
+  ownership: ProjectBindingOwnership;
+  disabled?: boolean;
+  onChange: (ownership: ProjectBindingOwnership) => void;
+}) {
+  const disabledReason = artifact.relationship === "blocked"
+    ? "Resolve the blocked repository asset before changing its source."
+    : disabled
+      ? "Saving the asset source."
+      : undefined;
+  return (
+    <DisabledControlTooltip label="Change asset source" reason={disabledReason}>
+      <div className="w-full min-w-40">
+        <Select
+          value={ownership}
+          disabled={Boolean(disabledReason)}
+          onValueChange={(value) => onChange(value as ProjectBindingOwnership)}
+        >
+          <SelectTrigger className="h-8" aria-label={`Source for ${artifact.name}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="repository">Repository owned</SelectItem>
+            {artifact.libraryAssetId ? (
+              <SelectItem value="library">Use Library baseline</SelectItem>
+            ) : null}
+            <SelectItem value="ignored">Ignore</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </DisabledControlTooltip>
+  );
+}
+
 function ProjectSkillRow({
   binding,
+  artifact,
+  ownership,
+  policyChanging,
+  onOwnershipChange,
   selected,
   selectionDisabledReason,
   onSelectedChange,
@@ -2014,6 +2145,10 @@ function ProjectSkillRow({
   removeDisabledReason
 }: {
   binding: ProjectBinding;
+  artifact?: ProjectInventoryArtifact;
+  ownership?: ProjectBindingOwnership;
+  policyChanging?: boolean;
+  onOwnershipChange?: (ownership: ProjectBindingOwnership) => void;
   selected?: boolean;
   selectionDisabledReason?: string;
   onSelectedChange?: (checked: boolean) => void;
@@ -2042,15 +2177,40 @@ function ProjectSkillRow({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate text-sm font-medium">{binding.name}</p>
-            <Badge variant="outline" className="text-[10px]">
-              {binding.assetId ? "Library linked" : "Repository owned"}
-            </Badge>
+            {artifact && (artifact.validation.errors > 0 || artifact.validation.warnings > 0) ? (
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-[10px]",
+                  artifact.validation.errors > 0
+                    ? "border-red-300 text-red-700"
+                    : "border-amber-300 text-amber-800"
+                )}
+              >
+                {artifact.validation.errors > 0
+                  ? `${artifact.validation.errors} errors`
+                  : `${artifact.validation.warnings} warnings`}
+              </Badge>
+            ) : null}
           </div>
           <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{binding.path}</p>
+          {artifact?.issues[0] ? (
+            <p className="mt-1 text-xs text-destructive">{artifact.issues[0].message}</p>
+          ) : null}
         </div>
       </div>
-      <div className="flex items-center justify-self-end gap-1.5">
-        <BindingStatusBadge status={binding.status} />
+      <div className="flex w-full flex-wrap items-center gap-1.5 lg:w-auto lg:justify-self-end">
+        {artifact
+          ? <InventoryRelationshipBadge relationship={artifact.relationship} />
+          : <BindingStatusBadge status={binding.status} />}
+        {artifact && ownership && onOwnershipChange ? (
+          <ArtifactOwnershipSelect
+            artifact={artifact}
+            ownership={ownership}
+            disabled={policyChanging}
+            onChange={onOwnershipChange}
+          />
+        ) : null}
         {reviewable ? (
           <ProjectSkillIconAction label="Review changes" onClick={onReview}>
             <FileDiff className="h-4 w-4" aria-hidden="true" />
@@ -2207,6 +2367,16 @@ function BindingStatusBadge({ status }: { status: ProjectBindingStatus }) {
       {label}
     </Badge>
   );
+}
+
+function artifactOwnership(
+  artifact: ProjectInventoryArtifact,
+  policies: ProjectBindingPolicy[]
+): ProjectBindingOwnership {
+  const explicit = policies.find((policy) => policy.artifactPath === artifact.path)?.ownership;
+  if (explicit) return explicit;
+  if (artifact.relationship === "ignored") return "ignored";
+  return artifact.relationship.startsWith("library-") ? "library" : "repository";
 }
 
 function InventoryRelationshipBadge({

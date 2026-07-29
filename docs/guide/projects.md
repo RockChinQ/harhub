@@ -51,6 +51,12 @@ Rules and agent instructions are currently Project inventory only. They do not
 yet have the Library upload/version lifecycle available to Skills and MCP
 configurations.
 
+The Project page does not expose a second raw Inventory list for assets already
+shown elsewhere. Repository branch, commit, scan status, rescan, and recent job
+history live in a compact tracking summary. Skill and MCP tabs show their
+detected relationship, validation issues, and ownership policy directly.
+Repository-only Rules and agent instructions remain under **Other assets**.
+
 ## Skill Forks And Library Sync
 
 A repository Skill bound to the Library is treated as a Project-local fork.
