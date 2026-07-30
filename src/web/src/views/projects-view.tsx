@@ -347,6 +347,11 @@ export function ProjectsView({
   async function openRepositoryImport(connectExisting = false) {
     setConnectingExistingProject(connectExisting);
     setImportOpen(true);
+    setGithubStatus(undefined);
+    setInstallations([]);
+    setSelectedInstallationId("");
+    setRepositories([]);
+    setRepositorySearch("");
     setIsLoadingGitHub(true);
     setError(undefined);
     try {
@@ -381,6 +386,8 @@ export function ProjectsView({
 
   async function selectInstallation(installationId: string) {
     setSelectedInstallationId(installationId);
+    setRepositories([]);
+    setRepositorySearch("");
     setIsLoadingGitHub(true);
     try {
       setRepositories((await listGitHubRepositories(token, workspace.id, installationId)).repositories);
@@ -1902,6 +1909,10 @@ function RepositoryImportDialog({
   const expectedRepository = project?.repository
     ? `${project.repository.owner}/${project.repository.name}`.toLowerCase()
     : undefined;
+  const normalizedRepositorySearch = repositorySearch.trim().toLowerCase();
+  const filteredRepositories = repositories.filter((candidate) =>
+    candidate.fullName.toLowerCase().includes(normalizedRepositorySearch)
+  );
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[86vh] max-w-3xl flex-col overflow-hidden">
@@ -1949,12 +1960,15 @@ function RepositoryImportDialog({
                   type="button"
                   size="sm"
                   variant={installation.id === selectedInstallationId ? "default" : "outline"}
+                  disabled={isLoading}
                   onClick={() => onSelectInstallation(installation.id)}
                 >
                   {installation.accountLogin}
                 </Button>
               ))}
-              <Button type="button" size="sm" variant="ghost" onClick={onInstall}>Add installation</Button>
+              <Button type="button" size="sm" variant="ghost" disabled={isLoading} onClick={onInstall}>
+                Add installation
+              </Button>
             </div>
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -1962,13 +1976,25 @@ function RepositoryImportDialog({
                 value={repositorySearch}
                 className="pl-9"
                 placeholder="Search repositories"
+                disabled={isLoading}
                 onChange={(event) => onSearch(event.target.value)}
               />
             </div>
-            <div className="min-h-0 flex-1 divide-y overflow-auto rounded-lg border">
-              {repositories
-                .filter((candidate) => candidate.fullName.toLowerCase().includes(repositorySearch.trim().toLowerCase()))
-                .map((candidate) => {
+            <div
+              className="min-h-0 flex-1 divide-y overflow-auto rounded-lg border"
+              aria-busy={isLoading}
+            >
+              {isLoading ? (
+                <div
+                  className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  Loading repositories…
+                </div>
+              ) : filteredRepositories.length ? (
+                filteredRepositories.map((candidate) => {
                   const mismatch = Boolean(connectingExistingProject && expectedRepository && candidate.fullName.toLowerCase() !== expectedRepository);
                   return (
                     <div key={candidate.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1995,10 +2021,14 @@ function RepositoryImportDialog({
                       </Button>
                     </div>
                   );
-                })}
-              {!isLoading && repositories.length === 0 ? (
-                <p className="p-6 text-center text-sm text-muted-foreground">No accessible repositories.</p>
-              ) : null}
+                })
+              ) : (
+                <p className="p-6 text-center text-sm text-muted-foreground">
+                  {repositories.length
+                    ? `No repositories match “${repositorySearch.trim()}”.`
+                    : "No accessible repositories."}
+                </p>
+              )}
             </div>
           </div>
         ) : null}
