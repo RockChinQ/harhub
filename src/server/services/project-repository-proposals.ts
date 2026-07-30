@@ -83,7 +83,9 @@ export function createAddLibrarySkillsProposal(input: {
   const targetRoot = preferredSkillRoot(input.snapshot);
   const occupiedPaths = new Set([
     ...input.snapshot.artifacts.map((artifact) => artifact.path.toLowerCase()),
-    ...input.project.bindings.map((binding) => binding.path.toLowerCase())
+    ...input.project.bindings
+      .filter((binding) => binding.status !== "missing")
+      .map((binding) => binding.path.toLowerCase())
   ]);
   const selectedSlugs = new Set<string>();
   const files = input.skills.flatMap(({ asset, files: skillFiles }) => {
@@ -223,7 +225,9 @@ export function createAddLibraryMcpsProposal(input: {
   }
   const occupiedPaths = new Set([
     ...input.snapshot.artifacts.map((artifact) => artifact.path.toLowerCase()),
-    ...input.project.bindings.map((binding) => binding.path.toLowerCase())
+    ...input.project.bindings
+      .filter((binding) => binding.status !== "missing")
+      .map((binding) => binding.path.toLowerCase())
   ]);
   const files = input.mcps.map(({ asset, content }) => {
     if (asset.kind !== "mcp" || asset.health === "error" || !asset.storage) {
