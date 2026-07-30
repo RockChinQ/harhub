@@ -332,7 +332,8 @@ export async function saveProjectRepositoryConnection(
 export async function deleteProjectRepositoryConnection(projectId: string): Promise<void> {
   if (isDatabaseStateEnabled()) {
     await ensureRepositoryDatabase();
-    await queryDatabase("delete from harhub_project_repository_connections where project_id = $1", [projectId]);
+    // Clean up all project tracking state (inventory snapshots, artifacts, files, etc.)
+    await deleteProjectTrackingState(projectId);
     return;
   }
   await serializeStateAccess(async () => {
@@ -1062,7 +1063,7 @@ async function listProjectChangeProposals(projectId: string): Promise<ProjectCha
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
-async function ensureRepositoryDatabase(): Promise<void> {
+export async function ensureRepositoryDatabase(): Promise<void> {
   setupPromise ??= setupRepositoryDatabase();
   return setupPromise;
 }

@@ -724,6 +724,7 @@ export function ProjectsView({
         diffBinding.id
       );
       setProject(result.project);
+      await refreshInventory();
       setPublishOpen(false);
       setDiffOpen(false);
       setSkillDiff(undefined);
@@ -2230,9 +2231,7 @@ function ProjectSkillRow({
         </div>
       </div>
       <div className="flex w-full flex-wrap items-center gap-1.5 lg:w-auto lg:justify-self-end">
-        {artifact
-          ? <InventoryRelationshipBadge relationship={artifact.relationship} />
-          : <BindingStatusBadge status={binding.status} />}
+        <BindingStatusBadge status={binding.status} />
         {artifact && ownership && onOwnershipChange ? (
           <ArtifactOwnershipSelect
             artifact={artifact}

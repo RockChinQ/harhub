@@ -61,6 +61,31 @@ test("Library Skill proposals copy complete text and binary packages into the ex
   }), /already contains a Skill/);
 });
 
+test("Library Skills can be added again after their previous binding becomes missing", () => {
+  const base = proposalBase();
+  base.project.bindings = [{
+    id: "binding-agent-browser",
+    kind: "skill",
+    name: "Agent Browser",
+    path: ".harness/skills/agent-browser",
+    source: "harhub",
+    status: "missing",
+    assetId: "asset-agent-browser"
+  }];
+
+  const proposal = createAddLibrarySkillsProposal({
+    ...base,
+    skills: [{
+      asset: librarySkill("agent-browser", "Agent Browser"),
+      files: [{ path: "SKILL.md", content: Buffer.from("agent-browser") }]
+    }]
+  });
+
+  assert.deepEqual(proposal.files.map((file) => file.path), [
+    ".harness/skills/agent-browser/SKILL.md"
+  ]);
+});
+
 test("Skill removal proposals delete only files captured under the latest inventory root", () => {
   const base = proposalBase();
   const binding: ProjectBinding = {

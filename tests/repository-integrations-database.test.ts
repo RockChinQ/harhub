@@ -5,7 +5,7 @@ import { Pool } from "pg";
 
 const baseDatabaseUrl = process.env.HARHUB_TEST_DATABASE_URL;
 
-test("Postgres keeps repository scans queryable outside the JSONB application snapshot", {
+test("Postgres atomically publishes Project Skill state and policy while keeping scan snapshots immutable", {
   skip: baseDatabaseUrl ? false : "requires HARHUB_TEST_DATABASE_URL"
 }, async () => {
   const schema = `harhub_repository_test_${Date.now()}_${randomBytes(4).toString("hex")}`;
@@ -31,6 +31,48 @@ test("Postgres keeps repository scans queryable outside the JSONB application sn
         defaultBranch: "main"
       }
     });
+    const artifactPath = ".harness/skills/release-notes";
+    const repositoryDigest = "b".repeat(64);
+    await state.syncProjectFromGitHubApp(
+      "ws_demo",
+      project.id,
+      {
+        schemaVersion: 1,
+        repository: "acme/product",
+        commitSha: "a".repeat(40),
+        ref: "main",
+        bindings: [{
+          kind: "skill",
+          name: "Release notes",
+          path: artifactPath,
+          digest: repositoryDigest
+        }]
+      },
+      [{
+        path: artifactPath,
+        digest: repositoryDigest,
+        fileCount: 1,
+        size: 20,
+        validation: { errors: 0, warnings: 0 },
+        validationIssues: [],
+        updatedAt: "2026-07-22T00:00:00.000Z",
+        storage: {
+          provider: "s3",
+          layout: "files",
+          bucket: "skills",
+          key: "project-forks/release-notes/",
+          size: 20,
+          checksum: repositoryDigest,
+          checksumAlgorithm: "skill-files-v3"
+        }
+      }],
+      0,
+      [{ path: artifactPath, assetId: "asset-release-notes", digest: "c".repeat(64), version: 1 }]
+    );
+    const changedProject = await state.getProject("acct_demo", "ws_demo", project.id);
+    const binding = changedProject.bindings.find((candidate) => candidate.path === artifactPath)!;
+    assert.equal(binding.status, "modified");
+
     await state.saveProjectRepositoryConnection({
       workspaceId: "ws_demo",
       projectId: project.id,
@@ -60,32 +102,62 @@ test("Postgres keeps repository scans queryable outside the JSONB application sn
       trigger: "initial",
       artifacts: [{
         id: "artifact-1",
-        kind: "instruction",
-        format: "agents-instructions",
-        path: "AGENTS.md",
-        name: "Agent instructions",
-        description: "Repository instructions.",
-        digest: "b".repeat(64),
+        kind: "skill",
+        format: "agent-skill",
+        path: artifactPath,
+        name: "Release notes",
+        description: "Prepare release notes.",
+        digest: repositoryDigest,
         fileCount: 1,
         size: 20,
         health: "valid",
         validation: { errors: 0, warnings: 0 },
         issues: [],
-        relationship: "repository-owned"
+        relationship: "library-modified",
+        bindingId: binding.id,
+        libraryAssetId: "asset-release-notes",
+        libraryVersion: 1
       }],
       createdAt: "2026-07-22T00:01:00.000Z"
-    }, [{ artifactId: "artifact-1", path: "AGENTS.md", content: Buffer.from("# Agents\n") }]);
+    }, [{ artifactId: "artifact-1", path: "SKILL.md", content: Buffer.from("# Release notes\n") }]);
+    await state.upsertProjectBindingPolicy({
+      projectId: project.id,
+      artifactPath,
+      ownership: "library",
+      libraryAssetId: "asset-release-notes",
+      pinnedVersion: 1,
+      decidedByAccountId: "acct_demo",
+      decidedAt: "2026-07-22T00:00:00.000Z"
+    });
 
+    await state.recordProjectSkillPublished({
+      accountId: "acct_demo",
+      workspaceId: "ws_demo",
+      projectId: project.id,
+      bindingId: binding.id,
+      artifactPath,
+      assetId: "asset-release-notes",
+      assetVersion: 2,
+      digest: repositoryDigest
+    });
+
+    const published = await state.getProject("acct_demo", "ws_demo", project.id);
+    assert.equal(published.bindings.find((candidate) => candidate.id === binding.id)?.status, "synced");
+    assert.equal(published.bindings.find((candidate) => candidate.id === binding.id)?.sourceVersion, 2);
     const inventory = await state.getProjectInventoryState("acct_demo", "ws_demo", project.id);
     assert.equal(inventory.latestSnapshot?.commitSha, "a".repeat(40));
+    assert.equal(inventory.latestSnapshot?.artifacts[0]?.relationship, "library-modified");
+    assert.equal(inventory.latestSnapshot?.artifacts[0]?.libraryVersion, 1);
+    assert.equal(inventory.policies[0]?.pinnedVersion, 2);
+    assert.equal(inventory.policies[0]?.ownership, "library");
     assert.equal(inventory.latestJob?.status, "succeeded");
     assert.equal(
-      (await state.readProjectInventoryFile("ws_demo", project.id, "snapshot-1", "artifact-1", "AGENTS.md"))?.toString(),
-      "# Agents\n"
+      (await state.readProjectInventoryFile("ws_demo", project.id, "snapshot-1", "artifact-1", "SKILL.md"))?.toString(),
+      "# Release notes\n"
     );
     assert.deepEqual(
       await state.listProjectInventoryFilePaths("ws_demo", project.id, "snapshot-1", "artifact-1"),
-      ["AGENTS.md"]
+      ["SKILL.md"]
     );
     const rows = await adminPool.query<{ connections: string; snapshots: string; json_snapshots: number }>(
       `select

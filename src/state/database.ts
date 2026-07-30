@@ -111,6 +111,7 @@ export interface DatabaseStateWriteOptions {
     sourceAccountIds: string[];
     targetAccountId: string;
   };
+  transactionWork?: (client: PoolClient) => Promise<void>;
 }
 
 export async function writeDatabaseState(
@@ -161,6 +162,7 @@ export async function writeDatabaseState(
     if (options.accountReferenceReplacement) {
       await replaceDatabaseAccountReferences(client, options.accountReferenceReplacement);
     }
+    if (options.transactionWork) await options.transactionWork(client);
     await client.query("commit");
     databaseStateRevisions.set(state, nextRevision);
   } catch (error) {
