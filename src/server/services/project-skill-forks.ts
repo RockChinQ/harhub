@@ -34,6 +34,7 @@ import {
   authorizeProjectSync,
   authorizeGitHubAppProjectSync,
   getProjectSkillFork,
+  recordProjectArtifactPublishedToLibrary,
   recordProjectSkillPublished,
   syncProjectFromRepository,
   syncProjectFromGitHubApp,
@@ -442,9 +443,10 @@ export async function publishProjectSkillFork(input: {
   for (const replaced of replacedAssets) catalog = removeCatalogAsset(catalog, replaced.id);
   catalog = upsertAsset(catalog, asset);
 
+  let project: Awaited<ReturnType<typeof recordProjectSkillPublished>>;
   try {
     await writeWorkspaceAssetCatalog(input.workspace.id, catalog);
-    const project = await recordProjectSkillPublished({
+    project = await recordProjectSkillPublished({
       accountId: input.accountId,
       workspaceId: input.workspace.id,
       projectId: input.projectId,
@@ -453,11 +455,6 @@ export async function publishProjectSkillFork(input: {
       digest: skill.checksum,
       name: asset.displayName
     });
-    await deleteStoredObjectsBestEffort([
-      fork.storage,
-      ...obsoleteAssetStorageObjects(replacedAssets, [asset])
-    ]);
-    return { project, asset };
   } catch (error) {
     let restored = false;
     try {
@@ -469,6 +466,20 @@ export async function publishProjectSkillFork(input: {
     if (restored && !hasSamePackage) await deleteStoredObjectsBestEffort([storage]);
     throw error;
   }
+  await recordProjectArtifactPublishedToLibrary({
+    workspaceId: input.workspace.id,
+    projectId: input.projectId,
+    artifactPath: binding.path,
+    digest: skill.checksum,
+    libraryAssetId: asset.id,
+    libraryVersion: asset.version ?? 1,
+    decidedByAccountId: input.accountId
+  });
+  await deleteStoredObjectsBestEffort([
+    fork.storage,
+    ...obsoleteAssetStorageObjects(replacedAssets, [asset])
+  ]);
+  return { project, asset };
 }
 
 function validateSkillBundle(

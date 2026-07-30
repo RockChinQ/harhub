@@ -717,6 +717,7 @@ export function ProjectsView({
         diffBinding.id
       );
       setProject(result.project);
+      await refreshInventory();
       setPublishOpen(false);
       setDiffOpen(false);
       setSkillDiff(undefined);

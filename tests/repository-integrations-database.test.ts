@@ -75,9 +75,31 @@ test("Postgres keeps repository scans queryable outside the JSONB application sn
       }],
       createdAt: "2026-07-22T00:01:00.000Z"
     }, [{ artifactId: "artifact-1", path: "AGENTS.md", content: Buffer.from("# Agents\n") }]);
+    await state.upsertProjectBindingPolicy({
+      projectId: project.id,
+      artifactPath: "AGENTS.md",
+      ownership: "repository",
+      libraryAssetId: "asset-agents",
+      pinnedVersion: 1,
+      decidedByAccountId: "acct_demo",
+      decidedAt: "2026-07-22T00:00:00.000Z"
+    });
+    await state.recordProjectArtifactPublishedToLibrary({
+      workspaceId: "ws_demo",
+      projectId: project.id,
+      artifactPath: "AGENTS.md",
+      digest: "b".repeat(64),
+      libraryAssetId: "asset-agents",
+      libraryVersion: 2,
+      decidedByAccountId: "acct_demo"
+    });
 
     const inventory = await state.getProjectInventoryState("acct_demo", "ws_demo", project.id);
     assert.equal(inventory.latestSnapshot?.commitSha, "a".repeat(40));
+    assert.equal(inventory.latestSnapshot?.artifacts[0]?.relationship, "library-synced");
+    assert.equal(inventory.latestSnapshot?.artifacts[0]?.libraryVersion, 2);
+    assert.equal(inventory.policies[0]?.pinnedVersion, 2);
+    assert.equal(inventory.policies[0]?.ownership, "library");
     assert.equal(inventory.latestJob?.status, "succeeded");
     assert.equal(
       (await state.readProjectInventoryFile("ws_demo", project.id, "snapshot-1", "artifact-1", "AGENTS.md"))?.toString(),
