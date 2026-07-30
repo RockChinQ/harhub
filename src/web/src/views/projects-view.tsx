@@ -115,6 +115,7 @@ import {
   buildProjectSkillLineDiff,
   type ProjectSkillLineDiffRow
 } from "./project-skill-diff";
+import { withCurrentLibraryBaseline } from "./project-artifact-view";
 
 export function ProjectsView({
   token,
@@ -237,8 +238,14 @@ export function ProjectsView({
     [project?.bindings]
   );
   const repositoryArtifacts = useMemo(
-    () => inventory?.latestSnapshot?.artifacts ?? [],
-    [inventory?.latestSnapshot?.artifacts]
+    () => (inventory?.latestSnapshot?.artifacts ?? []).map((artifact) =>
+      withCurrentLibraryBaseline(
+        artifact,
+        inventory?.policies ?? [],
+        project?.bindings ?? []
+      )
+    ),
+    [inventory?.latestSnapshot?.artifacts, inventory?.policies, project?.bindings]
   );
   const artifactsByBindingId = useMemo(() => new Map(
     repositoryArtifacts.flatMap((artifact) =>
