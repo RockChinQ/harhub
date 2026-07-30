@@ -34,7 +34,6 @@ import {
   authorizeProjectSync,
   authorizeGitHubAppProjectSync,
   getProjectSkillFork,
-  recordProjectArtifactPublishedToLibrary,
   recordProjectSkillPublished,
   syncProjectFromRepository,
   syncProjectFromGitHubApp,
@@ -451,7 +450,9 @@ export async function publishProjectSkillFork(input: {
       workspaceId: input.workspace.id,
       projectId: input.projectId,
       bindingId: input.bindingId,
+      artifactPath: binding.path,
       assetId: asset.id,
+      assetVersion: asset.version ?? 1,
       digest: skill.checksum,
       name: asset.displayName
     });
@@ -466,15 +467,7 @@ export async function publishProjectSkillFork(input: {
     if (restored && !hasSamePackage) await deleteStoredObjectsBestEffort([storage]);
     throw error;
   }
-  await recordProjectArtifactPublishedToLibrary({
-    workspaceId: input.workspace.id,
-    projectId: input.projectId,
-    artifactPath: binding.path,
-    digest: skill.checksum,
-    libraryAssetId: asset.id,
-    libraryVersion: asset.version ?? 1,
-    decidedByAccountId: input.accountId
-  });
+
   await deleteStoredObjectsBestEffort([
     fork.storage,
     ...obsoleteAssetStorageObjects(replacedAssets, [asset])

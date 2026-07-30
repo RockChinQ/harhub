@@ -4,7 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-test("publishing a repository Skill updates its Library relationship and pinned version", async () => {
+const artifactPath = ".harness/skills/release-notes";
+const repositoryDigest = "b".repeat(64);
+
+test("publishing a repository Skill atomically advances its binding and Library policy without rewriting its scan snapshot", async () => {
   const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "harhub-library-publish-"));
   const previousStatePath = process.env.HARHUB_STATE;
   process.env.HARHUB_STATE = path.join(temporaryDirectory, "state.json");
@@ -26,13 +29,52 @@ test("publishing a repository Skill updates its Library relationship and pinned 
         defaultBranch: "main"
       }
     });
+    await state.syncProjectFromGitHubApp(
+      "ws_demo",
+      project.id,
+      {
+        schemaVersion: 1,
+        repository: "acme/product",
+        commitSha: "a".repeat(40),
+        ref: "main",
+        bindings: [{
+          kind: "skill",
+          name: "Release notes",
+          path: artifactPath,
+          digest: repositoryDigest
+        }]
+      },
+      [{
+        path: artifactPath,
+        digest: repositoryDigest,
+        fileCount: 1,
+        size: 20,
+        validation: { errors: 0, warnings: 0 },
+        validationIssues: [],
+        updatedAt: "2026-07-30T00:00:00.000Z",
+        storage: {
+          provider: "s3",
+          layout: "files",
+          bucket: "skills",
+          key: "project-forks/release-notes/",
+          size: 20,
+          checksum: repositoryDigest,
+          checksumAlgorithm: "skill-files-v3"
+        }
+      }],
+      0,
+      [{ path: artifactPath, assetId: "asset-release-notes", digest: "c".repeat(64), version: 1 }]
+    );
+    const changedProject = await state.getProject("acct_demo", "ws_demo", project.id);
+    const binding = changedProject.bindings.find((candidate) => candidate.path === artifactPath);
+    assert.equal(binding?.status, "modified");
+
     const job = await state.createProjectScanJob({
       workspaceId: "ws_demo",
       projectId: project.id,
       trigger: "initial"
     });
     await state.markProjectScanRunning(job.id);
-    const digest = "b".repeat(64);
     await state.completeProjectScan(job.id, {
       id: "snapshot-1",
       workspaceId: "ws_demo",
@@ -44,38 +86,25 @@ test("publishing a repository Skill updates its Library relationship and pinned 
         id: "artifact-1",
         kind: "skill",
         format: "agent-skill",
-        path: ".harness/skills/release-notes",
+        path: artifactPath,
         name: "release-notes",
         description: "Prepare release notes.",
-        digest,
+        digest: repositoryDigest,
         fileCount: 1,
         size: 20,
         health: "valid",
         validation: { errors: 0, warnings: 0 },
         issues: [],
         relationship: "library-modified",
+        bindingId: binding!.id,
         libraryAssetId: "asset-release-notes",
         libraryVersion: 1
-      }, {
-        id: "artifact-2",
-        kind: "skill",
-        format: "agent-skill",
-        path: ".harness/skills/roadmap-review",
-        name: "roadmap-review",
-        description: "Review roadmap decisions.",
-        digest: "c".repeat(64),
-        fileCount: 1,
-        size: 20,
-        health: "valid",
-        validation: { errors: 0, warnings: 0 },
-        issues: [],
-        relationship: "repository-owned"
       }],
       createdAt: "2026-07-30T00:01:00.000Z"
     }, []);
     await state.upsertProjectBindingPolicy({
       projectId: project.id,
-      artifactPath: ".harness/skills/release-notes",
+      artifactPath,
       ownership: "library",
       libraryAssetId: "asset-release-notes",
       pinnedVersion: 1,
@@ -83,37 +112,32 @@ test("publishing a repository Skill updates its Library relationship and pinned 
       decidedAt: "2026-07-30T00:00:00.000Z"
     });
 
-    await state.recordProjectArtifactPublishedToLibrary({
+    const published = await state.recordProjectSkillPublished({
+      accountId: "acct_demo",
       workspaceId: "ws_demo",
       projectId: project.id,
-      artifactPath: ".harness/skills/release-notes",
-      digest,
-      libraryAssetId: "asset-release-notes",
-      libraryVersion: 2,
-      decidedByAccountId: "acct_demo"
-    });
-    await state.recordProjectArtifactPublishedToLibrary({
-      workspaceId: "ws_demo",
-      projectId: project.id,
-      artifactPath: ".harness/skills/roadmap-review",
-      digest: "c".repeat(64),
-      libraryAssetId: "asset-roadmap-review",
-      libraryVersion: 1,
-      decidedByAccountId: "acct_demo"
+      bindingId: binding!.id,
+      artifactPath,
+      assetId: "asset-release-notes",
+      assetVersion: 2,
+      digest: repositoryDigest,
+      name: "Release notes"
     });
 
+    const publishedBinding = published.bindings.find((candidate) => candidate.id === binding!.id);
+    assert.equal(publishedBinding?.status, "synced");
+    assert.equal(publishedBinding?.sourceVersion, 2);
+    assert.equal(publishedBinding?.fork, undefined);
+
     const inventory = await state.getProjectInventoryStateInternal("ws_demo", project.id);
-    assert.equal(
-      inventory.policies.find((policy) => policy.artifactPath.endsWith("/release-notes"))?.pinnedVersion,
-      2
-    );
-    assert.equal(
-      inventory.policies.find((policy) => policy.artifactPath.endsWith("/roadmap-review"))?.ownership,
-      "library"
-    );
+    assert.equal(inventory.policies[0]?.ownership, "library");
+    assert.equal(inventory.policies[0]?.libraryAssetId, "asset-release-notes");
+    assert.equal(inventory.policies[0]?.pinnedVersion, 2);
+    assert.equal(inventory.policies[0]?.decidedByAccountId, "acct_demo");
     assert.deepEqual(
       inventory.latestSnapshot?.artifacts.map((artifact) => [artifact.relationship, artifact.libraryVersion]),
-      [["library-synced", 2], ["library-synced", 1]]
+      [["library-modified", 1]],
+      "repository scan snapshots are immutable historical observations"
     );
   } finally {
     if (previousStatePath === undefined) delete process.env.HARHUB_STATE;

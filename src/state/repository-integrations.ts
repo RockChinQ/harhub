@@ -809,88 +809,6 @@ export async function upsertProjectBindingPolicy(
   });
 }
 
-export async function recordProjectArtifactPublishedToLibrary(input: {
-  workspaceId: string;
-  projectId: string;
-  artifactPath: string;
-  digest: string;
-  libraryAssetId: string;
-  libraryVersion: number;
-  decidedByAccountId: string;
-}): Promise<void> {
-  const decidedAt = new Date().toISOString();
-  if (isDatabaseStateEnabled()) {
-    await ensureRepositoryDatabase();
-    await queryDatabase(
-      `with updated_policy as (
-         insert into harhub_project_binding_policies (
-           project_id, artifact_path, ownership, library_asset_id, pinned_version,
-           decided_by_account_id, decided_at
-         ) values ($1,$2,'library',$3,$4,$5,$6)
-         on conflict (project_id, artifact_path) do update set
-           ownership = excluded.ownership,
-           library_asset_id = excluded.library_asset_id,
-           pinned_version = excluded.pinned_version,
-           decided_by_account_id = excluded.decided_by_account_id,
-           decided_at = excluded.decided_at
-         returning project_id
-       ), latest_snapshot as (
-         select id from harhub_project_inventory_snapshots
-         where workspace_id = $7 and project_id = $1
-         order by created_at desc limit 1
-       )
-       update harhub_project_inventory_artifacts as artifact
-       set relationship = 'library-synced', library_asset_id = $3, library_version = $4
-       from updated_policy, latest_snapshot
-       where artifact.snapshot_id = latest_snapshot.id
-         and artifact.path = $2 and artifact.digest = $8`,
-      [
-        input.projectId,
-        input.artifactPath,
-        input.libraryAssetId,
-        input.libraryVersion,
-        input.decidedByAccountId,
-        decidedAt,
-        input.workspaceId,
-        input.digest
-      ]
-    );
-    return;
-  }
-  await serializeStateAccess(async () => {
-    const state = await loadState();
-    const existingPolicy = state.projectBindingPolicies.find((candidate) =>
-      candidate.projectId === input.projectId &&
-      candidate.artifactPath === input.artifactPath
-    );
-    const policy: ProjectBindingPolicy = {
-      projectId: input.projectId,
-      artifactPath: input.artifactPath,
-      ownership: "library",
-      libraryAssetId: input.libraryAssetId,
-      pinnedVersion: input.libraryVersion,
-      decidedByAccountId: input.decidedByAccountId,
-      decidedAt
-    };
-    if (existingPolicy) Object.assign(existingPolicy, policy);
-    else state.projectBindingPolicies.push(policy);
-    const latestSnapshot = state.projectInventorySnapshots
-      .filter((snapshot) =>
-        snapshot.workspaceId === input.workspaceId && snapshot.projectId === input.projectId
-      )
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
-    const artifact = latestSnapshot?.artifacts.find((candidate) =>
-      candidate.path === input.artifactPath && candidate.digest === input.digest
-    );
-    if (artifact) {
-      artifact.relationship = "library-synced";
-      artifact.libraryAssetId = input.libraryAssetId;
-      artifact.libraryVersion = input.libraryVersion;
-    }
-    await saveState(state);
-  });
-}
-
 export async function saveProjectChangeProposal(proposal: ProjectChangeProposal): Promise<void> {
   if (isDatabaseStateEnabled()) {
     await ensureRepositoryDatabase();
@@ -1145,7 +1063,7 @@ async function listProjectChangeProposals(projectId: string): Promise<ProjectCha
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
-async function ensureRepositoryDatabase(): Promise<void> {
+export async function ensureRepositoryDatabase(): Promise<void> {
   setupPromise ??= setupRepositoryDatabase();
   return setupPromise;
 }
