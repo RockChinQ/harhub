@@ -67,6 +67,11 @@ test("keeps workspace resources read-only for members", async () => {
       ["DELETE", "/api/workspaces/ws_demo/assets/demo-skill"],
       ["POST", "/api/workspaces/ws_demo/assets/demo-skill/share"],
       ["DELETE", "/api/workspaces/ws_demo/assets/demo-skill/share"],
+      ["PATCH", "/api/workspaces/ws_demo/assets/demo-skill/files", {
+        path: "SKILL.md",
+        content: "# Forbidden edit",
+        version: 1
+      }],
       ["POST", "/api/workspaces/ws_demo/assets/demo-skill/versions/1/rollback"],
       ["POST", "/api/workspaces/ws_demo/projects", { name: "No access" }],
       ["POST", "/api/workspaces/ws_demo/projects/project/bindings/binding/publish"],

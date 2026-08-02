@@ -8,6 +8,7 @@ import {
   deleteAsset,
   deleteWorkspaceAssetBatch
 } from "../services/asset-mutations.js";
+import { updateWorkspaceSkillFile } from "../services/asset-file-editor.js";
 import {
   handleAssetImportPreview,
   handleAssetUpload,
@@ -189,6 +190,33 @@ function registerAssetMutationRoutes(
       res.json(response);
     } catch (error) {
       sendError(res, error, 400);
+    }
+  });
+
+  app.patch("/api/workspaces/:workspaceId/assets/:query/files", async (req, res) => {
+    const context = await requireWorkspaceAdminAccess(req, res);
+    if (!context) return;
+    setPrivateNoStore(res);
+
+    try {
+      res.json(await updateWorkspaceSkillFile({
+        context,
+        assetQuery: req.params.query,
+        path: req.body?.path,
+        content: req.body?.content,
+        expectedVersion: readVersion(req.body?.version)
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sendError(
+        res,
+        error,
+        message === "Asset not found."
+          ? 404
+          : message.startsWith("This Skill changed")
+            ? 409
+            : 400
+      );
     }
   });
 

@@ -688,6 +688,7 @@ function SkillVersionEntry({
 }
 
 function versionSourceLabel(source: AssetVersionRecord["source"]): string {
+  if (source === "manual-edit") return "Harhub editor";
   if (source === "project-sync") return "Project sync";
   if (source === "migration") return "Existing Skill";
   if (source === "rollback") return "Version restore";

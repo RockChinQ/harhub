@@ -197,6 +197,9 @@ function defaultVersionSummary(
   if (source === "rollback") {
     return `Restored a retained ${kind === "skill" ? "Skill" : "MCP"} version`;
   }
+  if (source === "manual-edit") {
+    return `Edited the ${kind === "skill" ? "Skill package" : "MCP configuration"} in Harhub`;
+  }
   if (source === "scan") {
     return isUpdate
       ? `Rescanned the local ${kind === "skill" ? "Skill" : "MCP configuration"}`

@@ -105,8 +105,79 @@ test("downloads, restores, and prunes retained Skill package versions", {
       /Version 3/
     );
 
+    const editedMarkdown = [
+      "---",
+      `name: ${skillName}`,
+      "description: Version 3, edited in Harhub.",
+      "---",
+      "",
+      "# Version 3 edited",
+      ""
+    ].join("\n");
+    const editResponse = await fetch(
+      `${baseUrl}/api/workspaces/ws_demo/assets/${encodeURIComponent(rollback.asset.id)}/files`,
+      {
+        method: "PATCH",
+        headers: { ...authorization, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: "SKILL.md",
+          content: editedMarkdown,
+          version: rollback.asset.version
+        })
+      }
+    );
+    if (editResponse.status !== 200) {
+      throw new Error(`Edit failed with ${editResponse.status}: ${await editResponse.text()}`);
+    }
+    const edited = await editResponse.json() as { asset: AssetRecord };
+    assert.equal(edited.asset.version, 9);
+    assert.equal(edited.asset.versionHistory?.at(-1)?.source, "manual-edit");
+    assert.equal(edited.asset.versionHistory?.at(-1)?.summary, "Edited SKILL.md in Harhub");
+    assert.match(
+      (await readStoredSkillFiles(edited.asset.storage!))
+        .find((file) => file.path === "SKILL.md")!.content.toString("utf8"),
+      /Version 3 edited/
+    );
+    uploadedStorage.push(edited.asset.storage!);
+
+    const conflictResponse = await fetch(
+      `${baseUrl}/api/workspaces/ws_demo/assets/${encodeURIComponent(edited.asset.id)}/files`,
+      {
+        method: "PATCH",
+        headers: { ...authorization, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: "SKILL.md",
+          content: `${editedMarkdown}\nStale edit\n`,
+          version: rollback.asset.version
+        })
+      }
+    );
+    assert.equal(conflictResponse.status, 409);
+    assert.match(
+      (await conflictResponse.json() as { error: string }).error,
+      /changed after the file was opened/
+    );
+
+    const renameResponse = await fetch(
+      `${baseUrl}/api/workspaces/ws_demo/assets/${encodeURIComponent(edited.asset.id)}/files`,
+      {
+        method: "PATCH",
+        headers: { ...authorization, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: "SKILL.md",
+          content: editedMarkdown.replace(`name: ${skillName}`, "name: renamed-skill"),
+          version: edited.asset.version
+        })
+      }
+    );
+    assert.equal(renameResponse.status, 400);
+    assert.match(
+      (await renameResponse.json() as { error: string }).error,
+      /cannot be changed/
+    );
+
     const deleteResponse = await fetch(
-      `${baseUrl}/api/workspaces/ws_demo/assets/${encodeURIComponent(rollback.asset.id)}`,
+      `${baseUrl}/api/workspaces/ws_demo/assets/${encodeURIComponent(edited.asset.id)}`,
       { method: "DELETE", headers: authorization }
     );
     if (deleteResponse.status !== 200) {

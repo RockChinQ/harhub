@@ -175,6 +175,27 @@ export async function getWorkspaceAssetTree(
   );
 }
 
+export async function updateWorkspaceSkillFile(
+  token: string,
+  workspaceId: string,
+  assetId: string,
+  input: {
+    path: string;
+    content: string;
+    version: number;
+  }
+): Promise<{ asset: AssetRecord }> {
+  return request(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/assets/${encodeURIComponent(assetId)}/files`,
+    {
+      token,
+      method: "PATCH",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(input)
+    }
+  );
+}
+
 export async function downloadWorkspaceAssetVersion(
   token: string,
   workspaceId: string,

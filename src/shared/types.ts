@@ -8,7 +8,13 @@ export type AssetKind = "skill" | "mcp";
 
 export type AssetHealth = "valid" | "warning" | "error" | "unknown";
 
-export type AssetVersionSource = "upload" | "project-sync" | "migration" | "rollback" | "scan";
+export type AssetVersionSource =
+  | "upload"
+  | "manual-edit"
+  | "project-sync"
+  | "migration"
+  | "rollback"
+  | "scan";
 
 export type StorageProvider = "s3";
 export const SKILL_FILES_CHECKSUM_ALGORITHM = "skill-files-v2" as const;

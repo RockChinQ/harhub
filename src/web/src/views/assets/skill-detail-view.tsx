@@ -16,6 +16,7 @@ export function SkillDetailView({
   token,
   asset,
   issues,
+  canEdit,
   onBack,
   onChanged,
   onDeleted
@@ -24,6 +25,7 @@ export function SkillDetailView({
   token: string;
   asset?: AssetRecord;
   issues: ValidationIssue[];
+  canEdit: boolean;
   onBack: () => void;
   onChanged: () => Promise<void>;
   onDeleted: () => void;
@@ -61,6 +63,14 @@ export function SkillDetailView({
     );
   }
 
+  const selectedAsset = detailAsset ?? asset;
+
+  async function refreshDetail(): Promise<void> {
+    await onChanged();
+    const nextAsset = await getWorkspaceAsset(token, workspace.id, selectedAsset.id);
+    setDetailAsset(nextAsset);
+  }
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
       <div className="shrink-0">
@@ -73,12 +83,21 @@ export function SkillDetailView({
         <SkillOverviewPanel
           workspace={workspace}
           token={token}
-          asset={detailAsset ?? asset}
+          asset={selectedAsset}
           issues={issues}
-          onChanged={onChanged}
+          onChanged={refreshDetail}
           onDeleted={onDeleted}
         />
-        <SkillFileExplorer workspace={workspace} token={token} asset={asset} />
+        <SkillFileExplorer
+          workspace={workspace}
+          token={token}
+          asset={selectedAsset}
+          canEdit={canEdit}
+          onChanged={async (nextAsset) => {
+            setDetailAsset(nextAsset);
+            await onChanged();
+          }}
+        />
       </div>
     </div>
   );

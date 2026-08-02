@@ -60,6 +60,12 @@ export function AppContent({
   onSessionSet: (session: SessionResponse) => void;
   onPasswordChanged: () => Promise<void>;
 }) {
+  const activeMembership = activeWorkspace
+    ? session.memberships.find((membership) => membership.workspaceId === activeWorkspace.id)
+    : undefined;
+  const canManageActiveWorkspace =
+    activeMembership?.role === "owner" || activeMembership?.role === "admin";
+
   return (
     <main className="flex min-h-0 min-w-0 flex-1 flex-col items-center overflow-hidden p-4 sm:p-6 lg:p-8">
       <div className="flex min-h-0 w-full max-w-[1440px] flex-1 flex-col overflow-hidden">
@@ -105,6 +111,7 @@ export function AppContent({
             token={token}
             asset={selectedAsset}
             issues={issues}
+            canEdit={canManageActiveWorkspace}
             onBack={() => onNavigate({ view: "assets" })}
             onChanged={onRefreshAssets}
             onDeleted={() => onNavigate({ view: "assets" })}
@@ -116,6 +123,7 @@ export function AppContent({
             token={token}
             asset={selectedAsset?.kind === "mcp" ? selectedAsset : undefined}
             issues={issues}
+            canEdit={canManageActiveWorkspace}
             onBack={() => onNavigate({ view: "mcps" })}
             onChanged={onRefreshAssets}
             onDeleted={() => onNavigate({ view: "mcps" })}

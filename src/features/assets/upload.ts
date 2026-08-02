@@ -12,7 +12,7 @@ export function createImportedSkillAsset(input: {
   storage: StoredObject;
   rejectInvalid?: boolean;
   previous?: AssetRecord;
-  versionSource?: "upload" | "project-sync" | "rollback";
+  versionSource?: "upload" | "manual-edit" | "project-sync" | "rollback";
   createdByAccountId?: string;
   versionSummary?: string;
   versionCreatedAt?: string;

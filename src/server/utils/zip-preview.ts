@@ -101,12 +101,12 @@ function fileSummary(file: SkillPackageFile): AssetFileSummary {
     path: file.path,
     name: path.posix.basename(file.path),
     size: file.content.byteLength,
-    isText: isTextFile(file.path)
+    isText: isTextAssetFile(file.path)
   };
 }
 
 function filePreview(file: SkillPackageFile): AssetFilePreview {
-  const isText = isTextFile(file.path);
+  const isText = isTextAssetFile(file.path);
   const base = {
     path: file.path,
     name: path.posix.basename(file.path),
@@ -124,7 +124,7 @@ function filePreview(file: SkillPackageFile): AssetFilePreview {
   };
 }
 
-function isTextFile(filePath: string): boolean {
+export function isTextAssetFile(filePath: string): boolean {
   const name = filePath.toLowerCase();
   const extension = path.posix.extname(name);
   return (
