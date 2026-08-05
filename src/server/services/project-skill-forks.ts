@@ -34,19 +34,26 @@ import {
   authorizeProjectSync,
   authorizeGitHubAppProjectSync,
   getProjectSkillFork,
-  recordProjectSkillPublished,
+  getProjectSkillPublicationStateWithStateLock,
+  recordProjectSkillPublishedWithStateLock,
   syncProjectFromRepository,
   syncProjectFromGitHubApp,
   writeWorkspaceAssetCatalog,
   type ProjectBindingBaselineUpdate,
   type ProjectSkillForkUpdate
 } from "../../state/index.js";
+import { serializeStateAccess } from "../../state/access.js";
+import { isDatabaseCommitOutcomeUnknown } from "../../state/database.js";
 import {
   deleteStoredObject,
   uploadSkillFiles
 } from "../../storage/index.js";
 import { loadStoredSkill } from "./skill-packages.js";
 import { resolveExplicitLibraryAsset } from "./project-repository-ownership.js";
+import {
+  resolveProjectPublishRecovery,
+  type ProjectPublishState
+} from "./project-skill-publish-compensation.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
 
 const MAX_DIFF_PREVIEW_BYTES = 256 * 1024;
@@ -192,7 +199,9 @@ export async function syncProjectRepositoryFiles(input: {
     );
     return result;
   } catch (error) {
-    await deleteStoredObjectsBestEffort(newStorage);
+    if (!isDatabaseCommitOutcomeUnknown(error)) {
+      await deleteStoredObjectsBestEffort(newStorage);
+    }
     throw error;
   }
 }
@@ -340,7 +349,9 @@ export async function syncProjectRepositoryBundle(input: {
     await deleteStoredObjectsBestEffort(staleStorage);
     return result;
   } catch (error) {
-    await deleteStoredObjectsBestEffort(newStorage);
+    if (!isDatabaseCommitOutcomeUnknown(error)) {
+      await deleteStoredObjectsBestEffort(newStorage);
+    }
     throw error;
   }
 }
@@ -413,66 +424,92 @@ export async function publishProjectSkillFork(input: {
   }
 
   const { files, skill } = await loadStoredSkill(fork.storage);
-  const originalCatalog = await loadOrCreateWorkspaceAssetCatalog(input.workspace);
-  const targetId = `asset:skill:${input.workspace.id}:${skill.name}`;
-  const replacedAssets = originalCatalog.assets.filter((asset) =>
-    asset.id === targetId || asset.id === binding.assetId
-  );
-  const previous =
-    replacedAssets.find((candidate) => candidate.id === targetId) ??
-    replacedAssets.find((candidate) => candidate.id === binding.assetId);
-  const hasSamePackage = previous?.storage?.checksum === skill.checksum;
-  const storage = hasSamePackage && previous.storage
-    ? previous.storage
-    : await uploadSkillFiles({
-        workspaceId: input.workspace.id,
-        skillName: skill.name,
-        files,
-        checksum: skill.checksum
-      });
-  const asset = createImportedSkillAsset({
-    workspaceId: input.workspace.id,
-    skill,
-    storage,
-    previous,
-    versionSource: "project-sync",
-    createdByAccountId: input.accountId
-  });
-  let catalog = originalCatalog;
-  for (const replaced of replacedAssets) catalog = removeCatalogAsset(catalog, replaced.id);
-  catalog = upsertAsset(catalog, asset);
-
-  let project: Awaited<ReturnType<typeof recordProjectSkillPublished>>;
-  try {
-    await writeWorkspaceAssetCatalog(input.workspace.id, catalog);
-    project = await recordProjectSkillPublished({
-      accountId: input.accountId,
+  const result = await serializeStateAccess(async () => {
+    const originalCatalog = await loadOrCreateWorkspaceAssetCatalog(input.workspace);
+    const targetId = `asset:skill:${input.workspace.id}:${skill.name}`;
+    const replacedAssets = originalCatalog.assets.filter((asset) =>
+      asset.id === targetId || asset.id === binding.assetId
+    );
+    const previous =
+      replacedAssets.find((candidate) => candidate.id === targetId) ??
+      replacedAssets.find((candidate) => candidate.id === binding.assetId);
+    const hasSamePackage = previous?.storage?.checksum === skill.checksum;
+    const storage = hasSamePackage && previous.storage
+      ? previous.storage
+      : await uploadSkillFiles({ workspaceId: input.workspace.id, skillName: skill.name, files, checksum: skill.checksum });
+    const asset = createImportedSkillAsset({
       workspaceId: input.workspace.id,
-      projectId: input.projectId,
-      bindingId: input.bindingId,
-      artifactPath: binding.path,
-      assetId: asset.id,
-      assetVersion: asset.version ?? 1,
-      digest: skill.checksum,
-      name: asset.displayName
+      skill,
+      storage,
+      previous,
+      versionSource: "project-sync",
+      createdByAccountId: input.accountId
     });
-  } catch (error) {
-    let restored = false;
+    let catalog = originalCatalog;
+    for (const replaced of replacedAssets) catalog = removeCatalogAsset(catalog, replaced.id);
+    catalog = upsertAsset(catalog, asset);
     try {
-      await writeWorkspaceAssetCatalog(input.workspace.id, originalCatalog);
-      restored = true;
-    } catch {
-      // Keep the newly stored object when the catalog rollback fails so its current reference works.
+      await writeWorkspaceAssetCatalog(input.workspace.id, catalog);
+      const project = await recordProjectSkillPublishedWithStateLock({
+        accountId: input.accountId,
+        workspaceId: input.workspace.id,
+        projectId: input.projectId,
+        bindingId: input.bindingId,
+        artifactPath: binding.path,
+        assetId: asset.id,
+        assetVersion: asset.version ?? 1,
+        digest: skill.checksum,
+        name: asset.displayName
+      });
+      return { project, asset, replacedAssets, storage };
+    } catch (error) {
+      const errorKind = isDatabaseCommitOutcomeUnknown(error) ? "commit-unknown" : "known-failure";
+      let publicationState: ProjectPublishState = "not-published";
+      let publishedProject: Awaited<ReturnType<typeof getProjectSkillPublicationStateWithStateLock>>["project"] | undefined;
+      if (errorKind === "commit-unknown") {
+        try {
+          const publication = await getProjectSkillPublicationStateWithStateLock({
+            accountId: input.accountId,
+            workspaceId: input.workspace.id,
+            projectId: input.projectId,
+            artifactPath: binding.path,
+            assetId: asset.id,
+            assetVersion: asset.version ?? 1,
+            digest: skill.checksum
+          });
+          publicationState = publication.state;
+          publishedProject = publication.project;
+        } catch {
+          publicationState = "unknown";
+        }
+      }
+      const recovery = resolveProjectPublishRecovery(errorKind, publicationState);
+      if (recovery === "keep-published") {
+        return {
+          project: publishedProject!,
+          asset,
+          replacedAssets,
+          storage
+        };
+      }
+      if (recovery === "preserve-both") throw error;
+      let restored = false;
+      try {
+        await writeWorkspaceAssetCatalog(input.workspace.id, originalCatalog);
+        restored = true;
+      } catch {
+        // Keep the newly stored object when the catalog rollback fails so its current reference works.
+      }
+      if (restored && !hasSamePackage) await deleteStoredObjectsBestEffort([storage]);
+      throw error;
     }
-    if (restored && !hasSamePackage) await deleteStoredObjectsBestEffort([storage]);
-    throw error;
-  }
+  });
 
   await deleteStoredObjectsBestEffort([
     fork.storage,
-    ...obsoleteAssetStorageObjects(replacedAssets, [asset])
+    ...obsoleteAssetStorageObjects(result.replacedAssets, [result.asset])
   ]);
-  return { project, asset };
+  return { project: result.project, asset: result.asset };
 }
 
 function validateSkillBundle(

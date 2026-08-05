@@ -23,8 +23,6 @@ import type {
   StoredObject
 } from "../../shared/types.js";
 import { slugify } from "../../shared/markdown.js";
-import { serializeStateAccess } from "../../state/access.js";
-import { writeWorkspaceAssetCatalog } from "../../state/index.js";
 import type { WorkspaceContext } from "../../state/types.js";
 import { assertWorkspaceAdminContext } from "../authorization.js";
 import {
@@ -36,7 +34,8 @@ import { MCP_CONFIG_CHECKSUM_ALGORITHM } from "../../shared/types.js";
 import { sendError } from "../utils/http.js";
 import { assetListPayload } from "./asset-responses.js";
 import { importSkillsCommand, provenanceUrl } from "./skills-command-import.js";
-import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
+import { deleteStoredObjectIfUnreferenced } from "./asset-storage-compensation.js";
+import { loadOrCreateWorkspaceAssetCatalog, mutateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
 
 export async function handleAssetImportPreview(
   req: Request,
@@ -134,8 +133,7 @@ async function storeSkillCandidates(
   const storedAssets: AssetRecord[] = [];
   const newStorage: StoredObject[] = [];
   try {
-    const { catalog, obsoleteStorage } = await serializeStateAccess(async () => {
-      const originalCatalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
+    const { catalog, value: obsoleteStorage } = await mutateWorkspaceAssetCatalog(context.workspace, async (originalCatalog) => {
       let catalog: AssetCatalog = originalCatalog;
       const obsoleteStorage: StoredObject[] = [];
 
@@ -169,8 +167,7 @@ async function storeSkillCandidates(
         catalog = upsertAsset(catalog, asset);
       }
 
-      await writeWorkspaceAssetCatalog(context.workspace.id, catalog);
-      return { catalog, obsoleteStorage };
+      return { catalog, value: obsoleteStorage };
     });
     await Promise.all(obsoleteStorage.map((storage) =>
       deleteStoredObject(storage).catch(() => undefined)
@@ -183,7 +180,7 @@ async function storeSkillCandidates(
     });
   } catch (error) {
     await Promise.all(newStorage.map((storage) =>
-      deleteStoredObject(storage).catch(() => undefined)
+      deleteStoredObjectIfUnreferenced(context.workspace, storage)
     ));
     sendError(res, error, 400);
   }
@@ -217,8 +214,7 @@ export async function handleMcpAssetUpload(
         "MCP configuration validation failed."
       );
     }
-    const { catalog, asset, obsoleteStorage } = await serializeStateAccess(async () => {
-      const originalCatalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
+    const { catalog, value: { asset, obsoleteStorage } } = await mutateWorkspaceAssetCatalog(context.workspace, async (originalCatalog) => {
       const assetId = `asset:mcp:${context.workspace.id}:${name}`;
       const previous = originalCatalog.assets.find((item) => item.id === assetId);
       const hasSameConfig = previous?.storage?.checksum === analyzed.checksum;
@@ -242,12 +238,12 @@ export async function handleMcpAssetUpload(
         previous,
         createdByAccountId: context.account.id
       });
-      const catalog = upsertAsset(originalCatalog, asset);
-      await writeWorkspaceAssetCatalog(context.workspace.id, catalog);
       return {
-        catalog,
-        asset,
-        obsoleteStorage: obsoleteAssetStorageObjects(previous ? [previous] : [], [asset])
+        catalog: upsertAsset(originalCatalog, asset),
+        value: {
+          asset,
+          obsoleteStorage: obsoleteAssetStorageObjects(previous ? [previous] : [], [asset])
+        }
       };
     });
     await Promise.all(obsoleteStorage.map((candidate) =>
@@ -260,11 +256,7 @@ export async function handleMcpAssetUpload(
     });
   } catch (error) {
     if (storage) {
-      const catalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace).catch(() => undefined);
-      const retained = catalog?.assets.some((asset) =>
-        asset.storage?.bucket === storage?.bucket && asset.storage?.key === storage?.key
-      );
-      if (!retained) await deleteStoredObject(storage).catch(() => undefined);
+      await deleteStoredObjectIfUnreferenced(context.workspace, storage);
     }
     sendError(res, error, 400);
   }
