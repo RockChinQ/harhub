@@ -16,12 +16,14 @@ import {
 } from "../../features/skills/index.js";
 import type {
   AssetCatalog,
+  AssetProvenance,
   AssetRecord,
   SkillImportCandidate,
   SkillImportPreview,
   StoredObject
 } from "../../shared/types.js";
 import { slugify } from "../../shared/markdown.js";
+import { serializeStateAccess } from "../../state/access.js";
 import { writeWorkspaceAssetCatalog } from "../../state/index.js";
 import type { WorkspaceContext } from "../../state/types.js";
 import { assertWorkspaceAdminContext } from "../authorization.js";
@@ -33,6 +35,7 @@ import {
 import { MCP_CONFIG_CHECKSUM_ALGORITHM } from "../../shared/types.js";
 import { sendError } from "../utils/http.js";
 import { assetListPayload } from "./asset-responses.js";
+import { importSkillsCommand, provenanceUrl } from "./skills-command-import.js";
 import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
 
 export async function handleAssetImportPreview(
@@ -58,6 +61,42 @@ export async function handleAssetImportPreview(
   }
 }
 
+export async function handleSkillsCommandImport(
+  req: Request,
+  res: Response,
+  context: WorkspaceContext
+): Promise<void> {
+  assertWorkspaceAdminContext(context);
+  if (typeof req.body?.command !== "string" || !req.body.command.trim()) {
+    res.status(400).json({ error: "An npx skills add command or supported Skill source is required." });
+    return;
+  }
+
+  try {
+    const imported = await importSkillsCommand(req.body.command);
+    const importedAt = new Date().toISOString();
+    const provenance: AssetProvenance = {
+      type: "skills-command",
+      source: provenanceUrl(imported.command.source),
+      url: provenanceUrl(imported.command.source),
+      canonicalUrl: provenanceUrl(imported.source.canonicalSource),
+      ...(imported.source.resolvedContentDigest ? { resolvedContentDigest: imported.source.resolvedContentDigest } : {}),
+      sourceType: imported.source.type,
+      ...(imported.command.skills.length > 0 ? { skills: imported.command.skills } : {}),
+      ...(imported.command.fullDepth ? { fullDepth: true } : {}),
+      importedAt,
+      skillsResolved: imported.resolvedSkills
+    };
+    await storeSkillCandidates(res, context, imported.candidates, {
+      provenance,
+      versionSummary: `Imported from ${imported.source.canonicalSource}`,
+      allowInvalid: true
+    });
+  } catch (error) {
+    sendError(res, error, 400);
+  }
+}
+
 export async function handleAssetUpload(
   req: Request,
   res: Response,
@@ -70,46 +109,69 @@ export async function handleAssetUpload(
     return;
   }
 
-  const storedAssets: AssetRecord[] = [];
-  const newStorage: StoredObject[] = [];
   try {
     const candidates = await discoverSkillsInArchive(file.buffer);
     const selected = selectCandidates(candidates, req.body?.selectedSkillPaths);
-    validateSelectedCandidates(selected);
+    await storeSkillCandidates(res, context, selected);
+  } catch (error) {
+    sendError(res, error, 400);
+  }
+}
 
-    const originalCatalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
-    let catalog: AssetCatalog = originalCatalog;
-    const obsoleteStorage: StoredObject[] = [];
+async function storeSkillCandidates(
+  res: Response,
+  context: WorkspaceContext,
+  selected: DiscoveredSkill[],
+  metadata: {
+    provenance?: AssetProvenance;
+    versionSummary?: string;
+    allowInvalid?: boolean;
+  } = {}
+): Promise<void> {
+  if (metadata.allowInvalid) validateCandidateNames(selected);
+  else validateSelectedCandidates(selected);
 
-    for (const skill of selected) {
-      const assetId = `asset:skill:${context.workspace.id}:${skill.name}`;
-      const previous = originalCatalog.assets.find((item) => item.id === assetId);
-      const hasSamePackage =
-        previous?.storage?.checksum === skill.checksum;
-      const storage = hasSamePackage && previous.storage
-        ? previous.storage
-        : await uploadSkillFiles({
-            workspaceId: context.workspace.id,
-            skillName: skill.name,
-            files: skill.files,
-            checksum: skill.checksum
-          });
-      if (!hasSamePackage) newStorage.push(storage);
-      const asset = createImportedSkillAsset({
-        workspaceId: context.workspace.id,
-        skill,
-        storage,
-        previous,
-        createdByAccountId: context.account.id
-      });
-      if (previous) {
-        obsoleteStorage.push(...obsoleteAssetStorageObjects([previous], [asset]));
+  const storedAssets: AssetRecord[] = [];
+  const newStorage: StoredObject[] = [];
+  try {
+    const { catalog, obsoleteStorage } = await serializeStateAccess(async () => {
+      const originalCatalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
+      let catalog: AssetCatalog = originalCatalog;
+      const obsoleteStorage: StoredObject[] = [];
+
+      for (const skill of selected) {
+        const assetId = `asset:skill:${context.workspace.id}:${skill.name}`;
+        const previous = originalCatalog.assets.find((item) => item.id === assetId);
+        const hasSamePackage = previous?.storage?.checksum === skill.checksum;
+        const storage = hasSamePackage && previous.storage
+          ? previous.storage
+          : await uploadSkillFiles({
+              workspaceId: context.workspace.id,
+              skillName: skill.name,
+              files: skill.files,
+              checksum: skill.checksum
+            });
+        if (!hasSamePackage) newStorage.push(storage);
+        const asset = createImportedSkillAsset({
+          workspaceId: context.workspace.id,
+          skill,
+          storage,
+          previous,
+          rejectInvalid: metadata.allowInvalid ? false : undefined,
+          createdByAccountId: context.account.id,
+          ...(metadata.provenance ? { provenance: metadata.provenance } : {}),
+          ...(metadata.versionSummary ? { versionSummary: metadata.versionSummary } : {})
+        });
+        if (previous) {
+          obsoleteStorage.push(...obsoleteAssetStorageObjects([previous], [asset]));
+        }
+        storedAssets.push(asset);
+        catalog = upsertAsset(catalog, asset);
       }
-      storedAssets.push(asset);
-      catalog = upsertAsset(catalog, asset);
-    }
 
-    await writeWorkspaceAssetCatalog(context.workspace.id, catalog);
+      await writeWorkspaceAssetCatalog(context.workspace.id, catalog);
+      return { catalog, obsoleteStorage };
+    });
     await Promise.all(obsoleteStorage.map((storage) =>
       deleteStoredObject(storage).catch(() => undefined)
     ));
@@ -155,36 +217,42 @@ export async function handleMcpAssetUpload(
         "MCP configuration validation failed."
       );
     }
-    const originalCatalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
-    const assetId = `asset:mcp:${context.workspace.id}:${name}`;
-    const previous = originalCatalog.assets.find((item) => item.id === assetId);
-    const hasSameConfig = previous?.storage?.checksum === analyzed.checksum;
-    storage = hasSameConfig && previous.storage
-      ? previous.storage
-      : await uploadAssetFiles({
-          workspaceId: context.workspace.id,
-          kind: "mcp",
-          assetName: name,
-          files: [{ path: MCP_CONFIG_FILE_NAME, content: analyzed.content }],
-          checksum: analyzed.checksum,
-          checksumAlgorithm: MCP_CONFIG_CHECKSUM_ALGORITHM
-        });
-    const asset = createImportedMcpAsset({
-      workspaceId: context.workspace.id,
-      name,
-      displayName,
-      description,
-      analyzed,
-      storage,
-      previous,
-      createdByAccountId: context.account.id
+    const { catalog, asset, obsoleteStorage } = await serializeStateAccess(async () => {
+      const originalCatalog = await loadOrCreateWorkspaceAssetCatalog(context.workspace);
+      const assetId = `asset:mcp:${context.workspace.id}:${name}`;
+      const previous = originalCatalog.assets.find((item) => item.id === assetId);
+      const hasSameConfig = previous?.storage?.checksum === analyzed.checksum;
+      storage = hasSameConfig && previous.storage
+        ? previous.storage
+        : await uploadAssetFiles({
+            workspaceId: context.workspace.id,
+            kind: "mcp",
+            assetName: name,
+            files: [{ path: MCP_CONFIG_FILE_NAME, content: analyzed.content }],
+            checksum: analyzed.checksum,
+            checksumAlgorithm: MCP_CONFIG_CHECKSUM_ALGORITHM
+          });
+      const asset = createImportedMcpAsset({
+        workspaceId: context.workspace.id,
+        name,
+        displayName,
+        description,
+        analyzed,
+        storage,
+        previous,
+        createdByAccountId: context.account.id
+      });
+      const catalog = upsertAsset(originalCatalog, asset);
+      await writeWorkspaceAssetCatalog(context.workspace.id, catalog);
+      return {
+        catalog,
+        asset,
+        obsoleteStorage: obsoleteAssetStorageObjects(previous ? [previous] : [], [asset])
+      };
     });
-    const catalog = upsertAsset(originalCatalog, asset);
-    await writeWorkspaceAssetCatalog(context.workspace.id, catalog);
-    await Promise.all(obsoleteAssetStorageObjects(
-      previous ? [previous] : [],
-      [asset]
-    ).map((candidate) => deleteStoredObject(candidate).catch(() => undefined)));
+    await Promise.all(obsoleteStorage.map((candidate) =>
+      deleteStoredObject(candidate).catch(() => undefined)
+    ));
     res.status(201).json({
       ...assetListPayload(context.workspace, catalog.generatedAt, catalog.assets),
       uploaded: [asset],
@@ -247,6 +315,10 @@ function validateSelectedCandidates(candidates: DiscoveredSkill[]): void {
     );
   }
 
+  validateCandidateNames(candidates);
+}
+
+function validateCandidateNames(candidates: DiscoveredSkill[]): void {
   const names = new Set<string>();
   for (const candidate of candidates) {
     if (names.has(candidate.name)) {

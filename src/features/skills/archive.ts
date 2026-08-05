@@ -19,6 +19,7 @@ import { validateSkillMarkdown } from "./validation.js";
 
 const MAX_ARCHIVE_FILES = 1000;
 const MAX_ARCHIVE_UNPACKED_BYTES = 50 * 1024 * 1024;
+const MAX_ARCHIVE_BYTES = 25 * 1024 * 1024;
 const MAX_LEGACY_CHECKSUM_ORDERS = 1024;
 const ZIP_DATE = new Date("1980-01-01T00:00:00.000Z");
 // Node 20 full-ICU base locales plus script/region variants whose default collation can differ.
@@ -60,6 +61,7 @@ export interface ValidatedSkillArchive {
  */
 export async function discoverSkillsInArchive(buffer: Buffer): Promise<DiscoveredSkill[]> {
   if (buffer.byteLength === 0) throw new Error("Zip file is empty.");
+  if (buffer.byteLength > MAX_ARCHIVE_BYTES) throw new Error("Zip exceeds the 25 MB compressed size limit.");
 
   const zip = await JSZip.loadAsync(buffer);
   await JSZip.loadAsync(buffer, { checkCRC32: true });

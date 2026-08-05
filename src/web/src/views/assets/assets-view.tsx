@@ -33,6 +33,7 @@ import { Input } from "../../components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import { uploadStatusLabel } from "../../app/format";
 import { bulkWorkspaceAssets } from "../../lib/api";
+import { ImportSkillsCommandForm } from "./import-skills-command-form";
 import { SkillListTable } from "./skill-list-table";
 import { UploadSkillZipForm } from "./upload-skill-zip-form";
 import { UploadMcpForm } from "./upload-mcp-form";
@@ -278,18 +279,31 @@ export function AssetsView({
               </div>
               <div className="max-h-[calc(100vh-8.5rem)] min-w-0 overflow-x-hidden overflow-y-auto p-4">
                 {kind === "skill" ? (
-                  <UploadSkillZipForm
-                    workspace={workspace}
-                    token={token}
-                    storage={storage}
-                    initialFile={droppedUploadFile}
-                    initialError={dropUploadError}
-                    onUploaded={async () => {
-                      setDroppedUploadFile(undefined);
-                      setDropUploadError(undefined);
-                      await onRefresh();
-                    }}
-                  />
+                  <div className="grid gap-5">
+                    <ImportSkillsCommandForm
+                      workspace={workspace}
+                      token={token}
+                      storage={storage}
+                      onImported={onRefresh}
+                    />
+                    <div className="flex items-center gap-3 text-xs uppercase tracking-wide text-muted-foreground">
+                      <span className="h-px flex-1 bg-border" />
+                      or upload a zip
+                      <span className="h-px flex-1 bg-border" />
+                    </div>
+                    <UploadSkillZipForm
+                      workspace={workspace}
+                      token={token}
+                      storage={storage}
+                      initialFile={droppedUploadFile}
+                      initialError={dropUploadError}
+                      onUploaded={async () => {
+                        setDroppedUploadFile(undefined);
+                        setDropUploadError(undefined);
+                        await onRefresh();
+                      }}
+                    />
+                  </div>
                 ) : (
                   <UploadMcpForm
                     workspace={workspace}

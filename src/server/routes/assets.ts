@@ -12,7 +12,8 @@ import { updateWorkspaceSkillFile } from "../services/asset-file-editor.js";
 import {
   handleAssetImportPreview,
   handleAssetUpload,
-  handleMcpAssetUpload
+  handleMcpAssetUpload,
+  handleSkillsCommandImport
 } from "../services/asset-upload.js";
 import {
   getWorkspaceAssetVersionArchive,
@@ -173,6 +174,12 @@ function registerAssetMutationRoutes(
     const context = await requireWorkspaceAdminAccess(req, res);
     if (!context) return;
     await handleMcpAssetUpload(req, res, context);
+  });
+
+  app.post("/api/workspaces/:workspaceId/assets/import/skills-command", async (req, res) => {
+    const context = await requireWorkspaceAdminAccess(req, res);
+    if (!context) return;
+    await handleSkillsCommandImport(req, res, context);
   });
 
   app.post("/api/workspaces/:workspaceId/assets/import/preview", upload.single("file"), async (req, res) => {

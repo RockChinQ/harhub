@@ -60,6 +60,22 @@ export async function uploadWorkspaceSkillZip(
   );
 }
 
+export async function importWorkspaceSkillsCommand(
+  token: string,
+  workspaceId: string,
+  command: string
+): Promise<AssetUploadResponse> {
+  return request<AssetUploadResponse>(
+    `/api/workspaces/${workspaceId}/assets/import/skills-command`,
+    {
+      token,
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ command })
+    }
+  );
+}
+
 export async function uploadWorkspaceMcp(
   token: string,
   workspaceId: string,

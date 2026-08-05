@@ -76,7 +76,7 @@
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
-    "skills": "1.5.18",
+    "skills": "1.5.21",
     "tailwind-merge": "^3.3.1",
     "undici": "^7.28.0",
     "yaml": "^2.8.1",
@@ -105,6 +105,6 @@
     }
   },
   "engines": {
-    "node": ">=20.18.1"
+    "node": ">=22.20.0"
   }
 }
