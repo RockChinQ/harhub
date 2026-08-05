@@ -26,7 +26,11 @@ export function summarizeGtmFunnel(
   const proposalsMerged = new Set<string>();
 
   for (const event of selected) {
-    if (event.eventType === "project.created") importedProjects.add(event.entityId);
+    if (
+      event.eventType === "project.created" &&
+      typeof event.metadata.repository === "string" &&
+      event.metadata.repository.length > 0
+    ) importedProjects.add(event.entityId);
     if (event.eventType === "project.repository.scan.succeeded") {
       scannedProjects.add(event.entityId);
       if (numberMetadata(event, "artifactCount") > 0) projectsWithHarnessAssets.add(event.entityId);
