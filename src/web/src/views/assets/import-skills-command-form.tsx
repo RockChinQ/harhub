@@ -1,10 +1,16 @@
-import { AlertCircle, CheckCircle2, Loader2, TerminalSquare } from "lucide-react";
+import { AlertCircle, CheckCircle2, Info, Loader2, TerminalSquare } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 
 import type { StorageStatus, WorkspaceRecord } from "../../../../shared/types";
 import { uploadErrorMessage } from "../../app/format";
 import { Button } from "../../components/ui/button";
 import { Textarea } from "../../components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "../../components/ui/tooltip";
 import { importWorkspaceSkillsCommand } from "../../lib/api";
 
 type ImportMessage = {
@@ -70,9 +76,40 @@ export function ImportSkillsCommandForm({
       ) : null}
 
       <div className="space-y-1.5">
-        <label htmlFor="skills-add-command" className="text-sm font-medium">
-          skills add command
-        </label>
+        <div className="flex items-center gap-1.5">
+          <label htmlFor="skills-add-command" className="text-sm font-medium">
+            skills add command
+          </label>
+          <TooltipProvider delayDuration={150}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground"
+                  aria-label="About command imports"
+                >
+                  <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="max-w-80 space-y-2 text-xs leading-5">
+                <p>
+                  Supports public GitHub, GitLab, git HTTPS, well-known providers, direct
+                  SKILL.md files, and archives. Selection flags such as --skill, --all, and
+                  --full-depth are preserved.
+                </p>
+                <p>
+                  Local paths, SSH/private repositories, and --list are unavailable for
+                  server-side imports.
+                </p>
+                <div className="space-y-1 border-t pt-2 font-mono text-[11px]">
+                  {EXAMPLES.map((example) => <div key={example} className="break-all">{example}</div>)}
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
         <Textarea
           id="skills-add-command"
           value={command}
@@ -80,38 +117,11 @@ export function ImportSkillsCommandForm({
             setCommand(event.target.value);
             setMessage(undefined);
           }}
-          rows={4}
-          className="resize-y font-mono text-xs"
+          rows={3}
+          className="resize-none font-mono text-xs"
           placeholder={EXAMPLES[0]}
           spellCheck={false}
         />
-        <p className="text-xs leading-5 text-muted-foreground">
-          Supports the same public GitHub, GitLab, git HTTPS, well-known provider, direct SKILL.md,
-          and archive sources as <span className="font-mono">skills add</span>. Selection flags such as
-          <span className="font-mono"> --skill</span>, <span className="font-mono">--all</span>, and
-          <span className="font-mono"> --full-depth</span> are preserved. Agent, scope, copy, telemetry,
-          and prompt flags are accepted when applicable but do not affect the workspace Library import.
-          Local paths, SSH/private repositories, and <span className="font-mono">--list</span> are not
-          available for this server-side import.
-        </p>
-      </div>
-
-      <div className="space-y-2 rounded-md border bg-muted/25 p-3">
-        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <TerminalSquare className="h-3.5 w-3.5" aria-hidden="true" />
-          Examples
-        </div>
-        {EXAMPLES.map((example) => (
-          <Button
-            key={example}
-            type="button"
-            variant="outline"
-            className="h-auto w-full justify-start whitespace-normal px-2 py-1.5 text-left font-mono text-[11px] font-normal leading-5 text-muted-foreground"
-            onClick={() => setCommand(example)}
-          >
-            {example}
-          </Button>
-        ))}
       </div>
 
       <Button
