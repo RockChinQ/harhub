@@ -17,7 +17,8 @@
     "docs",
     "examples",
     "skills",
-    "README.md"
+    "README.md",
+    "SECURITY.md"
   ],
   "publishConfig": {
     "access": "public"

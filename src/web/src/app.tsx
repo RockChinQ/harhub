@@ -11,6 +11,7 @@ import { AppLayout } from "./app/app-layout";
 import { findUiAsset, routeQueryForAsset } from "./app/asset-utils";
 import { TOKEN_KEY, WORKSPACE_KEY } from "./app/constants";
 import { appPageTitle, useDocumentTitle } from "./app/document-title";
+import { routeAfterAuthentication } from "./app/post-auth-route";
 import {
   normalizeRoute,
   pathForRoute,
@@ -207,7 +208,7 @@ export function App() {
       localStorage.setItem(WORKSPACE_KEY, workspace.id);
     }
     if (route.view !== "device") {
-      navigate({ view: "assets" }, { replace: true });
+      navigate(routeAfterAuthentication(route), { replace: true });
     }
   }
 

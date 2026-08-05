@@ -65,6 +65,30 @@ test("keeps a nested Skill out of its parent Skill file tree", async () => {
   assert.deepEqual(child?.files.map((file) => file.path), ["script.js", "SKILL.md"]);
 });
 
+test("rejects archives with more than 1000 files before extraction", async () => {
+  const zip = new JSZip();
+  zip.file("SKILL.md", validSkillMarkdown("too-many-files"));
+  for (let index = 0; index < 1000; index += 1) {
+    zip.file(`references/${index}.txt`, "x");
+  }
+
+  await assert.rejects(
+    discoverSkillsInArchive(await zip.generateAsync({ type: "nodebuffer" })),
+    /at most 1000 files/
+  );
+});
+
+test("rejects archives whose unpacked content exceeds 50 MB", async () => {
+  const zip = new JSZip();
+  zip.file("SKILL.md", validSkillMarkdown("too-large"));
+  zip.file("references/payload.bin", Buffer.alloc(50 * 1024 * 1024, 1));
+
+  await assert.rejects(
+    discoverSkillsInArchive(await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" })),
+    /50 MB unpacked size limit/
+  );
+});
+
 test("packages separated files as a deterministic standard root archive", async () => {
   const files = [
     { path: "scripts/run.sh", content: Buffer.from("#!/bin/sh\necho ok\n") },

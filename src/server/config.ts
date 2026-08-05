@@ -5,6 +5,13 @@ export const HOST = process.env.HOST ?? "127.0.0.1";
 export const MAX_UPLOAD_BYTES = Number(process.env.HARHUB_MAX_UPLOAD_BYTES ?? 25 * 1024 * 1024);
 export const MAX_PREVIEW_BYTES = 256 * 1024;
 export const MAX_PREVIEW_CHARS = 120_000;
+export const TRUST_PROXY = readTrustProxy(process.env.HARHUB_TRUST_PROXY);
+export const AUTH_RATE_LIMIT_WINDOW_MS = Number(process.env.HARHUB_AUTH_RATE_LIMIT_WINDOW_MS ?? 15 * 60 * 1000);
+export const AUTH_RATE_LIMIT_MAX = Number(process.env.HARHUB_AUTH_RATE_LIMIT_MAX ?? 30);
+export const UPLOAD_RATE_LIMIT_WINDOW_MS = Number(process.env.HARHUB_UPLOAD_RATE_LIMIT_WINDOW_MS ?? 60 * 60 * 1000);
+export const UPLOAD_RATE_LIMIT_MAX = Number(process.env.HARHUB_UPLOAD_RATE_LIMIT_MAX ?? 100);
+export const PUBLIC_SHARE_RATE_LIMIT_WINDOW_MS = Number(process.env.HARHUB_PUBLIC_SHARE_RATE_LIMIT_WINDOW_MS ?? 60 * 1000);
+export const PUBLIC_SHARE_RATE_LIMIT_MAX = Number(process.env.HARHUB_PUBLIC_SHARE_RATE_LIMIT_MAX ?? 120);
 export const PASSWORD_LOGIN_ENABLED = readBooleanEnv(
   process.env.HARHUB_PASSWORD_LOGIN_ENABLED,
   true
@@ -30,6 +37,15 @@ export function isDevelopmentLoginEnabled(
   env: { NODE_ENV?: string; HARHUB_DEV_LOGIN_ENABLED?: string }
 ): boolean {
   return env.NODE_ENV === "development" && readBooleanEnv(env.HARHUB_DEV_LOGIN_ENABLED, true);
+}
+
+function readTrustProxy(value: string | undefined): boolean | number | string {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  const hops = Number(value);
+  return Number.isSafeInteger(hops) && hops >= 0 ? hops : value;
 }
 
 function readBooleanEnv(value: string | undefined, fallback: boolean): boolean {
