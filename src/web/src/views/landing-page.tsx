@@ -11,30 +11,25 @@ import {
 } from "lucide-react";
 
 import { Button } from "../components/ui/button";
+import { landingPageContent } from "./landing-page-content";
 
 const capabilities = [
   {
-    title: "Skill asset control",
-    description: "Upload zip packages, validate standard SKILL.md metadata, and keep approved assets discoverable."
+    title: "See the harness already in GitHub",
+    description: "Import existing repositories and inventory Skills, MCP configurations, rules, and agent instructions without retaining the rest of the codebase."
   },
   {
-    title: "Workspace governance",
-    description: "Manage teams, roles, invitations, and shared catalogs without scattering agent context across repos."
+    title: "Roll out approved baselines",
+    description: "Bind versioned Library assets to Projects and deliver additions or removals through explicit, reviewable pull requests."
   },
   {
-    title: "CLI to cloud",
-    description: "Scan local repositories, package Skills, and publish them to a hosted or self-managed Harhub workspace."
+    title: "Resolve drift and bring improvements back",
+    description: "Review repository changes at file level, keep intentional overrides, and publish proven Skill improvements back to the Library."
   }
 ];
 
-const proofPoints = [
-  "Agent Skills first",
-  "S3-compatible storage",
-  "Workspace tenants",
-  "OAuth and email login"
-];
-
 export function LandingPage({ isSignedIn }: { isSignedIn: boolean }) {
+  const content = landingPageContent(isSignedIn);
   return (
     <main className="h-svh overflow-y-auto bg-white text-slate-950">
       <section className="relative min-h-svh overflow-hidden bg-slate-950 text-white">
@@ -58,7 +53,7 @@ export function LandingPage({ isSignedIn }: { isSignedIn: boolean }) {
                 </a>
               </Button>
               <Button asChild variant="secondary" className="bg-white text-slate-950 hover:bg-blue-50">
-                <a href="/skills">
+                <a href={content.primaryHref}>
                   {isSignedIn ? "Open app" : "Sign in"}
                   <ArrowRight className="h-4 w-4" aria-hidden="true" />
                 </a>
@@ -70,20 +65,18 @@ export function LandingPage({ isSignedIn }: { isSignedIn: boolean }) {
             <div className="max-w-3xl">
               <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/16 bg-white/10 px-3 py-1 text-xs font-medium text-blue-100">
                 <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-                Asset control for agent teams
+                {content.eyebrow}
               </div>
               <h1 className="max-w-4xl text-5xl font-semibold leading-[1.02] tracking-normal sm:text-6xl lg:text-7xl">
-                Keep your agent Skills trusted, reusable, and ready to ship.
+                {content.headline}
               </h1>
               <p className="mt-6 max-w-2xl text-base leading-7 text-slate-200 sm:text-lg">
-                Harhub gives teams a shared control plane for Agent Skills: upload packages,
-                validate the official contract, preview contents, and invite collaborators into
-                workspace-scoped asset libraries.
+                {content.description}
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Button asChild size="lg" className="bg-blue-600 text-white hover:bg-blue-500">
-                  <a href="/skills">
-                    Launch Harhub
+                  <a href={content.primaryHref}>
+                    {content.primaryAction}
                     <ArrowRight className="h-4 w-4" aria-hidden="true" />
                   </a>
                 </Button>
@@ -100,7 +93,7 @@ export function LandingPage({ isSignedIn }: { isSignedIn: boolean }) {
                 </Button>
               </div>
               <div className="mt-8 grid max-w-xl grid-cols-2 gap-3 text-sm text-slate-200 sm:grid-cols-4">
-                {proofPoints.map((item) => (
+                {content.proofPoints.map((item) => (
                   <div key={item} className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 shrink-0 text-blue-300" aria-hidden="true" />
                     <span>{item}</span>
@@ -144,10 +137,11 @@ export function LandingPage({ isSignedIn }: { isSignedIn: boolean }) {
               <Boxes className="h-4 w-4" aria-hidden="true" />
               Built for the broader harness layer
             </div>
-            <h2 className="text-2xl font-semibold">Skills today. MCPs, rules, and instructions next.</h2>
+            <h2 className="text-2xl font-semibold">Inventory, rollout, drift, and reverse sync—already in one workflow.</h2>
             <p className="mt-3 text-sm leading-6 text-slate-600">
-              Harhub starts with the most concrete agent asset type, then keeps the product
-              boundary ready for more harness assets without inventing a competing Skill format.
+              Harhub manages versioned Skills and MCP configurations in the Library, inventories
+              repository-owned rules and instructions, and keeps changes reviewable through GitHub.
+              It remains runtime-neutral and uses standard Agent Skills packages.
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
