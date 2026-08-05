@@ -1,5 +1,6 @@
 import type {
   AssetRecord,
+  AssetProvenance,
   StoredObject,
   ValidationIssue
 } from "../../shared/types.js";
@@ -16,6 +17,7 @@ export function createImportedSkillAsset(input: {
   createdByAccountId?: string;
   versionSummary?: string;
   versionCreatedAt?: string;
+  provenance?: AssetProvenance;
 }): AssetRecord {
   if (input.skill.validation.errors > 0 && input.rejectInvalid !== false) {
     throw new Error(importValidationError(input.skill.validationIssues));
@@ -37,7 +39,8 @@ export function createImportedSkillAsset(input: {
     health: input.skill.health,
     storage: input.storage,
     validation: input.skill.validation,
-    validationIssues
+    validationIssues,
+    ...(input.provenance ? { provenance: input.provenance } : {})
   };
 
   return recordAssetVersion({

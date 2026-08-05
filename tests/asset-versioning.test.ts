@@ -114,6 +114,28 @@ test("normalizes legacy catalogs into a stable initial version", () => {
   assert.equal(catalog.assets[0]?.versionHistory?.length, 1);
 });
 
+test("preserves remote import provenance while normalizing catalogs", () => {
+  const provenance = {
+    type: "skills-command" as const,
+    source: "owner/repo",
+    url: "owner/repo",
+    canonicalUrl: "https://github.com/owner/repo",
+    sourceType: "github" as const,
+    importedAt: "2026-08-05T00:00:00.000Z"
+  };
+  const catalog = normalizeAssetCatalog({
+    schemaVersion: 2,
+    generatedAt: provenance.importedAt,
+    workspaceId: "ws",
+    assets: [{
+      ...assetWithStorage(storage("provenance", provenance.importedAt, 1)),
+      provenance
+    }],
+    skills: []
+  });
+  assert.deepEqual(catalog.assets[0]?.provenance, provenance);
+});
+
 function assetWithStorage(skillStorage: StoredObject): AssetRecord {
   return {
     id: "asset:skill:ws:release-notes",

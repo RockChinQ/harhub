@@ -8,6 +8,30 @@ export type AssetKind = "skill" | "mcp";
 
 export type AssetHealth = "valid" | "warning" | "error" | "unknown";
 
+export interface AssetProvenanceSkill {
+  name: string;
+  source: string;
+  sourceType: "github" | "gitlab" | "well-known" | "url";
+  ref?: string;
+  skillPath?: string;
+  /** Harhub canonical Skill file-tree hash; not an archive checksum or repository revision. */
+  computedHash?: string;
+}
+
+export interface AssetProvenance {
+  type: "skills-command";
+  source: string;
+  url: string;
+  canonicalUrl: string;
+  /** Digest of the exact imported candidate set; this is content evidence, not necessarily a repository commit SHA. */
+  resolvedContentDigest?: string;
+  sourceType: "github" | "gitlab" | "well-known" | "url";
+  skills?: string[];
+  fullDepth?: boolean;
+  importedAt: string;
+  skillsResolved?: AssetProvenanceSkill[];
+}
+
 export type AssetVersionSource =
   | "upload"
   | "manual-edit"
@@ -189,6 +213,8 @@ export interface AssetRecord {
     warnings: number;
   };
   validationIssues?: ValidationIssue[];
+  /** Canonical external origin for assets imported from a remote Skill source. */
+  provenance?: AssetProvenance;
   /** Safe MCP discovery metadata. Configuration values and environment secrets are never included. */
   mcp?: {
     serverCount: number;

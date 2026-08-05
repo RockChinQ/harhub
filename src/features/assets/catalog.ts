@@ -168,6 +168,7 @@ function normalizeAssetRecord(asset: AssetRecord): AssetRecord {
     ...(asset.storage ? { storage: asset.storage } : {}),
     validation: asset.validation,
     ...(asset.validationIssues ? { validationIssues: asset.validationIssues } : {}),
+    ...(asset.provenance ? { provenance: asset.provenance } : {}),
     ...(asset.mcp ? { mcp: asset.mcp } : {}),
     ...(asset.version ? { version: asset.version } : {}),
     ...(asset.createdAt ? { createdAt: asset.createdAt } : {}),

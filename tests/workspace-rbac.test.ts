@@ -64,6 +64,9 @@ test("keeps workspace resources read-only for members", async () => {
 
     const protectedRequests: Array<[string, string, unknown?]> = [
       ["POST", "/api/workspaces/ws_demo/assets/validate"],
+      ["POST", "/api/workspaces/ws_demo/assets/import/skills-command", {
+        command: "npx skills add owner/repo"
+      }],
       ["DELETE", "/api/workspaces/ws_demo/assets/demo-skill"],
       ["POST", "/api/workspaces/ws_demo/assets/demo-skill/share"],
       ["DELETE", "/api/workspaces/ws_demo/assets/demo-skill/share"],
