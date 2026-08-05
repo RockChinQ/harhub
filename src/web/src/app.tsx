@@ -142,7 +142,7 @@ export function App() {
 
     if (options.replace) {
       window.history.replaceState(null, "", path);
-    } else if (window.location.pathname !== path) {
+    } else if (window.location.pathname + window.location.search !== path) {
       window.history.pushState(null, "", path);
     }
 
@@ -280,6 +280,7 @@ export function App() {
         view={appView}
         forgeSessionId={route.forgeSessionId}
         projectId={route.projectId}
+        projectImport={route.projectImport}
         activeWorkspace={activeWorkspace}
         token={token}
         assets={assets}

@@ -121,12 +121,14 @@ export function ProjectsView({
   token,
   workspace,
   routedProjectId,
+  autoOpenRepositoryImport = false,
   onNavigateProject,
   onOpenForge
 }: {
   token: string;
   workspace: WorkspaceRecord;
   routedProjectId?: string;
+  autoOpenRepositoryImport?: boolean;
   onNavigateProject: (projectId?: string) => void;
   onOpenForge: () => void;
 }) {
@@ -153,7 +155,7 @@ export function ProjectsView({
   const [isLoadingDiff, setIsLoadingDiff] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(() => !routedProjectId && autoOpenRepositoryImport);
   const [githubStatus, setGithubStatus] = useState<GitHubIntegrationStatus>();
   const [installations, setInstallations] = useState<GitHubInstallation[]>([]);
   const [selectedInstallationId, setSelectedInstallationId] = useState("");

@@ -21,6 +21,14 @@ test("binds Forge sessions to addressable routes", () => {
 
 test("binds Projects to Library routes", () => {
   assert.deepEqual(routeFromPath("/projects"), { view: "projects" });
+  assert.deepEqual(routeFromPath("/projects", "?import=github"), {
+    view: "projects",
+    projectImport: "github"
+  });
+  assert.equal(
+    pathForRoute({ view: "projects", projectImport: "github" }),
+    "/projects?import=github"
+  );
   assert.deepEqual(routeFromPath("/projects/project%3Aabc%2F123"), {
     view: "project-detail",
     projectId: "project:abc/123"

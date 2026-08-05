@@ -18,6 +18,7 @@ export function AppContent({
   view,
   forgeSessionId,
   projectId,
+  projectImport,
   activeWorkspace,
   token,
   assets,
@@ -41,6 +42,7 @@ export function AppContent({
   view: AppShellView;
   forgeSessionId?: string;
   projectId?: string;
+  projectImport?: "github";
   activeWorkspace?: WorkspaceRecord;
   token: string;
   assets: AssetRecord[];
@@ -151,6 +153,7 @@ export function AppContent({
             token={token}
             workspace={activeWorkspace}
             routedProjectId={projectId}
+            autoOpenRepositoryImport={projectImport === "github"}
             onNavigateProject={(nextProjectId) => onNavigate(nextProjectId
               ? { view: "project-detail", projectId: nextProjectId }
               : { view: "projects" })}
