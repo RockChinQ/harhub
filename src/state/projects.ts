@@ -24,7 +24,7 @@ import type {
   ValidationIssue
 } from "../shared/types.js";
 import { serializeStateAccess } from "./access.js";
-import { isDatabaseStateEnabled } from "./database.js";
+import { isDatabaseStateEnabled, queryDatabase } from "./database.js";
 import { requireWorkspaceAdmin, requireWorkspaceMembership } from "./records.js";
 import { ensureRepositoryDatabase } from "./repository-integrations.js";
 import { loadState, saveState } from "./store.js";
@@ -674,78 +674,155 @@ export async function recordProjectSkillPublished(input: {
   name?: string;
 }): Promise<HarhubProject> {
   if (isDatabaseStateEnabled()) await ensureRepositoryDatabase();
-  return serializeStateAccess(async () => {
-    const state = await loadState();
-    requireWorkspaceAdmin(state, input.accountId, input.workspaceId);
-    const project = findProject(state, input.workspaceId, input.projectId);
-    if (project.status !== "active") throw new Error("Archived Projects cannot publish Skills.");
-    const binding = project.bindings.find((item) => item.id === input.bindingId);
-    if (!binding || binding.kind !== "skill") throw new Error("Project Skill binding not found.");
-    if (binding.path !== input.artifactPath) {
-      throw new Error("Project Skill binding path changed before it could be published.");
-    }
-    const fork = project.skillForks?.find((item) => item.path === binding.path);
-    if (!fork || fork.digest !== input.digest) {
-      throw new Error("Project Skill fork changed before it could be published.");
-    }
-    binding.assetId = input.assetId;
-    if (input.name) binding.name = input.name;
-    binding.source = "harhub";
-    binding.sourceDigest = input.digest;
-    binding.sourceVersion = input.assetVersion;
-    binding.repositoryDigest = input.digest;
-    binding.status = "synced";
-    delete binding.fork;
-    project.skillForks = (project.skillForks ?? []).filter((item) => item.path !== binding.path);
-    project.skillForkGeneration = (project.skillForkGeneration ?? 0) + 1;
-    const decidedAt = new Date().toISOString();
-    project.updatedAt = decidedAt;
-    const policy: ProjectBindingPolicy = {
-      projectId: input.projectId,
-      artifactPath: binding.path,
-      ownership: "library",
-      libraryAssetId: input.assetId,
-      pinnedVersion: input.assetVersion,
-      decidedByAccountId: input.accountId,
-      decidedAt
-    };
-    if (!isDatabaseStateEnabled()) {
-      state.projectBindingPolicies = [
-        ...state.projectBindingPolicies.filter((candidate) =>
-          !(candidate.projectId === policy.projectId && candidate.artifactPath === policy.artifactPath)
-        ),
-        policy
-      ];
-    }
-    await saveState(state, isDatabaseStateEnabled()
-      ? {
-          transactionWork: async (client) => {
-            await client.query(
-              `insert into harhub_project_binding_policies (
-                 project_id, artifact_path, ownership, library_asset_id, pinned_version,
-                 decided_by_account_id, decided_at
-               ) values ($1,$2,$3,$4,$5,$6,$7)
-               on conflict (project_id, artifact_path) do update set
-                 ownership = excluded.ownership,
-                 library_asset_id = excluded.library_asset_id,
-                 pinned_version = excluded.pinned_version,
-                 decided_by_account_id = excluded.decided_by_account_id,
-                 decided_at = excluded.decided_at`,
-              [
-                policy.projectId,
-                policy.artifactPath,
-                policy.ownership,
-                policy.libraryAssetId,
-                policy.pinnedVersion,
-                policy.decidedByAccountId,
-                policy.decidedAt
-              ]
-            );
-          }
+  return serializeStateAccess(() => recordProjectSkillPublishedWithStateLock(input));
+}
+
+/** Caller must already hold serializeStateAccess for the complete cross-resource mutation. */
+export async function recordProjectSkillPublishedWithStateLock(input: {
+  accountId: string;
+  workspaceId: string;
+  projectId: string;
+  bindingId: string;
+  artifactPath: string;
+  assetId: string;
+  assetVersion: number;
+  digest: string;
+  name?: string;
+}): Promise<HarhubProject> {
+  if (isDatabaseStateEnabled()) await ensureRepositoryDatabase();
+  const state = await loadState();
+  requireWorkspaceAdmin(state, input.accountId, input.workspaceId);
+  const project = findProject(state, input.workspaceId, input.projectId);
+  if (project.status !== "active") throw new Error("Archived Projects cannot publish Skills.");
+  const binding = project.bindings.find((item) => item.id === input.bindingId);
+  if (!binding || binding.kind !== "skill") throw new Error("Project Skill binding not found.");
+  if (binding.path !== input.artifactPath) {
+    throw new Error("Project Skill binding path changed before it could be published.");
+  }
+  const fork = project.skillForks?.find((item) => item.path === binding.path);
+  if (!fork || fork.digest !== input.digest) {
+    throw new Error("Project Skill fork changed before it could be published.");
+  }
+  binding.assetId = input.assetId;
+  if (input.name) binding.name = input.name;
+  binding.source = "harhub";
+  binding.sourceDigest = input.digest;
+  binding.sourceVersion = input.assetVersion;
+  binding.repositoryDigest = input.digest;
+  binding.status = "synced";
+  delete binding.fork;
+  project.skillForks = (project.skillForks ?? []).filter((item) => item.path !== binding.path);
+  project.skillForkGeneration = (project.skillForkGeneration ?? 0) + 1;
+  const decidedAt = new Date().toISOString();
+  project.updatedAt = decidedAt;
+  const policy: ProjectBindingPolicy = {
+    projectId: input.projectId,
+    artifactPath: binding.path,
+    ownership: "library",
+    libraryAssetId: input.assetId,
+    pinnedVersion: input.assetVersion,
+    decidedByAccountId: input.accountId,
+    decidedAt
+  };
+  if (!isDatabaseStateEnabled()) {
+    state.projectBindingPolicies = [
+      ...state.projectBindingPolicies.filter((candidate) =>
+        !(candidate.projectId === policy.projectId && candidate.artifactPath === policy.artifactPath)
+      ),
+      policy
+    ];
+  }
+  await saveState(state, isDatabaseStateEnabled()
+    ? {
+        transactionWork: async (client) => {
+          await client.query(
+            `insert into harhub_project_binding_policies (
+               project_id, artifact_path, ownership, library_asset_id, pinned_version,
+               decided_by_account_id, decided_at
+             ) values ($1,$2,$3,$4,$5,$6,$7)
+             on conflict (project_id, artifact_path) do update set
+               ownership = excluded.ownership,
+               library_asset_id = excluded.library_asset_id,
+               pinned_version = excluded.pinned_version,
+               decided_by_account_id = excluded.decided_by_account_id,
+               decided_at = excluded.decided_at`,
+            [
+              policy.projectId,
+              policy.artifactPath,
+              policy.ownership,
+              policy.libraryAssetId,
+              policy.pinnedVersion,
+              policy.decidedByAccountId,
+              policy.decidedAt
+            ]
+          );
         }
-      : {});
-    return toPublicProject(project);
-  });
+      }
+    : {});
+  return toPublicProject(project);
+}
+
+export async function getProjectSkillPublicationStateWithStateLock(input: {
+  accountId: string;
+  workspaceId: string;
+  projectId: string;
+  artifactPath: string;
+  assetId: string;
+  assetVersion: number;
+  digest: string;
+}): Promise<{ project: HarhubProject; state: "published" | "not-published" | "unknown" }> {
+  const state = await loadState();
+  requireWorkspaceAdmin(state, input.accountId, input.workspaceId);
+  const project = findProject(state, input.workspaceId, input.projectId);
+  const binding = project.bindings.find((candidate) => candidate.path === input.artifactPath);
+  const bindingPublished = Boolean(
+    binding &&
+    binding.assetId === input.assetId &&
+    binding.sourceVersion === input.assetVersion &&
+    binding.sourceDigest === input.digest &&
+    binding.status === "synced" &&
+    !binding.fork
+  );
+
+  let policyPublished: boolean;
+  if (isDatabaseStateEnabled()) {
+    const rows = await queryDatabase<{
+      ownership: string;
+      library_asset_id: string | null;
+      pinned_version: number | null;
+    }>(
+      `select ownership, library_asset_id, pinned_version
+       from harhub_project_binding_policies
+       where project_id = $1 and artifact_path = $2`,
+      [input.projectId, input.artifactPath]
+    );
+    const policy = rows[0];
+    policyPublished = Boolean(
+      policy &&
+      policy.ownership === "library" &&
+      policy.library_asset_id === input.assetId &&
+      policy.pinned_version === input.assetVersion
+    );
+  } else {
+    const policy = state.projectBindingPolicies.find((candidate) =>
+      candidate.projectId === input.projectId && candidate.artifactPath === input.artifactPath
+    );
+    policyPublished = Boolean(
+      policy &&
+      policy.ownership === "library" &&
+      policy.libraryAssetId === input.assetId &&
+      policy.pinnedVersion === input.assetVersion
+    );
+  }
+
+  return {
+    project: toPublicProject(project),
+    state: bindingPublished && policyPublished
+      ? "published"
+      : !bindingPublished && !policyPublished
+        ? "not-published"
+        : "unknown"
+  };
 }
 
 function createProjectRecord(

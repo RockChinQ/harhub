@@ -56,6 +56,19 @@ const databaseStateRevisions = new WeakMap<AppState, number>();
 let pool: Pool | undefined;
 let setupPromise: Promise<void> | undefined;
 
+export class DatabaseCommitOutcomeUnknownError extends Error {
+  readonly code = "HARHUB_DATABASE_COMMIT_OUTCOME_UNKNOWN";
+
+  constructor(cause: unknown) {
+    super("Database commit outcome is unknown; the operation may have committed.", { cause });
+    this.name = "DatabaseCommitOutcomeUnknownError";
+  }
+}
+
+export function isDatabaseCommitOutcomeUnknown(error: unknown): error is DatabaseCommitOutcomeUnknownError {
+  return error instanceof DatabaseCommitOutcomeUnknownError;
+}
+
 export function isDatabaseStateEnabled(): boolean {
   return Boolean(databaseUrl);
 }
@@ -165,7 +178,11 @@ export async function writeDatabaseState(
       await replaceDatabaseAccountReferences(client, options.accountReferenceReplacement);
     }
     if (options.transactionWork) await options.transactionWork(client);
-    await client.query("commit");
+    try {
+      await client.query("commit");
+    } catch (error) {
+      throw new DatabaseCommitOutcomeUnknownError(error);
+    }
     databaseStateRevisions.set(state, nextRevision);
   } catch (error) {
     await client.query("rollback").catch(() => undefined);
@@ -348,7 +365,11 @@ export async function withDatabaseTransaction<T>(
   try {
     await client.query("begin");
     const result = await operation(client);
-    await client.query("commit");
+    try {
+      await client.query("commit");
+    } catch (error) {
+      throw new DatabaseCommitOutcomeUnknownError(error);
+    }
     return result;
   } catch (error) {
     await client.query("rollback").catch(() => undefined);
@@ -560,7 +581,11 @@ async function persistAssetCatalogProjection(
       }));
     }
     await insertAuditEvents(client, auditEvents);
-    await client.query("commit");
+    try {
+      await client.query("commit");
+    } catch (error) {
+      throw new DatabaseCommitOutcomeUnknownError(error);
+    }
   } catch (error) {
     await client.query("rollback").catch(() => undefined);
     throw error;

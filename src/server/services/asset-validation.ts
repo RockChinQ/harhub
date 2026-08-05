@@ -5,26 +5,22 @@ import {
 } from "../../features/assets/index.js";
 import { createImportedMcpAsset } from "../../features/mcp/index.js";
 import type { AssetCatalog, AssetRecord, WorkspaceRecord } from "../../shared/types.js";
-import {
-  describeWorkspaceCatalogStorage,
-  writeWorkspaceAssetCatalog
-} from "../../state/index.js";
+import { describeWorkspaceCatalogStorage } from "../../state/index.js";
 import { assetListPayload } from "./asset-responses.js";
 import { loadStoredMcp, loadStoredSkill } from "./skill-packages.js";
-import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
+import { mutateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
 
 export async function validateWorkspaceAssets(
   workspace: WorkspaceRecord
 ) {
-  let catalog: AssetCatalog = await loadOrCreateWorkspaceAssetCatalog(workspace);
-
-  for (const asset of catalog.assets) {
-    if (!asset.storage) continue;
-    const refreshed = await validateStoredAsset(workspace, asset);
-    catalog = upsertAsset(catalog, refreshed);
-  }
-
-  await writeWorkspaceAssetCatalog(workspace.id, catalog);
+  const { catalog } = await mutateWorkspaceAssetCatalog(workspace, async (original) => {
+    let catalog: AssetCatalog = original;
+    for (const asset of catalog.assets) {
+      if (!asset.storage) continue;
+      catalog = upsertAsset(catalog, await validateStoredAsset(workspace, asset));
+    }
+    return { catalog, value: undefined };
+  });
   return {
     ...assetListPayload(workspace, catalog.generatedAt, catalog.assets),
     assetCatalogStorage: describeWorkspaceCatalogStorage(workspace.id)
@@ -35,19 +31,13 @@ export async function validateWorkspaceAsset(
   workspace: WorkspaceRecord,
   query: string
 ) {
-  const catalog = await loadOrCreateWorkspaceAssetCatalog(workspace);
-  const asset = findAsset(catalog, query);
-  if (!asset) {
-    throw new Error("Asset not found.");
-  }
-
-  if (!asset.storage) {
-    throw new Error("Only uploaded assets can be validated.");
-  }
-
-  const nextAsset = await validateStoredAsset(workspace, asset);
-  const nextCatalog = upsertAsset(catalog, nextAsset);
-  await writeWorkspaceAssetCatalog(workspace.id, nextCatalog);
+  const { catalog: nextCatalog, value: nextAsset } = await mutateWorkspaceAssetCatalog(workspace, async (catalog) => {
+    const asset = findAsset(catalog, query);
+    if (!asset) throw new Error("Asset not found.");
+    if (!asset.storage) throw new Error("Only uploaded assets can be validated.");
+    const nextAsset = await validateStoredAsset(workspace, asset);
+    return { catalog: upsertAsset(catalog, nextAsset), value: nextAsset };
+  });
   return {
     ...assetListPayload(workspace, nextCatalog.generatedAt, nextCatalog.assets),
     assetCatalogStorage: describeWorkspaceCatalogStorage(workspace.id),
@@ -60,37 +50,23 @@ export async function validateWorkspaceAssetBatch(
   workspace: WorkspaceRecord,
   queries: string[]
 ) {
-  let catalog = await loadOrCreateWorkspaceAssetCatalog(workspace);
-  const succeeded: string[] = [];
-  const failed: Array<{ id: string; error: string }> = [];
-
-  for (const query of uniqueQueries(queries)) {
-    const asset = findAsset(catalog, query);
-    if (!asset) {
-      failed.push({ id: query, error: "Asset not found." });
-      continue;
+  const { catalog, value: { succeeded, failed } } = await mutateWorkspaceAssetCatalog(workspace, async (original) => {
+    let catalog = original;
+    const succeeded: string[] = [];
+    const failed: Array<{ id: string; error: string }> = [];
+    for (const query of uniqueQueries(queries)) {
+      const asset = findAsset(catalog, query);
+      if (!asset) { failed.push({ id: query, error: "Asset not found." }); continue; }
+      if (!asset.storage) { failed.push({ id: query, error: "Only uploaded assets can be bulk validated." }); continue; }
+      try {
+        catalog = upsertAsset(catalog, await validateStoredAsset(workspace, asset));
+        succeeded.push(asset.id);
+      } catch (error) {
+        failed.push({ id: asset.id, error: error instanceof Error ? error.message : String(error) });
+      }
     }
-
-    if (!asset.storage) {
-      failed.push({ id: query, error: "Only uploaded assets can be bulk validated." });
-      continue;
-    }
-
-    try {
-      const nextAsset = await validateStoredAsset(workspace, asset);
-      catalog = upsertAsset(catalog, nextAsset);
-      succeeded.push(asset.id);
-    } catch (error) {
-      failed.push({
-        id: asset.id,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  }
-
-  if (succeeded.length > 0) {
-    await writeWorkspaceAssetCatalog(workspace.id, catalog);
-  }
+    return { catalog, value: { succeeded, failed } };
+  });
 
   return {
     ...assetListPayload(workspace, catalog.generatedAt, catalog.assets),

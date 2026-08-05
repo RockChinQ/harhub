@@ -9,12 +9,8 @@ import {
   upsertAsset
 } from "../../features/assets/index.js";
 import type { AssetRecord, StoredObject } from "../../shared/types.js";
-import { writeWorkspaceAssetCatalog } from "../../state/index.js";
 import type { WorkspaceContext } from "../../state/types.js";
-import {
-  deleteStoredObject,
-  uploadSkillFiles
-} from "../../storage/index.js";
+import { deleteStoredObject, uploadSkillFiles } from "../../storage/index.js";
 import { assertWorkspaceAdminContext } from "../authorization.js";
 import {
   MAX_PREVIEW_BYTES,
@@ -22,7 +18,8 @@ import {
 } from "../config.js";
 import { isTextAssetFile } from "../utils/zip-preview.js";
 import { loadStoredSkill } from "./skill-packages.js";
-import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
+import { deleteStoredObjectIfUnreferenced } from "./asset-storage-compensation.js";
+import { mutateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
 
 export async function updateWorkspaceSkillFile(input: {
   context: WorkspaceContext;
@@ -34,68 +31,56 @@ export async function updateWorkspaceSkillFile(input: {
   assertWorkspaceAdminContext(input.context);
   const filePath = requireFilePath(input.path);
   const content = requireFileContent(input.content);
-  const catalog = await loadOrCreateWorkspaceAssetCatalog(input.context.workspace);
-  const previous = findAsset(catalog, input.assetQuery);
-
-  if (!previous) throw new Error("Asset not found.");
-  if (previous.version !== input.expectedVersion) {
-    throw new Error(
-      "This Skill changed after the file was opened. Refresh it before saving."
-    );
-  }
-  if (previous.kind !== "skill") {
-    throw new Error("Only Skill files can be edited.");
-  }
-  if (!previous.storage) {
-    throw new Error("This Skill has no stored files to edit.");
-  }
-  if (!isTextAssetFile(filePath)) {
-    throw new Error("Only text files can be edited.");
-  }
-
-  const stored = await loadStoredSkill(previous.storage);
-  const target = stored.files.find((file) => file.path === filePath);
-  if (!target) throw new Error("Skill file not found.");
-
-  const nextContent = Buffer.from(content, "utf8");
-  if (target.content.equals(nextContent)) return { asset: previous };
-
-  const files = replaceSkillFile(stored.files, filePath, nextContent);
-  const skill = analyzeStoredSkillFiles(files);
-  if (skill.name !== previous.name) {
-    throw new Error(
-      "The Skill name in SKILL.md cannot be changed in the file editor."
-    );
-  }
-
   let storage: StoredObject | undefined;
   try {
-    storage = await uploadSkillFiles({
-      workspaceId: input.context.workspace.id,
-      skillName: previous.name,
-      files,
-      checksum: skill.checksum
+    const { value } = await mutateWorkspaceAssetCatalog(input.context.workspace, async (catalog) => {
+      const previous = findAsset(catalog, input.assetQuery);
+      if (!previous) throw new Error("Asset not found.");
+      if (previous.version !== input.expectedVersion) {
+        throw new Error("This Skill changed after the file was opened. Refresh it before saving.");
+      }
+      if (previous.kind !== "skill") throw new Error("Only Skill files can be edited.");
+      if (!previous.storage) throw new Error("This Skill has no stored files to edit.");
+      if (!isTextAssetFile(filePath)) throw new Error("Only text files can be edited.");
+
+      const stored = await loadStoredSkill(previous.storage);
+      const target = stored.files.find((file) => file.path === filePath);
+      if (!target) throw new Error("Skill file not found.");
+      const nextContent = Buffer.from(content, "utf8");
+      if (target.content.equals(nextContent)) {
+        return { catalog, value: { asset: previous, obsolete: [] as StoredObject[] } };
+      }
+
+      const files = replaceSkillFile(stored.files, filePath, nextContent);
+      const skill = analyzeStoredSkillFiles(files);
+      if (skill.name !== previous.name) {
+        throw new Error("The Skill name in SKILL.md cannot be changed in the file editor.");
+      }
+      storage = await uploadSkillFiles({
+        workspaceId: input.context.workspace.id,
+        skillName: previous.name,
+        files,
+        checksum: skill.checksum
+      });
+      const asset = createImportedSkillAsset({
+        workspaceId: input.context.workspace.id,
+        skill,
+        storage,
+        previous,
+        versionSource: "manual-edit",
+        createdByAccountId: input.context.account.id,
+        versionSummary: `Edited ${filePath} in Harhub`
+      });
+      return {
+        catalog: upsertAsset(catalog, asset),
+        value: { asset, obsolete: obsoleteAssetStorageObjects([previous], [asset]) }
+      };
     });
-    const asset = createImportedSkillAsset({
-      workspaceId: input.context.workspace.id,
-      skill,
-      storage,
-      previous,
-      versionSource: "manual-edit",
-      createdByAccountId: input.context.account.id,
-      versionSummary: `Edited ${filePath} in Harhub`
-    });
-    const nextCatalog = upsertAsset(catalog, asset);
-    await writeWorkspaceAssetCatalog(input.context.workspace.id, nextCatalog);
-    await Promise.all(
-      obsoleteAssetStorageObjects([previous], [asset]).map((candidate) =>
-        deleteStoredObject(candidate).catch(() => undefined)
-      )
-    );
-    return { asset };
+    await Promise.all(value.obsolete.map((candidate) => deleteStoredObject(candidate).catch(() => undefined)));
+    return { asset: value.asset };
   } catch (error) {
     if (storage) {
-      await deleteStoredObject(storage).catch(() => undefined);
+      await deleteStoredObjectIfUnreferenced(input.context.workspace, storage);
     }
     throw error;
   }

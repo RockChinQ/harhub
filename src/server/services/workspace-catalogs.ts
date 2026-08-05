@@ -6,6 +6,7 @@ import {
   readWorkspaceAssetCatalog,
   writeWorkspaceAssetCatalog
 } from "../../state/index.js";
+import { serializeStateAccess } from "../../state/access.js";
 import type {
   AssetCatalog,
   SkillCatalog,
@@ -19,32 +20,29 @@ export async function loadOrCreateWorkspaceCatalog(workspace: WorkspaceRecord): 
 export async function loadOrCreateWorkspaceAssetCatalog(workspace: WorkspaceRecord): Promise<AssetCatalog> {
   const catalog = await readWorkspaceAssetCatalog(workspace.id);
   if (!catalog) {
-    const emptyCatalog = {
+    return {
       ...createAssetCatalog([]),
       workspaceId: workspace.id
     };
-    await writeWorkspaceAssetCatalog(workspace.id, emptyCatalog);
-    return emptyCatalog;
   }
 
   const assets = catalog.assets.filter((asset) => Boolean(asset.storage));
-  const needsMigration =
-    catalog.schemaVersion !== 2 ||
-    catalog.workspaceId !== workspace.id ||
-    assets.length !== catalog.assets.length ||
-    catalog.skills.length > 0;
-  const cloudCatalog: AssetCatalog = {
+  return {
     ...catalog,
     schemaVersion: 2,
     workspaceId: workspace.id,
     assets,
     skills: []
   };
+}
 
-  if (needsMigration) {
-    cloudCatalog.generatedAt = new Date().toISOString();
-    await writeWorkspaceAssetCatalog(workspace.id, cloudCatalog);
-  }
-
-  return cloudCatalog;
+export function mutateWorkspaceAssetCatalog<T>(
+  workspace: WorkspaceRecord,
+  mutation: (catalog: AssetCatalog) => Promise<{ catalog: AssetCatalog; value: T }>
+): Promise<{ catalog: AssetCatalog; value: T }> {
+  return serializeStateAccess(async () => {
+    const result = await mutation(await loadOrCreateWorkspaceAssetCatalog(workspace));
+    await writeWorkspaceAssetCatalog(workspace.id, result.catalog);
+    return result;
+  });
 }

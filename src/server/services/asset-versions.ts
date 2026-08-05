@@ -12,7 +12,6 @@ import type {
   AssetVersionRecord,
   WorkspaceRecord
 } from "../../shared/types.js";
-import { writeWorkspaceAssetCatalog } from "../../state/index.js";
 import type { WorkspaceContext } from "../../state/types.js";
 import { deleteStoredObject } from "../../storage/index.js";
 import { assertWorkspaceAdminContext } from "../authorization.js";
@@ -21,7 +20,7 @@ import {
   loadStoredMcp,
   loadStoredSkill
 } from "./skill-packages.js";
-import { loadOrCreateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
+import { loadOrCreateWorkspaceAssetCatalog, mutateWorkspaceAssetCatalog } from "./workspace-catalogs.js";
 
 export async function getWorkspaceAssetVersionArchive(input: {
   workspace: WorkspaceRecord;
@@ -44,14 +43,14 @@ export async function rollbackWorkspaceAssetVersion(input: {
   version: number;
 }): Promise<{ asset: AssetRecord; restoredFromVersion: number }> {
   assertWorkspaceAdminContext(input.context);
-  const catalog = await loadOrCreateWorkspaceAssetCatalog(input.context.workspace);
-  const previous = requireAsset(catalog, input.assetQuery);
-  if (previous.version === input.version) {
-    throw new Error(`${assetKindLabel(previous)} v${input.version} is already current.`);
-  }
-  const target = requireRetainedVersion(previous, input.version);
-  const asset = previous.kind === "skill"
-    ? createImportedSkillAsset({
+  const { value } = await mutateWorkspaceAssetCatalog(input.context.workspace, async (catalog) => {
+    const previous = requireAsset(catalog, input.assetQuery);
+    if (previous.version === input.version) {
+      throw new Error(`${assetKindLabel(previous)} v${input.version} is already current.`);
+    }
+    const target = requireRetainedVersion(previous, input.version);
+    const asset = previous.kind === "skill"
+      ? createImportedSkillAsset({
         workspaceId: input.context.workspace.id,
         skill: (await loadStoredSkill(target.storage)).skill,
         storage: target.storage,
@@ -73,15 +72,18 @@ export async function rollbackWorkspaceAssetVersion(input: {
         createdByAccountId: input.context.account.id,
         versionSummary: `Restored the configuration from v${target.version}`,
         versionCreatedAt: new Date().toISOString()
-      });
-
-  let nextCatalog = removeCatalogAsset(catalog, previous.id);
-  nextCatalog = upsertAsset(nextCatalog, asset);
-  await writeWorkspaceAssetCatalog(input.context.workspace.id, nextCatalog);
-  await Promise.all(obsoleteAssetStorageObjects([previous], [asset]).map((storage) =>
+        });
+    let nextCatalog = removeCatalogAsset(catalog, previous.id);
+    nextCatalog = upsertAsset(nextCatalog, asset);
+    return {
+      catalog: nextCatalog,
+      value: { asset, targetVersion: target.version, obsolete: obsoleteAssetStorageObjects([previous], [asset]) }
+    };
+  });
+  await Promise.all(value.obsolete.map((storage) =>
     deleteStoredObject(storage).catch(() => undefined)
   ));
-  return { asset, restoredFromVersion: target.version };
+  return { asset: value.asset, restoredFromVersion: value.targetVersion };
 }
 
 function assetKindLabel(asset: AssetRecord): string {
