@@ -31,6 +31,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { uploadStatusLabel } from "../../app/format";
 import { bulkWorkspaceAssets } from "../../lib/api";
 import { ImportSkillsCommandForm } from "./import-skills-command-form";
@@ -39,6 +40,7 @@ import { UploadSkillZipForm } from "./upload-skill-zip-form";
 import { UploadMcpForm } from "./upload-mcp-form";
 
 type BulkAction = "validate" | "delete";
+type SkillAddMethod = "zip" | "command";
 
 type BulkMessage = {
   tone: "error" | "success" | "warning";
@@ -74,6 +76,7 @@ export function AssetsView({
   kind?: AssetKind;
 }) {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [skillAddMethod, setSkillAddMethod] = useState<SkillAddMethod>("zip");
   const [isDragActive, setIsDragActive] = useState(false);
   const [droppedUploadFile, setDroppedUploadFile] = useState<File | undefined>();
   const [dropUploadError, setDropUploadError] = useState<string | undefined>();
@@ -135,6 +138,7 @@ export function AssetsView({
 
   function openUploadPopover(open: boolean) {
     setIsUploadOpen(open);
+    if (open && kind === "skill") setSkillAddMethod("zip");
     if (!open) {
       setDroppedUploadFile(undefined);
       setDropUploadError(undefined);
@@ -177,6 +181,7 @@ export function AssetsView({
     const zipFile = firstZipFile(event.dataTransfer.files);
     setDroppedUploadFile(zipFile);
     setDropUploadError(zipFile ? undefined : "Drop a .zip skill package.");
+    setSkillAddMethod("zip");
     setIsUploadOpen(true);
   }
 
@@ -272,38 +277,45 @@ export function AssetsView({
                 </div>
                 <div className="min-w-0">
                   <div className="font-medium">
-                    {kind === "skill" ? "Upload skill package" : "Add MCP configuration"}
+                    {kind === "skill" ? "Add Skill" : "Add MCP configuration"}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">{uploadStatusLabel(storage)}</div>
                 </div>
               </div>
               <div className="max-h-[calc(100vh-8.5rem)] min-w-0 overflow-x-hidden overflow-y-auto p-4">
                 {kind === "skill" ? (
-                  <div className="grid gap-5">
-                    <ImportSkillsCommandForm
-                      workspace={workspace}
-                      token={token}
-                      storage={storage}
-                      onImported={onRefresh}
-                    />
-                    <div className="flex items-center gap-3 text-xs uppercase tracking-wide text-muted-foreground">
-                      <span className="h-px flex-1 bg-border" />
-                      or upload a zip
-                      <span className="h-px flex-1 bg-border" />
-                    </div>
-                    <UploadSkillZipForm
-                      workspace={workspace}
-                      token={token}
-                      storage={storage}
-                      initialFile={droppedUploadFile}
-                      initialError={dropUploadError}
-                      onUploaded={async () => {
-                        setDroppedUploadFile(undefined);
-                        setDropUploadError(undefined);
-                        await onRefresh();
-                      }}
-                    />
-                  </div>
+                  <Tabs
+                    value={skillAddMethod}
+                    onValueChange={(value) => setSkillAddMethod(value as SkillAddMethod)}
+                    className="min-w-0"
+                  >
+                    <TabsList className="mb-4 grid w-full grid-cols-2">
+                      <TabsTrigger value="zip">Upload ZIP</TabsTrigger>
+                      <TabsTrigger value="command">Import command</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="zip" className="mt-0 min-w-0">
+                      <UploadSkillZipForm
+                        workspace={workspace}
+                        token={token}
+                        storage={storage}
+                        initialFile={droppedUploadFile}
+                        initialError={dropUploadError}
+                        onUploaded={async () => {
+                          setDroppedUploadFile(undefined);
+                          setDropUploadError(undefined);
+                          await onRefresh();
+                        }}
+                      />
+                    </TabsContent>
+                    <TabsContent value="command" className="mt-0 min-w-0">
+                      <ImportSkillsCommandForm
+                        workspace={workspace}
+                        token={token}
+                        storage={storage}
+                        onImported={onRefresh}
+                      />
+                    </TabsContent>
+                  </Tabs>
                 ) : (
                   <UploadMcpForm
                     workspace={workspace}
