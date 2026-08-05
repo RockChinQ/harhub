@@ -19,5 +19,6 @@ export interface AppRoute {
   assetQuery?: string;
   forgeSessionId?: string;
   projectId?: string;
+  projectImport?: "github";
   shareToken?: string;
 }

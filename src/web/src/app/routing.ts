@@ -1,10 +1,10 @@
 import type { AppRoute, View } from "./types";
 
 export function readRouteFromLocation(): AppRoute {
-  return normalizeRoute(routeFromPath(window.location.pathname));
+  return normalizeRoute(routeFromPath(window.location.pathname, window.location.search));
 }
 
-export function routeFromPath(pathname: string): AppRoute {
+export function routeFromPath(pathname: string, search = ""): AppRoute {
   const segments = pathname.split("/").filter(Boolean);
   const section = segments[0];
 
@@ -22,7 +22,10 @@ export function routeFromPath(pathname: string): AppRoute {
   if (section === "workspace") return { view: "workspace" };
   if (section === "projects") {
     const projectId = segments[1] ? decodeRoutePart(segments[1]) : undefined;
-    return projectId ? { view: "project-detail", projectId } : { view: "projects" };
+    if (projectId) return { view: "project-detail", projectId };
+    return new URLSearchParams(search).get("import") === "github"
+      ? { view: "projects", projectImport: "github" }
+      : { view: "projects" };
   }
   if (section === "forge") {
     const forgeSessionId = segments[1] ? decodeRoutePart(segments[1]) : undefined;
@@ -60,7 +63,9 @@ export function pathForRoute(route: AppRoute): string {
   if (route.view === "projects" || route.view === "project-detail") {
     return route.projectId
       ? `/projects/${encodeURIComponent(route.projectId)}`
-      : "/projects";
+      : route.projectImport === "github"
+        ? "/projects?import=github"
+        : "/projects";
   }
   if (route.view === "forge") {
     return route.forgeSessionId
@@ -78,7 +83,7 @@ export function pathForRoute(route: AppRoute): string {
 
 export function replaceBrowserRoute(route: AppRoute): void {
   const path = pathForRoute(normalizeRoute(route));
-  if (window.location.pathname !== path) {
+  if (window.location.pathname + window.location.search !== path) {
     window.history.replaceState(null, "", path);
   }
 }

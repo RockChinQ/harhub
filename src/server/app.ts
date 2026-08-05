@@ -65,6 +65,7 @@ export function createServerApp() {
   app.use("/api/workspaces/:workspaceId/assets/upload", uploadRateLimit);
   app.use("/api/workspaces/:workspaceId/assets/mcp", uploadRateLimit);
   app.use("/api/workspaces/:workspaceId/assets/import/preview", uploadRateLimit);
+  app.use("/api/projects/:projectId/sync", uploadRateLimit);
 
   registerHealthRoutes(app);
   registerAuthRoutes(app);

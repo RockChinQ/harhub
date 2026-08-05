@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { WorkspaceAuditEvent, WorkspaceAuditEventListResponse } from "../shared/types.js";
+import { auditEventCursorFor, compareAuditEventsDescending, isAuditEventBeforeCursor, parseAuditEventCursor } from "./audit-event-cursor.js";
 import { serializeStateAccess } from "./access.js";
 import { isDatabaseStateEnabled, listDatabaseAuditEvents, queryDatabase } from "./database.js";
 import { requireWorkspaceMembership } from "./records.js";
@@ -57,7 +58,7 @@ export async function listWorkspaceAuditEvents(
   requireWorkspaceMembership(state, accountId, workspaceId);
 
   const limit = readLimit(options.limit);
-  const before = readBefore(options.before);
+  const before = options.before ? parseAuditEventCursor(options.before) : undefined;
   if (isDatabaseStateEnabled()) {
     return listDatabaseAuditEvents(workspaceId, {
       limit,
@@ -67,12 +68,12 @@ export async function listWorkspaceAuditEvents(
 
   const events = state.auditEvents
     .filter((event) => event.workspaceId === workspaceId)
-    .filter((event) => !before || event.occurredAt < before)
-    .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
+    .filter((event) => !before || isAuditEventBeforeCursor(event, before))
+    .sort(compareAuditEventsDescending)
     .slice(0, limit);
   return {
     events,
-    ...(events.length === limit ? { nextBefore: events.at(-1)?.occurredAt } : {})
+    ...(events.length === limit && events.at(-1) ? { nextBefore: auditEventCursorFor(events.at(-1)!) } : {})
   };
 }
 
@@ -82,13 +83,4 @@ function readLimit(value: number | undefined): number {
     throw new Error("limit must be an integer between 1 and 200.");
   }
   return limit;
-}
-
-function readBefore(value: string | undefined): string | undefined {
-  if (!value) return undefined;
-  const timestamp = new Date(value);
-  if (Number.isNaN(timestamp.getTime())) {
-    throw new Error("before must be an ISO-8601 timestamp.");
-  }
-  return timestamp.toISOString();
 }

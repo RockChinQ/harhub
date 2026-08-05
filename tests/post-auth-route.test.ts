@@ -4,7 +4,10 @@ import test from "node:test";
 import { routeAfterAuthentication } from "../src/web/src/app/post-auth-route.js";
 
 test("authentication preserves an explicit repository onboarding route", () => {
-  assert.deepEqual(routeAfterAuthentication({ view: "projects" }), { view: "projects" });
+  assert.deepEqual(
+    routeAfterAuthentication({ view: "projects", projectImport: "github" }),
+    { view: "projects", projectImport: "github" }
+  );
   assert.deepEqual(
     routeAfterAuthentication({ view: "project-detail", projectId: "project-1" }),
     { view: "project-detail", projectId: "project-1" }

@@ -10,6 +10,8 @@ import type {
   WorkspaceAuditEventListResponse,
   WorkspaceAuditEventType
 } from "../shared/types.js";
+import type { AuditEventCursor } from "./audit-event-cursor.js";
+import { auditEventCursorFor } from "./audit-event-cursor.js";
 import type { AppState, ProjectStateRecord } from "./types.js";
 
 type JsonRecord = Record<string, unknown>;
@@ -224,7 +226,7 @@ export async function writeDatabaseAssetCatalog(
 
 export async function listDatabaseAuditEvents(
   workspaceId: string,
-  options: { limit: number; before?: string }
+  options: { limit: number; before?: AuditEventCursor }
 ): Promise<WorkspaceAuditEventListResponse> {
   if (!isDatabaseStateEnabled()) return { events: [] };
   await ensureDatabase();
@@ -233,16 +235,20 @@ export async function listDatabaseAuditEvents(
             actor_account_id, source, occurred_at, metadata
      from harhub_audit_events
      where workspace_id = $1
-       and ($2::timestamptz is null or occurred_at < $2::timestamptz)
+       and (
+         $2::timestamptz is null
+         or occurred_at < $2::timestamptz
+         or (occurred_at = $2::timestamptz and $3::text is not null and id < $3::text)
+       )
      order by occurred_at desc, id desc
-     limit $3`,
-    [workspaceId, options.before ?? null, options.limit]
+     limit $4`,
+    [workspaceId, options.before?.occurredAt ?? null, options.before?.id ?? null, options.limit]
   );
   const events = result.rows.map(auditEventFromRow);
   return {
     events,
-    ...(events.length === options.limit
-      ? { nextBefore: events.at(-1)?.occurredAt }
+    ...(events.length === options.limit && events.at(-1)
+      ? { nextBefore: auditEventCursorFor(events.at(-1)!) }
       : {})
   };
 }
