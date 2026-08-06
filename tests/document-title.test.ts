@@ -20,6 +20,17 @@ test("formats route and entity names as browser document titles", () => {
 test("selects browser titles for every application route", () => {
   const authenticated = true;
   assert.equal(appPageTitle({ route: { view: "landing" }, authenticated }), undefined);
+  assert.equal(
+    appPageTitle({ route: { view: "blog" }, authenticated: false }),
+    "Harhub Blog — Agent Skills, MCPs, and GitHub workflows"
+  );
+  assert.equal(
+    appPageTitle({
+      route: { view: "blog", blogSlug: "harhub-introduction" },
+      authenticated: false
+    }),
+    "整了个为团队管理 Skills、MCPs 资产的工具 — Harhub Blog"
+  );
   assert.equal(appPageTitle({ route: { view: "assets" }, authenticated: false }), "Sign in");
   assert.equal(appPageTitle({
     route: { view: "assets" },

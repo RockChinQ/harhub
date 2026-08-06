@@ -67,12 +67,12 @@ function BlogIndex() {
 
 function BlogArticle() {
   return (
-    <article>
+    <article itemScope itemType="https://schema.org/BlogPosting">
       <header className="border-b border-[#17202a]/10 bg-[#f2f0ea] px-5 py-16 sm:px-8 sm:py-24 lg:px-12">
         <div className="mx-auto max-w-[900px]">
           <a href="/blog" className="mb-10 inline-flex items-center gap-2 text-sm font-black text-[#65717b] hover:text-[#17202a]"><ArrowLeft className="h-4 w-4" /> Back to Blog</a>
           <div className="mb-5 flex flex-wrap items-center gap-3 text-sm font-bold text-[#65717b]"><time dateTime="2026-08-05">August 5, 2026</time><span aria-hidden="true">·</span><span>RockChinQ</span></div>
-          <h1 className="text-4xl font-black leading-[1.02] tracking-[-0.055em] sm:text-6xl">整了个为团队管理 Skills、MCPs 资产的工具</h1>
+          <h1 itemProp="headline" className="text-4xl font-black leading-[1.02] tracking-[-0.055em] sm:text-6xl">整了个为团队管理 Skills、MCPs 资产的工具</h1>
           <p className="mt-7 max-w-3xl text-lg leading-8 text-[#65717b]">从散落在仓库里的 Skills，到可治理、可分发、可回流的团队 Harness 资产。</p>
           <div className="mt-7 flex flex-wrap gap-2">{["Harhub", "Harness", "Skills", "MCP"].map((tag) => <span key={tag} className="rounded-full border border-[#17202a]/15 bg-white px-3 py-1 text-xs font-black">{tag}</span>)}</div>
         </div>

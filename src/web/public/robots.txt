@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /account
+Disallow: /forge
+Disallow: /mcps
+Disallow: /projects
+Disallow: /skills
+Disallow: /workspace
+
+Sitemap: https://harhub.rcpd.cc/sitemap.xml

@@ -1,7 +1,7 @@
 import cors from "cors";
 import express from "express";
 import multer from "multer";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   AUTH_RATE_LIMIT_MAX,
@@ -28,6 +28,7 @@ import { registerShareRoutes } from "./routes/shares.js";
 import { registerSkillRoutes } from "./routes/skills.js";
 import { registerWorkspaceRoutes } from "./routes/workspaces.js";
 import { recoverProjectRepositoryScans } from "./services/project-repository-inventory.js";
+import { injectSeoMetadata, seoMetadataForPath } from "./seo.js";
 
 export function createServerApp() {
   const app = express();
@@ -88,8 +89,13 @@ function registerStaticApp(app: ReturnType<typeof express>): void {
   const webRoot = path.resolve(process.cwd(), "dist/web");
   if (!existsSync(webRoot)) return;
 
+  const indexTemplate = readFileSync(path.join(webRoot, "index.html"), "utf8");
+  const sendAppDocument: express.RequestHandler = (req, res) => {
+    const metadata = seoMetadataForPath(req.path);
+    res.status(metadata.statusCode ?? 200);
+    res.type("html").send(injectSeoMetadata(indexTemplate, metadata));
+  };
+  app.get(["/", "/blog", "/blog/harhub-introduction"], sendAppDocument);
   app.use(express.static(webRoot));
-  app.get("*", (_req, res) => {
-    res.sendFile(path.join(webRoot, "index.html"));
-  });
+  app.get("*", sendAppDocument);
 }

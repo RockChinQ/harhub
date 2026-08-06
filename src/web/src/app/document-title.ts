@@ -20,6 +20,11 @@ export function appPageTitle({
   accountName?: string;
 }): string | undefined {
   if (route.view === "share") return "Shared Skill";
+  if (route.view === "blog") {
+    return route.blogSlug
+      ? "整了个为团队管理 Skills、MCPs 资产的工具 — Harhub Blog"
+      : "Harhub Blog — Agent Skills, MCPs, and GitHub workflows";
+  }
   if (route.view === "landing" && !inviteToken) return undefined;
   if (!authenticated) return inviteToken ? "Join Workspace" : "Sign in";
   if (route.view === "landing") return undefined;
