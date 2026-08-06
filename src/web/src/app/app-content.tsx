@@ -69,7 +69,7 @@ export function AppContent({
     activeMembership?.role === "owner" || activeMembership?.role === "admin";
 
   return (
-    <main className="relative flex min-h-0 min-w-0 flex-1 flex-col items-center overflow-hidden bg-[radial-gradient(circle_at_90%_0%,rgba(245,216,91,0.18),transparent_28%),radial-gradient(circle_at_10%_100%,rgba(107,200,170,0.12),transparent_24%)] p-4 sm:p-6 lg:p-8">
+    <main className="relative flex min-h-0 min-w-0 flex-1 flex-col items-center overflow-hidden bg-background p-4 sm:p-6 lg:p-8">
       <div className="flex min-h-0 w-full max-w-[1440px] flex-1 flex-col overflow-hidden">
         {error ? (
           <div className="mb-4 shrink-0 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
