@@ -1,11 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
-  <title id="title">Harhub</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title description">
+  <title id="title">Harhub verified mark</title>
+  <desc id="description">A nearly circular warm yellow badge with a confident check mark</desc>
   <path
-    fill="#2459b8"
-    d="M22 16h22c5.523 0 10 4.477 10 10v12c0 6.627-3.373 12-8 12-4.418 0-8 3.582-8 8v12c0 4.418 3.582 8 8 8 4.627 0 8 5.373 8 12v12c0 5.523-4.477 10-10 10H22c-5.523 0-10-4.477-10-10V26c0-5.523 4.477-10 10-10Z"
+    d="M64 12.5c14.7 0 27.6 4.1 37.1 13.6 9.6 9.4 14.4 22.3 14.4 37.9 0 15.4-4.6 28.5-14.1 38-9.5 9.5-22.5 14-37.7 14-15.5 0-28.6-4.5-38.1-14-9.5-9.5-14.1-22.5-14.1-38 0-15.4 4.5-28.5 14-37.9C35 16.7 48 12.5 64 12.5Z"
+    fill="#F5D85B"
+    stroke="#17202A"
+    stroke-width="5"
+    stroke-linejoin="round"
   />
   <path
-    fill="#343638"
-    d="M106 16H84c-5.523 0-10 4.477-10 10v12c0 6.627 3.373 12 8 12 4.418 0 8 3.582 8 8v12c0 4.418-3.582 8-8 8-4.627 0-8 5.373-8 12v12c0 5.523 4.477 10 10 10h22c5.523 0 10-4.477 10-10V26c0-5.523-4.477-10-10-10Z"
+    d="m37 64 18 18 36-37"
+    fill="none"
+    stroke="#17202A"
+    stroke-width="10"
+    stroke-linecap="round"
+    stroke-linejoin="round"
   />
 </svg>
