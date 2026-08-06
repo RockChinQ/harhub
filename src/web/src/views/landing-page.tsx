@@ -14,7 +14,6 @@ export function LandingPage({ isSignedIn }: { isSignedIn: boolean }) {
   return (
     <main className="h-svh overflow-y-auto bg-[#f2f0ea] text-[#17202a]">
       <section className="relative overflow-hidden border-b border-[#17202a]/10 bg-[#fffdf8] text-[#17202a]">
-        <div className="absolute -right-40 -top-40 h-96 w-96 rounded-full bg-[#f5d85b]/25 blur-3xl" />
         <div className="relative mx-auto flex min-h-svh max-w-[1440px] flex-col px-5 py-5 sm:px-8 lg:px-12">
           <header className="flex h-16 items-center justify-between rounded-2xl border border-[#17202a]/12 bg-white/75 px-3 shadow-sm backdrop-blur sm:px-5">
             <a href="/" className="flex items-center gap-3" aria-label="Harhub home">
