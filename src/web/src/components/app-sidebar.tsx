@@ -3,7 +3,7 @@ import {
   Building2,
   Check,
   ChevronsUpDown,
-  GalleryVerticalEnd,
+
   FolderGit2,
   Layers3,
   Plus,
@@ -77,12 +77,10 @@ export function AppSidebar({
               onClick={() => onNavigate({ view: "assets" })}
               aria-label="Harhub home"
             >
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                <GalleryVerticalEnd className="size-4" aria-hidden="true" />
-              </div>
+              <img src="/brand/harhub-icon.svg" alt="" className="size-8 shrink-0" />
               <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-                <span className="truncate font-semibold">Harhub</span>
-                <span className="truncate text-xs">Asset Control</span>
+                <span className="truncate font-black tracking-[-0.03em]">harhub</span>
+                <span className="truncate text-xs text-sidebar-foreground/60">Harness together</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -210,10 +208,10 @@ function WorkspaceSelect({
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            className="h-11 w-full justify-between rounded-lg border border-sidebar-border/80 bg-sidebar-accent/55 px-3 py-2 text-sidebar-foreground shadow-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-blue-500/25 data-[state=open]:border-blue-300 data-[state=open]:bg-sidebar-accent"
+            className="h-12 w-full justify-between rounded-xl border border-sidebar-border/80 bg-sidebar-accent/55 px-3 py-2 text-sidebar-foreground shadow-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring/40 data-[state=open]:border-sidebar-primary/70 data-[state=open]:bg-sidebar-accent"
             aria-label="Workspace"
           >
-            <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-sidebar-primary/10 text-sidebar-primary">
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
               <Building2 className="size-4" aria-hidden="true" />
             </span>
             <span className="grid min-w-0 flex-1 text-left leading-tight">

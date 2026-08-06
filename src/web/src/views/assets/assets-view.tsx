@@ -251,7 +251,7 @@ export function AssetsView({
       ) : null}
       <div className="flex shrink-0 min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-normal">{plural}</h1>
+          <h1 className="text-3xl font-black tracking-[-0.045em]">{plural}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {managedAssets.length} uploaded
           </p>
@@ -328,7 +328,7 @@ export function AssetsView({
           </Popover>
         </div>
       </div>
-      <div className="flex shrink-0 min-w-0 items-center gap-2 rounded-lg border bg-card p-3">
+      <div className="flex shrink-0 min-w-0 items-center gap-2 rounded-2xl border-2 bg-card p-3 shadow-sm">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input

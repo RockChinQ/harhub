@@ -274,10 +274,18 @@ export function AuthScreen({
   }
 
   return (
-    <main className="flex min-h-[100dvh] items-center justify-center px-4 py-8">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Harhub</CardTitle>
+    <main className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-[#fffdf8] px-4 py-8 before:absolute before:inset-0 before:opacity-[0.045] before:[background-image:radial-gradient(#17202a_1px,transparent_1px)] before:[background-size:20px_20px]">
+      <div className="absolute left-[8%] top-[12%] h-32 w-32 rounded-full bg-[#f5d85b]/45 blur-3xl" />
+      <div className="absolute bottom-[8%] right-[10%] h-40 w-40 rounded-full bg-[#6bc8aa]/30 blur-3xl" />
+      <Card className="relative w-full max-w-md border-2 border-[#17202a] shadow-[7px_7px_0_#17202a]">
+        <CardHeader className="gap-4">
+          <div className="flex items-center gap-3">
+            <img src="/brand/harhub-icon.svg" alt="" className="h-11 w-11" />
+            <div>
+              <CardTitle className="font-black tracking-[-0.04em]">harhub</CardTitle>
+              <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Harness together</p>
+            </div>
+          </div>
           <CardDescription>
             {isOAuthEmailVerification
               ? "GitHub is connected. Verify your email to finish signing in."

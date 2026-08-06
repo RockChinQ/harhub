@@ -53,19 +53,19 @@ export function AppLayout({
         onLogout={onLogout}
       />
       <SidebarInset className="h-svh min-w-0 overflow-hidden">
-        <header className="flex h-16 min-w-0 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
+        <header className="flex h-16 min-w-0 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur">
+          <SidebarTrigger className="-ml-1 rounded-xl" />
+          <Separator orientation="vertical" className="mr-1 h-5" />
           <Breadcrumb className="min-w-0">
             <BreadcrumbList>
               <BreadcrumbItem>
-                <span className="block max-w-[40vw] truncate font-medium text-foreground">
+                <span className="block max-w-[40vw] truncate text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
                   {activeWorkspace?.name ?? "Workspace"}
                 </span>
               </BreadcrumbItem>
               <BreadcrumbSeparator />
               <BreadcrumbItem>
-                <BreadcrumbPage>{viewTitle(view)}</BreadcrumbPage>
+                <BreadcrumbPage className="font-black tracking-[-0.02em]">{viewTitle(view)}</BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
