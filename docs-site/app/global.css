@@ -2,7 +2,37 @@
 @import "fumadocs-ui/css/neutral.css";
 @import "fumadocs-ui/css/preset.css";
 
-:root { --harhub-blue: #2563eb; }
+:root {
+  --harhub-ink: #17202a;
+  --harhub-paper: #fffdf8;
+  --harhub-surface: #f2f0ea;
+  --harhub-yellow: #f5d85b;
+  --harhub-coral: #e45b3c;
+  --harhub-border: rgba(23, 32, 42, 0.14);
+  --color-fd-background: var(--harhub-paper);
+  --color-fd-foreground: var(--harhub-ink);
+  --color-fd-muted: #65717b;
+  --color-fd-muted-foreground: #65717b;
+  --color-fd-card: #ffffff;
+  --color-fd-card-foreground: var(--harhub-ink);
+  --color-fd-popover: #ffffff;
+  --color-fd-popover-foreground: var(--harhub-ink);
+  --color-fd-primary: var(--harhub-ink);
+  --color-fd-primary-foreground: var(--harhub-paper);
+  --color-fd-border: var(--harhub-border);
+  --color-fd-ring: var(--harhub-coral);
+}
+
 html { scrollbar-gutter: stable; }
 html > body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scroll-bar-size: 0px !important; }
-.harhub-mark { border-radius: 12px; box-shadow: 0 8px 30px color-mix(in oklab, var(--harhub-blue) 25%, transparent); }
+body { background: var(--harhub-paper); color: var(--harhub-ink); }
+
+.harhub-mark { border-radius: 999px; box-shadow: 2px 2px 0 var(--harhub-ink); }
+
+[data-nav] { background: color-mix(in srgb, var(--harhub-paper) 92%, transparent); border-bottom-color: var(--harhub-border); }
+[data-sidebar] { background: var(--harhub-surface); border-color: var(--harhub-border); }
+[data-sidebar] [data-active="true"] { background: var(--harhub-yellow); color: var(--harhub-ink); font-weight: 700; }
+[data-sidebar] a:hover { background: rgba(23, 32, 42, 0.06); }
+
+.prose pre, pre { border: 1px solid var(--harhub-border); border-radius: 1rem; box-shadow: 3px 3px 0 rgba(23, 32, 42, 0.1); }
+.prose code:not(pre code) { border: 1px solid var(--harhub-border); border-radius: 0.4rem; background: var(--harhub-surface); color: var(--harhub-ink); }
