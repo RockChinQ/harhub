@@ -1,5 +1,6 @@
 export type View =
   | "landing"
+  | "blog"
   | "device"
   | "share"
   | "assets"
@@ -12,7 +13,7 @@ export type View =
   | "workspace"
   | "account";
 
-export type AppShellView = Exclude<View, "landing" | "device" | "share">;
+export type AppShellView = Exclude<View, "landing" | "blog" | "device" | "share">;
 
 export interface AppRoute {
   view: View;
@@ -21,4 +22,5 @@ export interface AppRoute {
   projectId?: string;
   projectImport?: "github";
   shareToken?: string;
+  blogSlug?: string;
 }

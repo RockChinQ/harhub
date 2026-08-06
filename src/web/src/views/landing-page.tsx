@@ -22,6 +22,7 @@ export function LandingPage({ isSignedIn }: { isSignedIn: boolean }) {
               <span className="hidden text-xs font-bold uppercase tracking-[0.14em] text-[#65717b] sm:inline">Harness together</span>
             </a>
             <nav className="flex items-center gap-2">
+              <Button asChild variant="ghost" className="hidden text-[#17202a] hover:bg-[#f2f0ea] hover:text-[#17202a] sm:inline-flex"><a href="/blog">Blog</a></Button>
               <Button asChild variant="ghost" className="hidden text-[#17202a] hover:bg-[#f2f0ea] hover:text-[#17202a] sm:inline-flex"><a href="/docs/"><BookOpen /> Docs</a></Button>
               <Button asChild className="bg-[#17202a] font-black text-white hover:bg-[#2b3944]"><a href={content.primaryHref}>{isSignedIn ? "Open app" : "Sign in"}<ArrowRight /></a></Button>
             </nav>

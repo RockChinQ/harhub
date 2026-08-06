@@ -28,6 +28,7 @@ import {
   type SessionResponse
 } from "./lib/api";
 import { AuthScreen } from "./views/auth-screen";
+import { BlogPage } from "./views/blog-page";
 import { DeviceAuthorizationView } from "./views/device-authorization-view";
 import { LandingPage } from "./views/landing-page";
 import { PublicShareView } from "./views/public-share-view";
@@ -238,6 +239,10 @@ export function App() {
 
   if (route.view === "landing" && !inviteToken) {
     return <LandingPage isSignedIn={Boolean(token && session)} />;
+  }
+
+  if (route.view === "blog") {
+    return <BlogPage slug={route.blogSlug} isSignedIn={Boolean(token && session)} />;
   }
 
   if (!token || !session) {

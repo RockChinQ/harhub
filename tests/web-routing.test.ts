@@ -42,3 +42,16 @@ test("binds Projects to Library routes", () => {
     { view: "projects" }
   );
 });
+
+test("binds Blog index and article routes", () => {
+  assert.deepEqual(routeFromPath("/blog"), { view: "blog" });
+  assert.deepEqual(routeFromPath("/blog/harhub-introduction"), {
+    view: "blog",
+    blogSlug: "harhub-introduction"
+  });
+  assert.equal(pathForRoute({ view: "blog" }), "/blog");
+  assert.equal(
+    pathForRoute({ view: "blog", blogSlug: "harhub-introduction" }),
+    "/blog/harhub-introduction"
+  );
+});

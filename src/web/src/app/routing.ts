@@ -10,6 +10,11 @@ export function routeFromPath(pathname: string, search = ""): AppRoute {
 
   if (!section) return { view: "landing" };
 
+  if (section === "blog") {
+    const blogSlug = segments[1] ? decodeRoutePart(segments[1]) : undefined;
+    return blogSlug ? { view: "blog", blogSlug } : { view: "blog" };
+  }
+
   if (section === "skills" || section === "assets") {
     const assetQuery = segments[1] ? decodeRoutePart(segments.slice(1).join("/")) : undefined;
     return assetQuery ? { view: "asset-detail", assetQuery } : { view: "assets" };
@@ -78,6 +83,9 @@ export function pathForRoute(route: AppRoute): string {
     return `/s/${encodeURIComponent(route.shareToken)}`;
   }
   if (route.view === "landing") return "/";
+  if (route.view === "blog") {
+    return route.blogSlug ? `/blog/${encodeURIComponent(route.blogSlug)}` : "/blog";
+  }
   return "/skills";
 }
 
@@ -100,6 +108,7 @@ export function viewTitle(view: View): string {
   if (view === "device") return "Authorize Device";
   if (view === "share") return "Shared Skill";
   if (view === "landing") return "Home";
+  if (view === "blog") return "Blog";
   return "Skills";
 }
 
