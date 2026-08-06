@@ -14,7 +14,7 @@ export function landingPageContent(isSignedIn: boolean): LandingPageContent {
     description:
       "Connect GitHub to inventory Skills, MCP configurations, rules, and instructions. Roll out approved assets through reviewable pull requests, detect drift, and bring proven repository improvements back to the team Library.",
     primaryAction: isSignedIn ? "Open Projects" : "Start your repository inventory",
-    primaryHref: "/projects?import=github",
+    primaryHref: "/projects",
     proofPoints: [
       "GitHub App inventory",
       "Skills and MCP versions",
