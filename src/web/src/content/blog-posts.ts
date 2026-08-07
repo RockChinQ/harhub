@@ -10,8 +10,8 @@ export interface BlogPost {
 export const blogPosts: BlogPost[] = [
   {
     slug: "harhub-introduction",
-    title: "整了个为团队管理 Skills、MCPs 资产的工具",
-    excerpt: "为什么团队需要一个连接 Library、GitHub Projects 与 reviewable PR 的 Harness 资产控制平面。",
+    title: "Harhub：面向团队的 Agent Skills 与 MCP 资产治理平台",
+    excerpt: "Harhub 基于 GitHub 连接团队资产库与项目仓库，让 Agent Skills 和 MCP 配置的收录、分发、变更审查与版本回流形成完整工作流。",
     publishedAt: "2026-08-05",
     author: "RockChinQ",
     tags: ["Harhub", "Harness", "Skills", "MCP"]

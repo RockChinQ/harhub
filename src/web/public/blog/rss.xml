@@ -7,11 +7,11 @@
     <language>zh-CN</language>
     <atom:link href="https://harhub.rcpd.cc/blog/rss.xml" rel="self" type="application/rss+xml" />
     <item>
-      <title>整了个为团队管理 Skills、MCPs 资产的工具</title>
+      <title>Harhub：面向团队的 Agent Skills 与 MCP 资产治理平台</title>
       <link>https://harhub.rcpd.cc/blog/harhub-introduction</link>
       <guid isPermaLink="true">https://harhub.rcpd.cc/blog/harhub-introduction</guid>
       <pubDate>Wed, 05 Aug 2026 00:00:00 GMT</pubDate>
-      <description>为什么团队需要一个连接 Library、GitHub Projects 与 reviewable PR 的 Harness 资产控制平面。</description>
+      <description>Harhub 基于 GitHub 连接团队资产库与项目仓库，让 Agent Skills 和 MCP 配置的收录、分发、变更审查与版本回流形成完整工作流。</description>
     </item>
   </channel>
 </rss>

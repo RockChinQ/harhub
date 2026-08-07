@@ -48,14 +48,14 @@ export function seoMetadataForPath(pathname: string): SeoMetadata {
         publisher: { "@id": ORGANIZATION_ID },
         blogPost: [{ "@id": `${ORIGIN}/blog/harhub-introduction#article` }]
       },
-      prerenderedBody: `<main><header><p>Harhub Blog</p><h1>Notes on building better agent infrastructure.</h1><p>Product thinking, engineering decisions, and field notes from building Harhub in the open.</p></header><article><time datetime="2026-08-05">August 5, 2026</time><h2><a href="/blog/harhub-introduction">整了个为团队管理 Skills、MCPs 资产的工具</a></h2><p>为什么团队需要一个连接 Library、GitHub Projects 与 reviewable PR 的 Harness 资产控制平面。</p></article></main>`
+      prerenderedBody: `<main><header><p>Harhub Blog</p><h1>Notes on building better agent infrastructure.</h1><p>Product thinking, engineering decisions, and field notes from building Harhub in the open.</p></header><article><time datetime="2026-08-05">August 5, 2026</time><h2><a href="/blog/harhub-introduction">Harhub：面向团队的 Agent Skills 与 MCP 资产治理平台</a></h2><p>Harhub 基于 GitHub 连接团队资产库与项目仓库，让 Agent Skills 和 MCP 配置的收录、分发、变更审查与版本回流形成完整工作流。</p></article></main>`
     };
   }
 
   if (pathname === "/blog/harhub-introduction") {
     return {
-      title: "整了个为团队管理 Skills、MCPs 资产的工具 — Harhub Blog",
-      description: "从散落在 GitHub 仓库里的 Skills，到可治理、可分发、可回流并通过 reviewable PR 更新的团队 Harness 资产。",
+      title: "Harhub：面向团队的 Agent Skills 与 MCP 资产治理平台 — Harhub Blog",
+      description: "Harhub 基于 GitHub 连接团队资产库与项目仓库，让 Agent Skills 和 MCP 配置的收录、分发、变更审查与版本回流形成完整工作流。",
       canonical: `${ORIGIN}/blog/harhub-introduction`,
       type: "article",
       locale: "zh_CN",
@@ -68,8 +68,8 @@ export function seoMetadataForPath(pathname: string): SeoMetadata {
         "@context": "https://schema.org",
         "@type": "BlogPosting",
         "@id": `${ORIGIN}/blog/harhub-introduction#article`,
-        headline: "整了个为团队管理 Skills、MCPs 资产的工具",
-        description: "从散落在 GitHub 仓库里的 Skills，到可治理、可分发、可回流并通过 reviewable PR 更新的团队 Harness 资产。",
+        headline: "Harhub：面向团队的 Agent Skills 与 MCP 资产治理平台",
+        description: "Harhub 基于 GitHub 连接团队资产库与项目仓库，让 Agent Skills 和 MCP 配置的收录、分发、变更审查与版本回流形成完整工作流。",
         datePublished: "2026-08-05T00:00:00Z",
         inLanguage: "zh-CN",
         image: SOCIAL_IMAGE,
@@ -78,7 +78,7 @@ export function seoMetadataForPath(pathname: string): SeoMetadata {
         mainEntityOfPage: `${ORIGIN}/blog/harhub-introduction`,
         isPartOf: { "@id": `${ORIGIN}/blog#blog` }
       },
-      prerenderedBody: `<main><article><header><time datetime="2026-08-05">August 5, 2026</time><h1>整了个为团队管理 Skills、MCPs 资产的工具</h1><p>从散落在 GitHub 仓库里的 Skills，到可治理、可分发、可回流并通过 reviewable PR 更新的团队 Harness 资产。</p></header><p>团队内的 Skill 越来越多，新产品要使用已有 Skill 时，逐个筛选并复制到新仓库既麻烦，也会让内容变成无法随来源更新的副本。</p><p>Harhub 是 Harness Hub 的简称，基于 GitHub 生态治理 Skills 和 MCPs。Harhub 使用 Library 存储团队资产，并通过 Projects 绑定 GitHub 仓库。</p><h2>不只是 starter</h2><p>Harhub 承担团队 Harness 资产的存储、整理、分发和回流流程。管理员连接 GitHub App 并导入仓库后，Harhub 会扫描任意路径下的 SKILL.md 及相关资源。</p><h3>绑定现有资产</h3><p>仓库内已有的 Skills 可以经过 Review 加入 Library，也可以通过 ZIP 或兼容的 skills 命令导入。</p><h3>管理项目中的 Skills</h3><p>团队可以在 Harhub 中向 Project 添加或删除 Skills。Harhub 将改动转为可审查的 pull request，合并后重新同步仓库 inventory。</p><h3>资产改动回流</h3><p>当 Skills 在 Codex、Claude Code 或其他本地环境中被修改并推送到 GitHub，Harhub 会检测 drift。Review 后，最新内容可以回流到全局 Library，并保留版本记录。</p><p><a href="https://github.com/RockChinQ/harhub">Harhub 开源仓库</a></p></article></main>`
+      prerenderedBody: `<main><article><header><time datetime="2026-08-05">August 5, 2026</time><h1>Harhub：面向团队的 Agent Skills 与 MCP 资产治理平台</h1><p>Harhub 基于 GitHub 连接团队资产库与项目仓库，让 Agent Skills 和 MCP 配置的收录、分发、变更审查与版本回流形成完整工作流。</p></header><p>随着团队在多个项目中持续使用 coding agents，可复用的 Agent Skills 与 MCP 配置逐渐成为一类需要长期维护的工程资产。它们通常分散在不同的 GitHub 仓库中，复制后的内容也难以跟随来源更新。</p><h2>从项目文件到团队资产</h2><p>Harhub 是 Harness Hub 的简称。它通过 Library 管理团队可复用的 Agent Skills 与 MCP 配置，并通过 Projects 连接实际代码仓库。</p><p>管理员连接 GitHub App 并导入仓库后，Harhub 会扫描仓库中的 Agent Skills，索引 SKILL.md 和相关资源文件。团队完成审查后，可以将仓库中的 Skill 收录到 Library。</p><h2>贯通资产的完整生命周期</h2><p>Harhub 管理团队 Harness 资产从收录、版本化到项目分发和变更回流的完整过程，并将关键变更放回 GitHub 的代码审查流程中。</p><h3>收录既有资产</h3><p>团队可以从 Project 中审查并收录现有 Skills，也可以上传 ZIP 包或通过兼容的 npx skills add 命令导入远程 Skill。</p><h3>将资产分发到项目</h3><p>Harhub 将资产的新增或删除转换为可审查的 pull request。合并后，Harhub 重新扫描仓库并更新 Project inventory。</p><h3>审查并回流仓库变更</h3><p>当开发者在本地修改 Skills 并推送到 GitHub 后，Harhub 会检测仓库中的资产变更。团队审查并确认同步后，新内容会回流到 Library，成为该资产的新版本。</p><h2>以 GitHub 审查流程为治理边界</h2><p>Harhub 在 Library 与代码仓库之间维护明确的资产关系，同时保留团队既有的 GitHub 权限、分支保护与代码审查机制。</p><p><a href="https://github.com/RockChinQ/harhub">Harhub 开源仓库</a></p><p>本文由 RockChinQ 撰写，原文首发于 <a href="https://rockchin.top/posts/harhub-introduction/">rockchin.top</a>。</p></article></main>`
     };
   }
 

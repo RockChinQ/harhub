@@ -27,8 +27,8 @@ test("renders article metadata, Chinese language, JSON-LD, and crawlable text", 
   assert.match(html, /<meta property="og:type" content="article"/);
   assert.match(html, /article:published_time/);
   assert.match(html, /"@type":"BlogPosting"/);
-  assert.match(html, /<h1>整了个为团队管理 Skills、MCPs 资产的工具<\/h1>/);
-  assert.match(html, /检测 drift/);
+  assert.match(html, /<h1>Harhub：面向团队的 Agent Skills 与 MCP 资产治理平台<\/h1>/);
+  assert.match(html, /检测仓库中的资产变更/);
 });
 
 test("marks application and unknown routes noindex while returning real 404s", () => {

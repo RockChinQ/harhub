@@ -29,7 +29,7 @@ test("selects browser titles for every application route", () => {
       route: { view: "blog", blogSlug: "harhub-introduction" },
       authenticated: false
     }),
-    "整了个为团队管理 Skills、MCPs 资产的工具 — Harhub Blog"
+    "Harhub：面向团队的 Agent Skills 与 MCP 资产治理平台 — Harhub Blog"
   );
   assert.equal(appPageTitle({ route: { view: "assets" }, authenticated: false }), "Sign in");
   assert.equal(appPageTitle({

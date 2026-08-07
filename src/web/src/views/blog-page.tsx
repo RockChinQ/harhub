@@ -72,8 +72,8 @@ function BlogArticle() {
         <div className="mx-auto max-w-[900px]">
           <a href="/blog" className="mb-10 inline-flex items-center gap-2 text-sm font-black text-[#65717b] hover:text-[#17202a]"><ArrowLeft className="h-4 w-4" /> Back to Blog</a>
           <div className="mb-5 flex flex-wrap items-center gap-3 text-sm font-bold text-[#65717b]"><time dateTime="2026-08-05">August 5, 2026</time><span aria-hidden="true">·</span><span>RockChinQ</span></div>
-          <h1 itemProp="headline" className="text-4xl font-black leading-[1.02] tracking-[-0.055em] sm:text-6xl">整了个为团队管理 Skills、MCPs 资产的工具</h1>
-          <p className="mt-7 max-w-3xl text-lg leading-8 text-[#65717b]">从散落在仓库里的 Skills，到可治理、可分发、可回流的团队 Harness 资产。</p>
+          <h1 itemProp="headline" className="text-4xl font-black leading-[1.02] tracking-[-0.055em] sm:text-6xl">Harhub：面向团队的 Agent Skills 与 MCP 资产治理平台</h1>
+          <p className="mt-7 max-w-3xl text-lg leading-8 text-[#65717b]">以 GitHub 为协作基础，建立 Agent Skills 与 MCP 配置的统一资产库，并贯通收录、分发、变更审查和版本回流。</p>
           <div className="mt-7 flex flex-wrap gap-2">{["Harhub", "Harness", "Skills", "MCP"].map((tag) => <span key={tag} className="rounded-full border border-[#17202a]/15 bg-white px-3 py-1 text-xs font-black">{tag}</span>)}</div>
         </div>
       </header>
@@ -88,45 +88,48 @@ function ArticleBody() {
   const imageClass = "my-9 w-full rounded-2xl border border-[#17202a]/15 bg-[#f2f0ea] shadow-sm";
   return (
     <div className="space-y-7 text-[17px] leading-8 text-[#35414a] [&_h2]:pt-10 [&_h2]:text-3xl [&_h2]:font-black [&_h2]:tracking-[-0.045em] [&_h3]:pt-7 [&_h3]:text-2xl [&_h3]:font-black [&_h3]:tracking-[-0.035em] [&_p_strong]:font-black [&_p_strong]:text-[#17202a]">
-      <p>前两周我 +1 在搞 Dify 的新版 RAG，几个人发现团队内的 Skill 越来越多。如果有新产品要用到已有的 Skill，还得全部筛选并拷贝到新仓库，显得很麻烦。于是他整了个叫 harness-starter 的东西，主要为非技术人员打造：比如公司内的非研发同事有需求，打算用 Codex / Claude Code 自己 vibe 一个新的产品来解决问题，harness-starter 就会根据用户的初始描述提出一系列跟进问题，例如产品主要面向哪些用户、交付形式、产品细节、所使用的技术栈等，然后根据这一堆 context 挑选团队内已有的 Skills，结合预制模板生成一整个可以直接交接给 coding agent 的框架。</p>
-      <p>但是做着就发现有很多问题。首先是 Harness 资产的来源：以 Skills 为例，目前团队里已有的 Skills 都散落在各个仓库里，需要让 Codex 扫描一遍放入 harness-starter 仓库里才能使用，而存进来的也只是副本，没法随来源更新。其次是新项目所使用的 Harness 资产，在来源更新之后也没办法高效地被更新；Harness 资产的双向路径都没有被打通。为了解决这些复杂问题，有必要引入一个新的平台来承接团队间 Harness 资产管理的工作了。</p>
+      <p>随着团队在多个项目中持续使用 coding agents，可复用的 Agent Skills 与 MCP 配置逐渐成为一类需要长期维护的工程资产。它们通常分散在不同的 GitHub 仓库中。新项目需要复用既有能力时，开发者往往只能重新检索和复制文件；复制后的内容与来源脱离，后续更新也难以同步。</p>
+      <p>最初，我们通过 harness-starter 验证了一条生成式工作流：用户描述产品需求并补充目标用户、交付形式和技术栈等信息，系统再从团队已有资产中选取合适的 Skills 与 MCP 配置，结合模板生成可交付给 coding agent 的项目框架。这项实践也暴露了更基础的问题：团队缺少一个统一的资产来源，以及连接资产库与项目仓库的双向更新机制。</p>
       <img className={imageClass} src={sourceImage("20260805-210502.png")} alt="Harness starter workflow" loading="lazy" />
-      <p>目前暂定名为 <strong>Harhub</strong>，Harness Hub 的简称，同样是基于 GitHub 生态去做各类 Skills / MCPs 的治理路径。Harhub 内部建立 Library 存储资产，而引入 Anchor / Projects 的概念绑定 GitHub 仓库：</p>
+
+      <h2>从项目文件到团队资产</h2>
+      <p><strong>Harhub</strong>（Harness Hub）由此产生。它以 GitHub 为协作基础，通过 Library 管理团队可复用的 Agent Skills 与 MCP 配置，并通过 Projects 连接实际代码仓库。</p>
       <img className={imageClass} src={sourceImage("20260805-210725.png")} alt="Harhub Projects and Library" loading="lazy" />
-      <p>Harhub 仍然是强绑定于 GitHub 的，便于团队快速引入。工作区管理员只需要绑定 GitHub App 并导入 GitHub 仓库，Harhub 即可自动扫描并索引仓库内任何路径下的 Skill 完整内容，包括 SKILL.md 和相关资源文件。</p>
+      <p>工作区管理员连接 GitHub App 并导入仓库后，Harhub 会扫描仓库中的 Agent Skills，索引其 <code className="rounded-md bg-[#f2f0ea] px-1.5 py-1 font-mono text-sm text-[#17202a]">SKILL.md</code> 和相关资源文件。团队完成审查后，即可将仓库中的 Skill 收录到 Library，作为后续分发和版本管理的来源。</p>
       <img className={imageClass} src={sourceImage("20260805-211551.png")} alt="Harhub repository inventory" loading="lazy" />
-      <p>在 Review 之后，即可添加到 Library 里。</p>
-      <p>同样地，我们也把 harness-starter 的功能整合进了 Harhub。在 Forge 页面简单描述需求、回答跟进问题，内置 AI 将自动选取相关的 Skills 和 MCP，放入 <code className="rounded-md bg-[#f2f0ea] px-1.5 py-1 font-mono text-sm text-[#17202a]">.harness</code> 目录里。</p>
+      <p>Harhub 也保留了 harness-starter 所验证的生成能力。在 Forge 中，用户可以描述需求并回答补充问题；系统根据上下文选择相关的 Skills 和 MCP 配置，生成一套位于 <code className="rounded-md bg-[#f2f0ea] px-1.5 py-1 font-mono text-sm text-[#17202a]">.harness</code> 目录中的项目框架。</p>
       <img className={imageClass} src={sourceImage("20260805-220215.png")} alt="Harhub Forge" loading="lazy" />
 
-      <h2>不只是 starter</h2>
-      <p>做完这一套之后，就发现 harness-starter / Harhub 不只是一个可以根据业务需求生成 Harness 骨架的工具了，更可以承担团队内 Harness 资产（Skills / MCPs，以及后续会支持的 AGENTS.md 规则）的治理平台，接管存储、整理、分发、回流等全流程。</p>
+      <h2>贯通资产的完整生命周期</h2>
+      <p>Harhub 的职责不止是生成项目框架。它管理团队 Harness 资产从收录、版本化到项目分发和变更回流的完整过程，并将关键变更放回 GitHub 的代码审查流程中。</p>
 
-      <h3>绑定现有资产</h3>
-      <p>通过已有 Project 绑定，并入库仓库内已有的 Skills。也支持直接上传 zip 文件到 Library，或者通过 npx skills 命令下载来自 skills.sh 的 Skills。</p>
+      <h3>收录既有资产</h3>
+      <p>团队可以从已连接的 Project 中审查并收录现有 Skills，也可以上传 ZIP 包，或通过兼容的 <code className="rounded-md bg-[#f2f0ea] px-1.5 py-1 font-mono text-sm text-[#17202a]">npx skills add</code> 命令导入远程 Skill。无论来源如何，资产都会进入统一的 Library 管理流程。</p>
       <img className={imageClass} src={sourceImage("20260805-221700.png")} alt="Bind repository Skills to Harhub Library" loading="lazy" />
 
-      <h3>增删改查各个项目的 Skills</h3>
-      <p>现在不需要把仓库克隆到本地，即可在 Harhub 平台上闭环，把 Skills 添加到 Project：</p>
+      <h3>将资产分发到项目</h3>
+      <p>团队可以在 Harhub 中选择 Library 资产并添加到 Project，无需先将仓库克隆到本地。</p>
       <img className={imageClass} src={sourceImage("20260806-161852.png")} alt="Add Library Skills to a Project" loading="lazy" />
       <img className={imageClass} src={sourceImage("20260806-163034.png")} alt="Review a Harhub change proposal" loading="lazy" />
-      <p>Harhub 会自动为这次更改提出 PR，合并之后即会同步索引到 Project 里。对应的删除操作也是一样的路径。</p>
+      <p>Harhub 会把新增或删除操作转换为可审查的 pull request。合并后，Harhub 重新扫描仓库并更新 Project inventory，使 Library 中的管理状态与 GitHub 中的实际内容保持一致。</p>
 
-      <h3>资产改动回流</h3>
-      <p>还有一种情况：我们在其他地方（比如本地的 Codex / Claude Code）修改了项目中的 Skills 等内容，希望能同步回全局 Library。修改推送到 GitHub 后，Harhub 会自动检测到 Skills 文件的变化：</p>
+      <h3>审查并回流仓库变更</h3>
+      <p>开发者仍可在本地使用 Codex、Claude Code 或其他工具修改项目中的 Skills。变更推送到 GitHub 后，Harhub 会在下一次扫描中检测仓库中的资产变更，并将其与 Library 中的受管版本进行比较。</p>
       <img className={imageClass} src={sourceImage("20260806-163416.png")} alt="Harhub detects repository Skill changes" loading="lazy" />
       <img className={imageClass} src={sourceImage("20260806-163441.png")} alt="Review repository drift in Harhub" loading="lazy" />
-      <p>在 Review 更改并同步之后，即可在全局 Library 中看到这个 Skill 的最新内容已经被同步到团队资产库。</p>
+      <p>团队审查差异并确认同步后，仓库中的新内容会回流到 Library，成为该资产的新版本。版本历史保留了每次已接受的变更，便于后续追踪和分发。</p>
       <img className={imageClass} src={sourceImage("20260806-162902.png")} alt="Updated Skill in the Library" loading="lazy" />
       <img className={imageClass} src={sourceImage("20260806-162915.png")} alt="Version history for a Harhub asset" loading="lazy" />
-      <p>并且更改也会被版本化记录。</p>
+
+      <h2>以 GitHub 审查流程为治理边界</h2>
+      <p>Harhub 不替代 GitHub，而是在 Library 与代码仓库之间维护明确的资产关系。面向项目的变更通过 pull request 进入仓库；仓库中的改动经过审查后再回流到 Library。团队因此可以继续使用既有的权限、分支保护和代码审查机制，同时获得跨项目的资产目录、版本记录与变更检测能力。</p>
 
       <div className="mt-12 rounded-3xl border-2 border-[#17202a] bg-[#f5d85b] p-7 shadow-[5px_5px_0_#17202a] sm:p-9">
         <h2 className="!pt-0">现在开始使用 Harhub</h2>
-        <p className="mt-3 text-[#46515a]">连接你的 GitHub 仓库，开始建立团队可治理、可复用的 Harness 资产库。</p>
+        <p className="mt-3 text-[#46515a]">连接 GitHub 仓库，建立可审查、可复用并保留版本记录的团队 Harness 资产库。</p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row"><Button asChild className="bg-[#17202a] font-black text-white hover:bg-[#2b3944]"><a href="/projects">Open Harhub<ArrowRight /></a></Button><Button asChild variant="outline" className="bg-white font-black"><a href="https://github.com/RockChinQ/harhub"><Github /> View source</a></Button></div>
       </div>
-      <p className="pt-4 text-sm text-[#65717b]">本文首发于 <a className="font-bold underline underline-offset-4" href="https://rockchin.top/posts/harhub-introduction/">rockchin.top</a>，现同步收录于 Harhub Blog。</p>
+      <p className="pt-4 text-sm text-[#65717b]">本文由 RockChinQ 撰写，原文首发于 <a className="font-bold underline underline-offset-4" href="https://rockchin.top/posts/harhub-introduction/">rockchin.top</a>。Harhub Blog 在保留原始事实与产品截图的基础上，对标题与正文结构进行了编辑整理。</p>
     </div>
   );
 }

@@ -22,7 +22,7 @@ export function appPageTitle({
   if (route.view === "share") return "Shared Skill";
   if (route.view === "blog") {
     return route.blogSlug
-      ? "整了个为团队管理 Skills、MCPs 资产的工具 — Harhub Blog"
+      ? "Harhub：面向团队的 Agent Skills 与 MCP 资产治理平台 — Harhub Blog"
       : "Harhub Blog — Agent Skills, MCPs, and GitHub workflows";
   }
   if (route.view === "landing" && !inviteToken) return undefined;
